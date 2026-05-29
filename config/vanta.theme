@@ -1,0 +1,76 @@
+# Vanta Theme Configuration
+# Color palette - Tokyo Night
+
+# === Colors ===
+VANTA_BG="#1a1b26"
+VANTA_FG="#a9b1d6"
+VANTA_ACCENT="#7aa2f7"
+VANTA_GREEN="#9ece6a"
+VANTA_RED="#f7768e"
+VANTA_YELLOW="#e0af68"
+VANTA_BLUE="#7aa2f7"
+VANTA_PURPLE="#bb9af7"
+VANTA_CYAN="#7dcfff"
+VANTA_ORANGE="#ff9e64"
+VANTA_WHITE="#c0caf5"
+
+# === Terminal Colors ===
+# These work with most terminals
+COLOR0=$VANTA_BG
+COLOR1=$VANTA_RED
+COLOR2=$VANTA_GREEN
+COLOR3=$VANTA_YELLOW
+COLOR4=$VANTA_BLUE
+COLOR5=$VANTA_PURPLE
+COLOR6=$VANTA_CYAN
+COLOR7=$VANTA_WHITE
+COLOR8="#565f89"
+COLOR9="#f7768e"
+COLOR10="#9ece6a"
+COLOR11="#e0af68"
+COLOR12="#7aa2f7"
+COLOR13="#bb9af7"
+COLOR14="#7dcfff"
+COLOR15="#c0caf5"
+
+# === Kitty Configuration ===
+# Add to ~/.config/kitty/kitty.conf:
+# background_opacity 0.95
+# foreground #c0caf5
+# selection_background #7aa2f7
+# cursor #c0caf5
+# color0 #1a1b26
+# color1 #f7768e
+# color2 #9ece6a
+# color3 #e0af68
+# color4 #7aa2f7
+# color5 #bb9af7
+# color6 #7dcfff
+# color7 #c0caf5
+# color8 #565f89
+# color9 #f7768e
+# color10 #9ece6a
+# color11 #e0af68
+# color12 #7aa2f7
+# color13 #bb9af7
+# color14 #7dcfff
+# color15 #c0caf5
+
+# === btop Theme ===
+# Save as ~/.config/btop/themes/tokyo-night.theme
+# BTOP_THEME_NAME="Tokyo Night"
+# BTOP_COLOR_BG="#1a1b26"
+# BTOP_COLOR_MAIN="#7aa2f7"
+# BTOP_COLOR_SECOND="#bb9af7"
+# BTOP_COLOR_GRAT="#565f89"
+# BTOP_COLOR_TITLE="#c0caf5"
+# BTOP_COLOR_HIGH="#f7768e"
+# BTOP_COLOR_MED="#e0af68"
+# BTOP_COLOR_LOW="#9ece6a"
+# BTOP_COLOR_WARN="#ff9e64"
+# BTOP_COLOR_BAD="#f7768e"
+# BTOP_COLOR_FG="#a9b1d6"
+
+# === cmatrix ===
+# cmatrix -C blue|green|red|cyan|white|yellow
+# Recommended: -C green for Tokyo Night

@@ -1,0 +1,126 @@
+#!/bin/bash
+#
+# vanta-mode - Switch between Vanta dashboard modes
+# Usage: vanta-mode [mode]
+# Modes: focus, work, chill, monitor
+#
+
+set -e
+
+SESSION="vanta"
+VANTA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+show_mode() {
+    local mode="$1"
+    cat <<EOF
+[VANTA] Switching to $mode mode...
+
+EOF
+}
+
+setup_focus() {
+    show_mode "Focus"
+    tmux kill-window -t clock 2>/dev/null || true
+    tmux kill-window -t calendar 2>/dev/null || true
+    tmux kill-window -t cava 2>/dev/null || true
+    tmux kill-window -t matrix 2>/dev/null || true
+    tmux kill-window -t yazi 2>/dev/null || true
+    tmux kill-window -t text 2>/dev/null || true
+    tmux kill-window -t monitor 2>/dev/null || true
+    tmux select-layout -t "$SESSION" main-vertical
+}
+
+setup_work() {
+    show_mode "Work"
+    tmux kill-window -t cava 2>/dev/null || true
+    tmux kill-window -t matrix 2>/dev/null || true
+    tmux kill-window -t text 2>/dev/null || true
+    tmux kill-window -t monitor 2>/dev/null || true
+
+    if ! tmux list-windows | grep -q "^clock:"; then
+        tmux new-window -d -n clock 'tty-clock -c -C 2'
+    fi
+    if ! tmux list-windows | grep -q "^calendar:"; then
+        tmux new-window -d -n calendar 'cal -3'
+    fi
+    if ! tmux list-windows | grep -q "^yazi:"; then
+        tmux new-window -d -n yazi 'yazi'
+    fi
+    tmux select-layout -t "$SESSION" tiled
+}
+
+setup_chill() {
+    show_mode "Chill"
+    tmux kill-window -t clock 2>/dev/null || true
+    tmux kill-window -t calendar 2>/dev/null || true
+    tmux kill-window -t yazi 2>/dev/null || true
+    tmux kill-window -t monitor 2>/dev/null || true
+
+    if ! tmux list-windows | grep -q "^cava:"; then
+        tmux new-window -d -n cava 'cava'
+    fi
+    if ! tmux list-windows | grep -q "^matrix:"; then
+        tmux new-window -d -n matrix 'cmatrix -C green'
+    fi
+    if ! tmux list-windows | grep -q "^text:"; then
+        tmux new-window -d -n text 'fortune -s | cowsay -f ghostbusters'
+    fi
+    tmux select-layout -t "$SESSION" tiled
+}
+
+setup_monitor() {
+    show_mode "Monitor"
+    # Kill other windows
+    tmux kill-window -t clock 2>/dev/null || true
+    tmux kill-window -t calendar 2>/dev/null || true
+    tmux kill-window -t cava 2>/dev/null || true
+    tmux kill-window -t matrix 2>/dev/null || true
+    tmux kill-window -t yazi 2>/dev/null || true
+    tmux kill-window -t text 2>/dev/null || true
+
+    if ! tmux list-windows | grep -q "^monitor:"; then
+        tmux new-window -d -n monitor "$VANTA_DIR/modules/monitor.sh tui"
+    fi
+    tmux select-window -t monitor
+}
+
+show_help() {
+    cat <<EOF
+Vanta Mode Switcher
+
+Usage: vanta-mode [mode]
+
+Modes:
+  focus   - btop + clock (~50-80 MB)
+           Clean, minimal system monitoring
+
+  work    - btop + clock + calendar + yazi
+           Full system + file management
+
+  chill   - btop + cava + cmatrix + text
+           Visual/audio aesthetic mode
+
+  monitor - System monitor TUI (Textual dashboard)
+           CPU, GPU, memory, network, processes
+
+Examples:
+  vanta-mode focus
+  vanta-mode work
+  vanta-mode monitor
+EOF
+}
+
+main() {
+    local mode="${1:-focus}"
+
+    case "$mode" in
+        focus)  setup_focus ;;
+        work)   setup_work ;;
+        chill)  setup_chill ;;
+        monitor) setup_monitor ;;
+        help|--help|-h) show_help ;;
+        *)      echo "Unknown mode: $mode" && show_help ;;
+    esac
+}
+
+main "$@"

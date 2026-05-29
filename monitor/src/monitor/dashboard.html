@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vanta Monitor - System Command Center</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #030712;
+            --bg-secondary: #0f172a;
+            --glass-bg: rgba(15, 23, 42, 0.6);
+            --glass-border: rgba(148, 163, 184, 0.1);
+            --accent-cyan: #06b6d4;
+            --accent-purple: #a855f7;
+            --accent-pink: #ec4899;
+            --accent-green: #22c55e;
+            --accent-yellow: #eab308;
+            --accent-orange: #f97316;
+            --accent-red: #ef4444;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --glow-cyan: 0 0 30px rgba(6, 182, 212, 0.4);
+            --glow-purple: 0 0 30px rgba(168, 85, 247, 0.4);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Space Grotesk', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Animated Background */
+        .bg-animation {
+            position: fixed;
+            inset: 0;
+            z-index: -2;
+            background:
+                radial-gradient(ellipse 100% 50% at 10% 20%, rgba(6, 182, 212, 0.12), transparent),
+                radial-gradient(ellipse 80% 60% at 90% 80%, rgba(168, 85, 247, 0.1), transparent),
+                radial-gradient(ellipse 60% 40% at 50% 50%, rgba(236, 72, 153, 0.05), transparent);
+        }
+
+        .grid-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: -1;
+            background-image:
+                linear-gradient(rgba(148, 163, 184, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(148, 163, 184, 0.03) 1px, transparent 1px);
+            background-size: 40px 40px;
+        }
+
+        /* Floating Particles */
+        .particles {
+            position: fixed;
+            inset: 0;
+            z-index: -1;
+            pointer-events: none;
+            overflow: hidden;
+        }
+
+        .particle {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background: var(--accent-cyan);
+            border-radius: 50%;
+            opacity: 0.3;
+            animation: float 20s infinite linear;
+        }
+
+        @keyframes float {
+            0% { transform: translateY(100vh) rotate(0deg); opacity: 0; }
+            10% { opacity: 0.3; }
+            90% { opacity: 0.3; }
+            100% { transform: translateY(-100vh) rotate(720deg); opacity: 0; }
+        }
+
+        /* Header */
+        header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+            padding: 1.5rem 3rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: linear-gradient(180deg, var(--bg-primary), transparent);
+            backdrop-filter: blur(10px);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .logo-icon {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            animation: logoPulse 3s ease-in-out infinite;
+        }
+
+        @keyframes logoPulse {
+            0%, 100% { box-shadow: var(--glow-cyan); }
+            50% { box-shadow: var(--glow-purple), 0 0 60px rgba(168, 85, 247, 0.3); }
+        }
+
+        .logo-text {
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(90deg, var(--accent-cyan), var(--accent-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: 2px;
+        }
+
+        .header-time {
+            text-align: right;
+        }
+
+        .header-time .time {
+            font-size: 2.5rem;
+            font-weight: 300;
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(90deg, var(--text-primary), var(--accent-cyan));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: 4px;
+        }
+
+        .header-time .date {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        /* Main Content */
+        main {
+            padding: 8rem 3rem 4rem;
+            max-width: 1800px;
+            margin: 0 auto;
+        }
+
+        /* Hero Clock */
+        .hero {
+            text-align: center;
+            padding: 2rem 0 4rem;
+        }
+
+        .clock-hero {
+            font-size: clamp(6rem, 18vw, 14rem);
+            font-weight: 200;
+            letter-spacing: -8px;
+            line-height: 1;
+            background: linear-gradient(180deg, #fff 0%, rgba(255,255,255,0.7) 50%, rgba(6, 182, 212, 0.5) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 100px rgba(6, 182, 212, 0.3);
+        }
+
+        .clock-hero .colon {
+            animation: blink 1s step-end infinite;
+        }
+
+        @keyframes blink {
+            50% { opacity: 0.2; }
+        }
+
+        .hero-day {
+            font-size: 1.5rem;
+            color: var(--text-secondary);
+            margin-top: 1rem;
+            letter-spacing: 8px;
+            text-transform: uppercase;
+        }
+
+        /* Metrics Grid */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 3rem;
+        }
+
+        .metric-card {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            padding: 1.5rem;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .metric-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: var(--card-color, var(--accent-cyan));
+            opacity: 0.8;
+        }
+
+        .metric-card:hover {
+            transform: translateY(-8px) scale(1.02);
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5), 0 0 40px var(--card-glow, rgba(6, 182, 212, 0.2));
+        }
+
+        .metric-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .metric-title {
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .metric-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            background: linear-gradient(135deg, var(--card-color, var(--accent-cyan)), transparent);
+            opacity: 0.9;
+        }
+
+        .metric-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            font-family: 'Inter', sans-serif;
+            color: var(--card-color, var(--accent-cyan));
+            margin-bottom: 0.5rem;
+        }
+
+        .metric-bar {
+            height: 6px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+            overflow: hidden;
+            margin-bottom: 0.75rem;
+        }
+
+        .metric-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--card-color, var(--accent-cyan)), var(--card-color2, var(--accent-purple)));
+            border-radius: 3px;
+            transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 0 20px var(--card-color, var(--accent-cyan));
+        }
+
+        .metric-details {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        /* Disk & Storage */
+        .disk-item {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 16px;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            border: 1px solid var(--glass-border);
+            transition: all 0.3s ease;
+        }
+
+        .disk-item:hover {
+            border-color: var(--accent-green);
+            transform: translateX(4px);
+        }
+
+        .disk-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.5rem;
+        }
+
+        .disk-name {
+            font-weight: 500;
+        }
+
+        .disk-size {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+        }
+
+        .disk-bar {
+            height: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .disk-bar-fill {
+            height: 100%;
+            background: var(--accent-green);
+            border-radius: 2px;
+            transition: width 0.5s ease;
+        }
+
+        /* Network Card */
+        .network-item {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 16px;
+            margin-bottom: 0.75rem;
+            border: 1px solid var(--glass-border);
+        }
+
+        .network-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+        }
+
+        .network-icon.up { background: linear-gradient(135deg, var(--accent-green), #16a34a); }
+        .network-icon.down { background: linear-gradient(135deg, var(--accent-cyan), #0891b2); }
+
+        .network-info { flex: 1; }
+
+        .network-dir {
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .network-speed {
+            font-size: 1.3rem;
+            font-weight: 600;
+            font-family: 'Inter', sans-serif;
+        }
+
+        /* GPU Card */
+        .gpu-info {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+        }
+
+        .gpu-stat {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 12px;
+            padding: 0.75rem;
+            text-align: center;
+        }
+
+        .gpu-stat-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--accent-orange);
+        }
+
+        .gpu-stat-label {
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+        }
+
+        /* Temperature Card */
+        .temp-items {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .temp-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .temp-label { color: var(--text-secondary); font-size: 0.85rem; }
+        .temp-value { font-weight: 600; font-family: 'Inter', sans-serif; }
+
+        /* Visualizer */
+        .visualizer {
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            gap: 3px;
+            height: 100px;
+            padding: 1rem 0;
+        }
+
+        .viz-bar {
+            width: 6px;
+            background: linear-gradient(to top, var(--accent-purple), var(--accent-cyan), var(--accent-pink));
+            border-radius: 3px;
+            transition: height 0.05s ease;
+        }
+
+        /* Process List */
+        .process-list {
+            max-height: 300px;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: var(--accent-purple) transparent;
+        }
+
+        .process-item {
+            display: grid;
+            grid-template-columns: 50px 1fr 80px 80px;
+            gap: 1rem;
+            padding: 0.75rem;
+            border-radius: 12px;
+            margin-bottom: 0.5rem;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid transparent;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            align-items: center;
+        }
+
+        .process-item:hover {
+            background: rgba(168, 85, 247, 0.1);
+            border-color: rgba(168, 85, 247, 0.3);
+            transform: translateX(4px);
+        }
+
+        .process-item.selected {
+            background: rgba(168, 85, 247, 0.15);
+            border-color: var(--accent-purple);
+        }
+
+        .proc-name {
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .proc-cpu { color: var(--accent-green); font-weight: 600; text-align: right; }
+        .proc-mem { color: var(--accent-cyan); font-weight: 600; text-align: right; }
+
+        /* Process Actions */
+        .process-actions {
+            display: flex;
+            gap: 0.75rem;
+            margin-top: 1rem;
+        }
+
+        .action-btn {
+            flex: 1;
+            padding: 0.75rem 1rem;
+            border: none;
+            border-radius: 12px;
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .action-btn:hover { transform: translateY(-2px); }
+        .action-btn:active { transform: translateY(0); }
+
+        .btn-kill { background: linear-gradient(135deg, #ef4444, #dc2626); color: white; }
+        .btn-stop { background: linear-gradient(135deg, #eab308, #ca8a04); color: white; }
+        .btn-resume { background: linear-gradient(135deg, #22c55e, #16a34a); color: white; }
+
+        /* Full-screen Process Manager */
+        .proc-fullscreen {
+            grid-column: 1 / -1;
+        }
+
+        .section-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 2rem;
+            letter-spacing: 1px;
+        }
+
+        .section-title .accent {
+            color: var(--accent-cyan);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            header { padding: 1rem; flex-direction: column; gap: 0.5rem; }
+            main { padding: 7rem 1rem 2rem; }
+            .metrics-grid { grid-template-columns: 1fr; }
+            .header-time .time { font-size: 1.5rem; }
+            .logo-text { font-size: 1.2rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-animation"></div>
+    <div class="grid-overlay"></div>
+    <div class="particles" id="particles"></div>
+
+    <header>
+        <div class="logo">
+            <div class="logo-icon">◈</div>
+            <div class="logo-text">VANTA MONITOR</div>
+        </div>
+        <div class="header-time">
+            <div class="time" id="headerTime">00:00:00</div>
+            <div class="date" id="headerDate">Loading...</div>
+        </div>
+    </header>
+
+    <main>
+        <section class="hero">
+            <div class="clock-hero" id="heroClock">00<span class="colon">:</span>00<span class="colon">:</span>00</div>
+            <div class="hero-day" id="heroDay">Loading...</div>
+        </section>
+
+        <div class="metrics-grid" id="metricsGrid">
+            <!-- CPU Card -->
+            <div class="metric-card" style="--card-color: #06b6d4; --card-glow: rgba(6, 182, 212, 0.3);">
+                <div class="metric-header">
+                    <span class="metric-title">CPU</span>
+                    <div class="metric-icon">⚡</div>
+                </div>
+                <div class="metric-value" id="cpuValue">--%</div>
+                <div class="metric-bar">
+                    <div class="metric-bar-fill" id="cpuBar" style="width: 0%"></div>
+                </div>
+                <div class="metric-details">
+                    <span id="cpuCores">Cores: --</span>
+                    <span id="cpuFreq">-- GHz</span>
+                </div>
+            </div>
+
+            <!-- Memory Card -->
+            <div class="metric-card" style="--card-color: #a855f7; --card-glow: rgba(168, 85, 247, 0.3);">
+                <div class="metric-header">
+                    <span class="metric-title">Memory</span>
+                    <div class="metric-icon">🧠</div>
+                </div>
+                <div class="metric-value" id="memValue">--%</div>
+                <div class="metric-bar">
+                    <div class="metric-bar-fill" id="memBar" style="width: 0%"></div>
+                </div>
+                <div class="metric-details">
+                    <span id="memUsed">-- GB</span>
+                    <span id="memTotal">-- GB</span>
+                </div>
+            </div>
+
+            <!-- GPU Card -->
+            <div class="metric-card" style="--card-color: #f97316; --card-glow: rgba(249, 115, 22, 0.3);">
+                <div class="metric-header">
+                    <span class="metric-title">GPU</span>
+                    <div class="metric-icon">🎮</div>
+                </div>
+                <div class="gpu-info">
+                    <div class="gpu-stat">
+                        <div class="gpu-stat-value" id="gpuUtil">--%</div>
+                        <div class="gpu-stat-label">Utilization</div>
+                    </div>
+                    <div class="gpu-stat">
+                        <div class="gpu-stat-value" id="gpuTemp">--°C</div>
+                        <div class="gpu-stat-label">Temperature</div>
+                    </div>
+                    <div class="gpu-stat">
+                        <div class="gpu-stat-value" id="gpuMem">--%</div>
+                        <div class="gpu-stat-label">VRAM</div>
+                    </div>
+                    <div class="gpu-stat">
+                        <div class="gpu-stat-value" id="gpuMemUsed">--GB</div>
+                        <div class="gpu-stat-label">Used VRAM</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Disk Card -->
+            <div class="metric-card" style="--card-color: #22c55e; --card-glow: rgba(34, 197, 94, 0.3);">
+                <div class="metric-header">
+                    <span class="metric-title">Storage</span>
+                    <div class="metric-icon">💾</div>
+                </div>
+                <div class="metric-value" id="diskValue">--%</div>
+                <div class="disk-items" id="diskItems">
+                    <div class="disk-item">
+                        <div class="disk-header">
+                            <span class="disk-name">/</span>
+                            <span class="disk-size" id="diskFree">-- GB free</span>
+                        </div>
+                        <div class="disk-bar">
+                            <div class="disk-bar-fill" id="diskBar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Network Card -->
+            <div class="metric-card" style="--card-color: #06b6d4; --card-glow: rgba(6, 182, 212, 0.3);">
+                <div class="metric-header">
+                    <span class="metric-title">Network</span>
+                    <div class="metric-icon">🌐</div>
+                </div>
+                <div class="network-item">
+                    <div class="network-icon up">↑</div>
+                    <div class="network-info">
+                        <div class="network-dir">Upload</div>
+                        <div class="network-speed" id="netUp">-- KB/s</div>
+                    </div>
+                </div>
+                <div class="network-item">
+                    <div class="network-icon down">↓</div>
+                    <div class="network-info">
+                        <div class="network-dir">Download</div>
+                        <div class="network-speed" id="netDown">-- KB/s</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Temperature Card -->
+            <div class="metric-card" style="--card-color: #f43f5e; --card-glow: rgba(244, 63, 94, 0.3);">
+                <div class="metric-header">
+                    <span class="metric-title">System</span>
+                    <div class="metric-icon">🌡️</div>
+                </div>
+                <div class="temp-items">
+                    <div class="temp-item">
+                        <span class="temp-label">Temperature</span>
+                        <span class="temp-value" id="sysTemp" style="color: var(--accent-red)">--°C</span>
+                    </div>
+                    <div class="temp-item">
+                        <span class="temp-label">Load Average</span>
+                        <span class="temp-value" id="sysLoad" style="color: var(--accent-yellow)">--</span>
+                    </div>
+                    <div class="temp-item">
+                        <span class="temp-label">Uptime</span>
+                        <span class="temp-value" id="sysUptime" style="color: var(--accent-cyan)">--</span>
+                    </div>
+                    <div class="temp-item">
+                        <span class="temp-label">Processes</span>
+                        <span class="temp-value" id="sysProcs" style="color: var(--accent-purple)">--</span>
+                    </div>
+                    <div class="temp-item">
+                        <span class="temp-label">Threads</span>
+                        <span class="temp-value" id="sysThreads" style="color: var(--accent-green)">--</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Process Manager Section -->
+        <section>
+            <div class="section-title">◈ <span class="accent">Process Manager</span></div>
+            <div class="metrics-grid">
+                <div class="metric-card proc-fullscreen" style="--card-color: #a855f7; --card-glow: rgba(168, 85, 247, 0.3);">
+                    <div class="process-list" id="processList"></div>
+                    <div class="process-actions">
+                        <button class="action-btn btn-kill" onclick="killProcess()">KILL</button>
+                        <button class="action-btn btn-stop" onclick="stopProcess()">STOP</button>
+                        <button class="action-btn btn-resume" onclick="resumeProcess()">RESUME</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        // === State ===
+        const state = { selectedPid: null, processes: [] };
+
+        // === Particles ===
+        (function createParticles() {
+            const container = document.getElementById('particles');
+            for (let i = 0; i < 50; i++) {
+                const p = document.createElement('div');
+                p.className = 'particle';
+                p.style.left = Math.random() * 100 + '%';
+                p.style.animationDelay = Math.random() * 20 + 's';
+                p.style.animationDuration = (15 + Math.random() * 20) + 's';
+                p.style.width = p.style.height = (2 + Math.random() * 4) + 'px';
+                container.appendChild(p);
+            }
+        })();
+
+        // === Network Speed Formatter ===
+        function formatSpeed(bps) {
+            if (bps === 0) return '0 B/s';
+            const units = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
+            let i = 0;
+            let val = bps;
+            while (val >= 1024 && i < units.length - 1) { val /= 1024; i++; }
+            return val.toFixed(1) + ' ' + units[i];
+        }
+
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 B';
+            const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+            let i = 0;
+            let val = bytes;
+            while (val >= 1024 && i < units.length - 1) { val /= 1024; i++; }
+            return val.toFixed(1) + ' ' + units[i];
+        }
+
+        function formatUptime(seconds) {
+            const d = Math.floor(seconds / 86400);
+            const h = Math.floor((seconds % 86400) / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            if (d > 0) return `${d}d ${h}h`;
+            return `${h}h ${m}m`;
+        }
+
+        // === Clock ===
+        function updateClock() {
+            const now = new Date();
+            const h = String(now.getHours()).padStart(2, '0');
+            const m = String(now.getMinutes()).padStart(2, '0');
+            const s = String(now.getSeconds()).padStart(2, '0');
+
+            document.getElementById('headerTime').textContent = `${h}:${m}:${s}`;
+            document.getElementById('heroClock').innerHTML = `${h}<span class="colon">:</span>${m}<span class="colon">:</span>${s}`;
+            document.getElementById('headerDate').textContent = now.toLocaleDateString('en-US', {
+                weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+            });
+            document.getElementById('heroDay').textContent = now.toLocaleDateString('en-US', {
+                weekday: 'long', month: 'long', day: 'numeric'
+            });
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        // === Data Fetching ===
+        async function fetchStats() {
+            try {
+                const res = await fetch('/api/stats');
+                const data = await res.json();
+
+                // CPU
+                document.getElementById('cpuValue').textContent = data.cpu.toFixed(1) + '%';
+                document.getElementById('cpuBar').style.width = data.cpu + '%';
+
+                // Memory
+                document.getElementById('memValue').textContent = data.mem.toFixed(1) + '%';
+                document.getElementById('memBar').style.width = data.mem + '%';
+
+                // Disk
+                document.getElementById('diskValue').textContent = (data.disk || 0).toFixed(1) + '%';
+                document.getElementById('diskBar').style.width = (data.disk || 0) + '%';
+
+                // GPU
+                if (data.gpu_util !== undefined) {
+                    document.getElementById('gpuUtil').textContent = data.gpu_util + '%';
+                    document.getElementById('gpuTemp').textContent = data.gpu_temp + '°C';
+                    document.getElementById('gpuMem').textContent = (data.gpu_mem_percent || 0).toFixed(0) + '%';
+                    document.getElementById('gpuMemUsed').textContent = (data.gpu_mem_used || 0).toFixed(1) + 'GB';
+                }
+
+                // Network
+                document.getElementById('netUp').textContent = formatSpeed(data.net_up);
+                document.getElementById('netDown').textContent = formatSpeed(data.net_down);
+
+                // System
+                document.getElementById('sysTemp').textContent = (data.temp || 0).toFixed(0) + '°C';
+                document.getElementById('sysLoad').textContent = (data.load || 0).toFixed(2);
+                document.getElementById('sysUptime').textContent = formatUptime(data.uptime);
+                document.getElementById('sysProcs').textContent = data.processes;
+                document.getElementById('sysThreads').textContent = data.threads;
+
+                // Update CPU freq
+                if (data.cpu_freq) {
+                    document.getElementById('cpuFreq').textContent = data.cpu_freq.toFixed(2) + ' GHz';
+                }
+                if (data.cpu_cores) {
+                    document.getElementById('cpuCores').textContent = 'Cores: ' + data.cpu_cores;
+                }
+
+            } catch (e) {
+                console.error('Stats fetch error:', e);
+            }
+        }
+
+        async function fetchProcesses() {
+            try {
+                const res = await fetch('/api/processes');
+                const procs = await res.json();
+                state.processes = procs;
+
+                const container = document.getElementById('processList');
+                container.innerHTML = '';
+                procs.forEach((p, i) => {
+                    const cpuColor = p.cpu < 30 ? '#22c55e' : p.cpu < 70 ? '#eab308' : '#ef4444';
+                    const memColor = p.mem < 30 ? '#22c55e' : p.mem < 70 ? '#eab308' : '#ef4444';
+                    const div = document.createElement('div');
+                    div.className = 'process-item' + (i === 0 ? ' selected' : '');
+                    div.dataset.pid = p.pid;
+                    div.innerHTML = `
+                        <span style="color: #64748b; font-size: 0.8rem;">${p.pid}</span>
+                        <span class="proc-name">${p.name}</span>
+                        <span class="proc-cpu" style="color: ${cpuColor}">${p.cpu.toFixed(1)}%</span>
+                        <span class="proc-mem" style="color: ${memColor}">${p.mem.toFixed(1)}%</span>
+                    `;
+                    div.onclick = function() {
+                        document.querySelectorAll('.process-item').forEach(el => el.classList.remove('selected'));
+                        this.classList.add('selected');
+                        state.selectedPid = parseInt(this.dataset.pid);
+                    };
+                    container.appendChild(div);
+                });
+
+                // Select first
+                if (procs.length > 0) state.selectedPid = procs[0].pid;
+            } catch (e) {
+                console.error('Process fetch error:', e);
+            }
+        }
+
+        // === Process Actions ===
+        async function killProcess() {
+            if (!state.selectedPid) return;
+            try {
+                const res = await fetch(`/api/process/${state.selectedPid}/kill`, { method: 'POST' });
+                const data = await res.json();
+                console.log(data.message);
+                fetchProcesses();
+            } catch (e) { console.error(e); }
+        }
+
+        async function stopProcess() {
+            if (!state.selectedPid) return;
+            try {
+                const res = await fetch(`/api/process/${state.selectedPid}/stop`, { method: 'POST' });
+                const data = await res.json();
+                console.log(data.message);
+            } catch (e) { console.error(e); }
+        }
+
+        async function resumeProcess() {
+            if (!state.selectedPid) return;
+            try {
+                const res = await fetch(`/api/process/${state.selectedPid}/resume`, { method: 'POST' });
+                const data = await res.json();
+                console.log(data.message);
+            } catch (e) { console.error(e); }
+        }
+
+        // === Init ===
+        fetchStats();
+        fetchProcesses();
+        setInterval(fetchStats, 2000);
+        setInterval(fetchProcesses, 5000);
+
+        // === GSAP Animations ===
+        gsap.from('.metric-card', {
+            y: 60,
+            opacity: 0,
+            duration: 0.8,
+            stagger: 0.1,
+            ease: 'power3.out',
+            scrollTrigger: {
+                trigger: '#metricsGrid',
+                start: 'top 80%',
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,190 @@
+#!/bin/bash
+#
+# vanta-toggle - Toggle Vanta modules
+# Usage: vanta-toggle [module]
+# Modules: clock, calendar, cava, matrix, yazi, text, wallpaper
+#
+
+SESSION="${TMUX:-$(tmux display-message -p #S)}"
+
+toggle_window() {
+    local name="$1"
+    local cmd="$2"
+
+    if tmux has-session -t "$SESSION" 2>/dev/null; then
+        if tmux list-windows -t "$SESSION" | grep -q "^$name:"; then
+            tmux kill-window -t "$name" 2>/dev/null
+            echo "[Vanta] $name disabled"
+        else
+            tmux new-window -d -n "$name" "$cmd"
+            echo "[Vanta] $name enabled"
+        fi
+    else
+        echo "[Vanta] Not in a tmux session"
+        exit 1
+    fi
+}
+
+toggle_clock() {
+    toggle_window "clock" "tty-clock -c -C 2"
+}
+
+toggle_calendar() {
+    toggle_window "calendar" "cal -3"
+}
+
+toggle_cava() {
+    toggle_window "cava" "cava"
+}
+
+toggle_matrix() {
+    toggle_window "matrix" "cmatrix -C green"
+}
+
+toggle_yazi() {
+    toggle_window "yazi" "yazi"
+}
+
+toggle_text() {
+    toggle_window "text" "fortune -s | cowsay -f ghostbusters"
+}
+
+toggle_wallpaper() {
+    if command -v kitty &>/dev/null; then
+        toggle_window "wallpaper" "kitty +kitten icat /path/to/wallpaper.png"
+    else
+        echo "[Vanta] kitty required for wallpaper"
+        exit 1
+    fi
+}
+
+toggle_sysinfo() {
+    toggle_window "sysinfo" "fastfetch 2>/dev/null || neofetch"
+}
+
+toggle_network() {
+    toggle_window "network" "bandwhich 2>/dev/null || iftop"
+}
+
+toggle_music() {
+    toggle_window "music" "ncmpcpp"
+}
+
+toggle_pipes() {
+    toggle_window "pipes" "pipes.sh"
+}
+
+toggle_weather() {
+    toggle_window "weather" "curl -s wttr.in?format=3 2>/dev/null || wttr"
+}
+
+toggle_gitolite() {
+    toggle_window "lazygit" "lazygit"
+}
+
+toggle_quotes() {
+    toggle_window "quotes" "$VANTA_DIR/modules/quotes.sh"
+}
+
+toggle_disk() {
+    toggle_window "disk" "df -h | grep -v tmpfs"
+}
+
+toggle_splash() {
+    toggle_window "splash" "$VANTA_DIR/modules/splash.sh"
+}
+
+toggle_container() {
+    toggle_window "container" "lazydocker 2>/dev/null || docker ps -a"
+}
+
+toggle_notes() {
+    toggle_window "notes" "$VANTA_DIR/modules/notes.sh"
+}
+
+toggle_monitor() {
+    toggle_window "monitor" "$VANTA_DIR/modules/monitor.sh tui"
+}
+
+toggle_monitor_web() {
+    toggle_window "monitor-web" "$VANTA_DIR/modules/monitor.sh web"
+}
+
+toggle_jtop() {
+    toggle_window "jtop" "$VANTA_DIR/modules/jtop.sh"
+}
+
+show_help() {
+    cat <<EOF
+Vanta Module Toggler
+
+Usage: vanta-toggle [module]
+
+Core Modules:
+  clock      - tty-clock (~1-5 MB)
+  calendar   - cal -3 (~1-5 MB)
+  cava       - Music visualizer (~5-15 MB)
+  matrix     - cmatrix (~5-10 MB)
+  yazi       - File manager (~15-40 MB)
+  text       - Fortune + cowsay (~1 MB)
+
+System Modules:
+  sysinfo    - fastfetch/neofetch (~5-10 MB)
+  network    - bandwhich/iftop (~5-15 MB)
+  disk       - Disk usage (~1 MB)
+  container  - Docker/LXC (~10-30 MB)
+
+Aesthetic Modules:
+  pipes      - Falling pipes effect (~5-10 MB)
+  quotes     - Random quotes (~1 MB)
+  weather    - Weather display (~1 MB)
+  splash     - Vanta ASCII logo (~1 MB)
+
+Utility Modules:
+  music      - ncmpcpp (~5-15 MB)
+  gitolite   - LazyGit (~15-30 MB)
+  jtop       - Java process monitor (~10-20 MB)
+  notes      - Quick notes panel (~1 MB)
+  wallpaper  - Static image (requires kitty)
+  monitor    - System monitor TUI (Textual dashboard)
+  monitor-web - Web dashboard on port 5000
+
+Examples:
+  vanta-toggle clock
+  vanta-toggle cava
+  vanta-toggle sysinfo
+  vanta-toggle network
+EOF
+}
+
+main() {
+    local module="${1:-help}"
+
+    case "$module" in
+        clock)      toggle_clock ;;
+        calendar)   toggle_calendar ;;
+        cava)       toggle_cava ;;
+        matrix)     toggle_matrix ;;
+        yazi)       toggle_yazi ;;
+        text)       toggle_text ;;
+        wallpaper)  toggle_wallpaper ;;
+        sysinfo)    toggle_sysinfo ;;
+        network)    toggle_network ;;
+        music)      toggle_music ;;
+        pipes)      toggle_pipes ;;
+        weather)    toggle_weather ;;
+        gitolite)   toggle_gitolite ;;
+        quotes)     toggle_quotes ;;
+        disk)       toggle_disk ;;
+        splash)     toggle_splash ;;
+        container)  toggle_container ;;
+        notes)      toggle_notes ;;
+        monitor)    toggle_monitor ;;
+        monitor-web) toggle_monitor_web ;;
+        jtop)       toggle_jtop ;;
+        help|--help|-h) show_help ;;
+        *)          echo "Unknown module: $module" && show_help ;;
+    esac
+}
+
+main "$@"

@@ -1,0 +1,6 @@
+{
+    "video": {"path": "", "auto_play": true},
+    "process": {"show_kernel": false, "max_display": 15, "auto_refresh": true},
+    "audio": {"simulated": true, "sensitivity": 0.5},
+    "ui": {"refresh_rate": 0.5, "theme": "dark"}
+}

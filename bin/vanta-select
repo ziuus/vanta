@@ -1,0 +1,97 @@
+#!/bin/bash
+#
+# vanta-select - Interactive mode selector for Vanta
+#
+
+VANTA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TMUX_CONF="$VANTA_DIR/config/vanta.tmux.conf"
+
+# Check if tmux is available
+if ! command -v tmux &>/dev/null; then
+    echo "Error: tmux not found. Install with: sudo pacman -S tmux"
+    exit 1
+fi
+
+# If arguments provided, use them directly
+if [ -n "$1" ]; then
+    mode="$1"
+else
+    # Show menu
+    clear
+    cat <<'EOF'
+ ██████╗██╗   ██╗██████╗ ███████╗██████╗     ██████╗ ███████╗ █████╗ ██████╗
+██╔════╝╚██╗ ██╔╝██╔══██╗██╔════╝██╔══██╗    ██╔══██╗██╔════╝██╔══██╗██╔══██╗
+██║      ╚████╔╝ ██████╔╝█████╗  ██████╔╝    ██║  ██║█████╗  ███████║██████╔╝
+██║       ╚██╔╝  ██╔══██╗██╔══╝  ██╔══██╗    ██║  ██║██╔══╝  ██╔══██║██╔══██╗
+╚██████╗   ██║   ██████╔╝███████╗██║  ██║    ██████╔╝███████╗██║  ██║██║  ██║
+ ╚═════╝   ╚═╝   ╚═════╝ ╚══════╝╚═╝  ╚═╝    ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  [1] FOCUS    → splash + clock (~20-30 MB)
+  [2] WORK     → clock + calendar + yazi + lazygit (~60-100 MB)
+  [3] CHILL    → cava + cmatrix + quotes + pipes (~40-80 MB)
+  [4] ALL      → all modules (~120-250 MB)
+  [5] MONITOR  → System monitor TUI (Textual dashboard)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+EOF
+
+    printf "  Enter choice [1-5]: "
+    read -r choice
+
+    case "$choice" in
+        1) mode="focus" ;;
+        2) mode="work" ;;
+        3) mode="chill" ;;
+        4) mode="all" ;;
+        5) mode="monitor" ;;
+        *)
+            echo "Invalid choice: $choice"
+            exit 1
+            ;;
+    esac
+fi
+
+echo "Starting $mode mode..."
+
+# Kill existing session
+tmux kill-session -t vanta 2>/dev/null
+
+# Start new session (detached)
+tmux -f "$TMUX_CONF" new-session -d -s vanta
+
+# Add windows based on mode
+case "$mode" in
+    focus)
+        tmux new-window -d -n clock 'tty-clock -c -C 2'
+        ;;
+    work)
+        tmux new-window -d -n clock 'tty-clock -c -C 2'
+        tmux new-window -d -n calendar 'cal -3'
+        tmux new-window -d -n yazi 'yazi'
+        tmux new-window -d -n lazygit 'lazygit'
+        ;;
+    chill)
+        tmux new-window -d -n cava 'cava'
+        tmux new-window -d -n matrix 'cmatrix -C green'
+        tmux new-window -d -n quotes 'fortune -s | cowsay -f ghostbusters'
+        tmux new-window -d -n pipes 'pipes.sh'
+        ;;
+    all)
+        tmux new-window -d -n clock 'tty-clock -c -C 2'
+        tmux new-window -d -n calendar 'cal -3'
+        tmux new-window -d -n cava 'cava'
+        tmux new-window -d -n matrix 'cmatrix -C green'
+        tmux new-window -d -n quotes 'fortune -s | cowsay -f ghostbusters'
+        tmux new-window -d -n yazi 'yazi'
+        tmux new-window -d -n lazygit 'lazygit'
+        ;;
+    monitor)
+        tmux new-window -d -n monitor "$VANTA_DIR/modules/monitor.sh tui"
+        ;;
+esac
+
+# Attach to session
+tmux attach-session -t vanta

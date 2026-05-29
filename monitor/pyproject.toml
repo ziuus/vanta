@@ -1,0 +1,27 @@
+[project]
+name = "vanta-monitor"
+version = "0.1.0"
+description = "Standalone system monitor module for Vanta"
+authors = [{ name = "Noel" }]
+requires-python = ">=3.10"
+dependencies = [
+  "flask",
+  "flask-cors",
+  "psutil",
+  "pynvml",
+  "textual",
+]
+
+[project.scripts]
+vanta-monitor = "monitor.launcher:main"
+vmon = "monitor.cli:vmon"
+vtui = "monitor.cli:vtui"
+vweb = "monitor.cli:vweb"
+vboth = "monitor.cli:vboth"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/monitor"]
