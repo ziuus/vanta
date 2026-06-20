@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """Vanta Monitor Web Dashboard — Flask API server."""
-import os
+
 import json
-import psutil
 import time
 from pathlib import Path
+
+from flask import Flask, send_file, jsonify, request
+from flask_cors import CORS
+
+from monitor.core.collectors import SystemCollector
 
 try:
     import pynvml
@@ -20,6 +24,9 @@ if PYNVML_AVAILABLE:
         _gpu_handle = pynvml.nvmlDeviceGetHandleByIndex(0)
     except Exception:
         PYNVML_AVAILABLE = False
+
+
+DEFAULT_PORT = 5001
 
 
 def get_gpu_stats():
@@ -41,9 +48,6 @@ def get_gpu_stats():
         return None
 
 
-from flask import Flask, send_file, jsonify, request
-from flask_cors import CORS
-
 app = Flask(__name__)
 CORS(app)
 
@@ -64,127 +68,7 @@ def load_config():
 
 
 config = load_config()
-
-KERNEL_PROCS = {
-    "systemd", "kthreadd", "kworker", "migration", "rcu", "watchdog",
-    "init", "ksoftirqd", "kdevtmpfs", "netns", "khungtaskd", "oom_reaper",
-    "writeback", "ksmd", "khugepaged", "crypto", "kintegrityd", "bioset",
-    "xen-", "xenbus", "xenwatch", "sed", "degcd", "deferwq", "charger_manager",
-    "kaluad", "kmpath", "ipv6_addrconf", "acpi_thermal", "ata_sff", "scsi_",
-    "fuse", "devfreq", "pool_workqueue", "idle_inject", "cpuhp", "mm_percpu",
-    "rcu_", "perf", "migration_", "posix_cgroup", "blkcg", "kauditd",
-    "kcompactd", "ksgxd", "kswapd", "hwrng", "card", "psimon", "drm", "i915",
-    "irq", "rcuc", "rcub", "kstrp",
-}
-
-
-class SystemMonitor:
-    def __init__(self):
-        self.prev_net = psutil.net_io_counters()
-        self.prev_time = time.time()
-        self.boot_time = psutil.boot_time()
-
-    def get_cpu(self):
-        return psutil.cpu_percent(interval=0.1)
-
-    def get_memory(self):
-        return psutil.virtual_memory().percent
-
-    def get_disk(self):
-        return psutil.disk_usage("/").percent
-
-    def get_temp(self):
-        try:
-            temps = psutil.sensors_temperatures()
-            for name, entries in temps.items():
-                for entry in entries:
-                    if entry.current:
-                        return entry.current
-        except:
-            pass
-        return None
-
-    def get_network(self):
-        current = psutil.net_io_counters()
-        elapsed = time.time() - self.prev_time
-
-        up_speed = (
-            (current.bytes_sent - self.prev_net.bytes_sent) / elapsed
-            if elapsed > 0
-            else 0
-        )
-        down_speed = (
-            (current.bytes_recv - self.prev_net.bytes_recv) / elapsed
-            if elapsed > 0
-            else 0
-        )
-
-        self.prev_net = current
-        self.prev_time = time.time()
-
-        return up_speed, down_speed
-
-    def get_uptime(self):
-        return time.time() - self.boot_time
-
-    def get_load(self):
-        try:
-            return os.getloadavg()[0] if hasattr(os, "getloadavg") else 0
-        except:
-            return 0
-
-    def get_process_count(self):
-        return len(psutil.pids())
-
-    def get_thread_count(self):
-        count = 0
-        for p in psutil.process_iter():
-            try:
-                count += p.num_threads()
-            except:
-                pass
-        return count
-
-    def get_processes(self, show_kernel=False, max_display=15):
-        procs = []
-        for p in psutil.process_iter(
-            ["pid", "name", "cpu_percent", "memory_percent", "num_threads", "username"]
-        ):
-            try:
-                info = p.info
-                name_lower = info["name"].lower()
-                username = info.get("username", "")
-
-                # Skip kernel/user space processes by checking username
-                is_system = username in ("root", "Kernel") or "/" in info["name"]
-
-                # Additional pattern matching for kernel processes
-                if not show_kernel:
-                    is_kernel = False
-                    for kp in KERNEL_PROCS:
-                        if kp in name_lower:
-                            is_kernel = True
-                            break
-                    # Also skip if name has / (kernel threads like irq/9-acpi)
-                    if is_kernel or "/" in info["name"]:
-                        continue
-
-                procs.append(
-                    {
-                        "pid": info["pid"],
-                        "name": info["name"],
-                        "cpu": info["cpu_percent"] or 0,
-                        "mem": info["memory_percent"] or 0,
-                        "threads": info["num_threads"] or 1,
-                    }
-                )
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                pass
-
-        return sorted(procs, key=lambda x: x["cpu"], reverse=True)[:max_display]
-
-
-monitor = SystemMonitor()
+collector = SystemCollector()
 
 HTML_DIR = Path(__file__).parent
 
@@ -196,19 +80,24 @@ def index():
 
 @app.route("/api/stats")
 def stats():
-    net = monitor.get_network()
+    try:
+        snapshot = collector.sample()
+    except Exception:
+        return jsonify({"error": "collection failed"}), 500
 
     stats_data = {
-        "cpu": monitor.get_cpu(),
-        "mem": monitor.get_memory(),
-        "disk": monitor.get_disk(),
-        "temp": monitor.get_temp(),
-        "net_up": net[0],
-        "net_down": net[1],
-        "uptime": monitor.get_uptime(),
-        "load": monitor.get_load(),
-        "processes": monitor.get_process_count(),
-        "threads": monitor.get_thread_count(),
+        "cpu": snapshot.cpu.total_percent,
+        "mem": snapshot.memory.percent,
+        "disk": snapshot.disks[0].percent if snapshot.disks else 0,
+        "temp": snapshot.temperature_c or 0,
+        "net_up": snapshot.network.upload_bps,
+        "net_down": snapshot.network.download_bps,
+        "uptime": snapshot.uptime_seconds,
+        "load": snapshot.cpu.load_avg_1m,
+        "processes": snapshot.process_count,
+        "threads": snapshot.thread_count,
+        "cpu_freq": snapshot.cpu.frequency_mhz / 1000 if snapshot.cpu.frequency_mhz else None,
+        "cpu_cores": snapshot.cpu.core_count,
     }
 
     # Add GPU stats if available
@@ -217,19 +106,41 @@ def stats():
         stats_data["gpu_util"] = gpu["util"]
         stats_data["gpu_temp"] = gpu["temp"]
         stats_data["gpu_mem_percent"] = gpu["mem_percent"]
+        stats_data["gpu_mem_used"] = gpu["mem_used"]
 
     return jsonify(stats_data)
 
 
 @app.route("/api/processes")
 def processes():
-    show_kernel = config.get("process", {}).get("show_kernel", False)
-    max_display = config.get("process", {}).get("max_display", 15)
-    return jsonify(monitor.get_processes(show_kernel, max_display))
+    show_kernel = request.args.get("include_kernel", config.get("process", {}).get("show_kernel", False))
+    if isinstance(show_kernel, str):
+        show_kernel = show_kernel.lower() in ("true", "1", "yes")
+    max_display = request.args.get("limit", config.get("process", {}).get("max_display", 15))
+    if isinstance(max_display, str):
+        max_display = int(max_display)
+    sort_by = request.args.get("sort", "cpu")
+    query = request.args.get("query", "")
+
+    from monitor.core.process_service import ProcessService
+    svc = ProcessService()
+    rows = svc.list_processes(
+        include_kernel=show_kernel,
+        sort_by=sort_by,
+        query=query,
+        limit=int(max_display),
+    )
+    return jsonify([
+        {"pid": r.pid, "name": r.name, "cpu": r.cpu_percent,
+         "mem": r.memory_percent, "threads": r.threads, "status": r.status,
+         "username": r.username}
+        for r in rows
+    ])
 
 
 @app.route("/api/process/<int:pid>/kill", methods=["POST"])
 def kill_process(pid):
+    import psutil
     try:
         p = psutil.Process(pid)
         p.kill()
@@ -242,6 +153,7 @@ def kill_process(pid):
 
 @app.route("/api/process/<int:pid>/stop", methods=["POST"])
 def stop_process(pid):
+    import psutil
     try:
         p = psutil.Process(pid)
         p.suspend()
@@ -254,6 +166,7 @@ def stop_process(pid):
 
 @app.route("/api/process/<int:pid>/resume", methods=["POST"])
 def resume_process(pid):
+    import psutil
     try:
         p = psutil.Process(pid)
         p.resume()
@@ -265,13 +178,13 @@ def resume_process(pid):
 
 
 if __name__ == "__main__":
-    print("""
+    print(f"""
     ╔═══════════════════════════════════════════╗
     ║                                           ║
     ║     ◈ VANTA MONITOR - Web Dashboard ◈    ║
     ║                                           ║
-    ║     Open: http://localhost:5000           ║
+    ║     Open: http://localhost:{DEFAULT_PORT}           ║
     ║                                           ║
     ╚═══════════════════════════════════════════╝
     """)
-    app.run(host="0.0.0.0", port=5000, debug=False, threaded=True)
+    app.run(host="0.0.0.0", port=DEFAULT_PORT, debug=False, threaded=True)

@@ -1,0 +1,73 @@
+"""Compact bordered metric card with optional sparkline."""
+from textual.widgets import Static
+from textual.widget import Widget
+from textual.app import ComposeResult
+from textual.containers import Vertical
+from textual.widgets import Sparkline
+
+
+class MetricCard(Widget):
+    """Bordered panel showing label + big value + subtext, optionally with a Sparkline."""
+
+    def __init__(
+        self,
+        card_id: str,
+        label: str,
+        *,
+        value: str = "",
+        subtitle: str = "",
+        color: str = "#06b6d4",
+        sparkline_data: list[float] | None = None,
+    ):
+        super().__init__(id=card_id)
+        self._label = label
+        self._value = value
+        self._subtitle = subtitle
+        self._color = color
+        self._sparkline_data = sparkline_data or []
+
+    def compose(self) -> ComposeResult:
+        with Vertical(classes="mcard-body"):
+            yield Static(f"[#64748b]{self._label}[/]", classes="mcard-label")
+            yield Static(f"[{self._color}]{self._value}[/]", classes="mcard-value")
+            if self._subtitle:
+                yield Static(f"[#4a5568]{self._subtitle}[/]", classes="mcard-sub")
+            if self._sparkline_data:
+                yield Sparkline(self._sparkline_data, classes="mcard-spark")
+
+    def update(self, value: str, subtitle: str = "", sparkline_data: list[float] | None = None):
+        self.query_one(".mcard-value", Static).update(f"[{self._color}]{value}[/]")
+        if subtitle:
+            self.query_one(".mcard-sub", Static).update(f"[#4a5568]{subtitle}[/]")
+        if sparkline_data is not None:
+            self._sparkline_data = sparkline_data
+            try:
+                self.query_one(".mcard-spark", Sparkline).data = sparkline_data
+            except Exception:
+                pass
+
+    CSS = """
+    MetricCard {
+        width: 1fr;
+        min-height: 6;
+        border: solid #1e1e3f;
+        background: #0f0f1a;
+        padding: 0 1;
+    }
+    MetricCard:hover {
+        border: solid #2e2e5f;
+    }
+    .mcard-label {
+        text-style: bold;
+    }
+    .mcard-value {
+        text-style: bold;
+        padding: 0 0 0 1;
+    }
+    .mcard-sub {
+        padding: 0 0 0 1;
+    }
+    .mcard-spark {
+        height: 3;
+    }
+    """

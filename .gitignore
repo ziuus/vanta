@@ -28,3 +28,7 @@ modules/venv/
 .DS_Store
 .idea/
 .vscode/
+.pytest_cache/
+.hermes/
+docs/HERMES_*
+docs/PRODUCTION_*

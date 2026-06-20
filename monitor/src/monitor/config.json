@@ -1,0 +1,87 @@
+{
+    "ui": {
+        "refresh_rate": 0.5,
+        "theme": "light"
+    },
+    "process": {
+        "show_kernel": false,
+        "max_display": 15,
+        "auto_refresh": true
+    },
+    "audio": {
+        "simulated": true,
+        "sensitivity": 0.5
+    },
+    "widgets": {
+        "dashboard": {
+            "enabled": true,
+            "columns": [
+                "cpu",
+                "gpu",
+                "mem",
+                "disk",
+                "net"
+            ]
+        },
+        "clock": {
+            "enabled": true,
+            "format": "24h",
+            "show_date": true
+        },
+        "calendar": {
+            "enabled": true
+        },
+        "matrix": {
+            "enabled": true,
+            "speed": 1.0,
+            "density": 1.0
+        },
+        "music_viz": {
+            "enabled": true,
+            "bars": 32,
+            "sensitivity": 0.5
+        },
+        "pstree": {
+            "enabled": true,
+            "max_depth": 3
+        },
+        "fastfetch": {
+            "enabled": true,
+            "refresh_interval": 60
+        },
+        "custom_text": {
+            "enabled": true,
+            "sections": [
+                {
+                    "title": "TODO",
+                    "content": "• Refactor widgets\n• Add themes\n• Write tests"
+                },
+                {
+                    "title": "Links",
+                    "content": "• github.com/ziuus/vanta"
+                }
+            ]
+        },
+        "image": {
+            "enabled": false,
+            "path": ""
+        },
+        "wallpaper": {
+            "enabled": false,
+            "interval": 300,
+            "directory": "~/Pictures"
+        },
+        "yazi": {
+            "enabled": true,
+            "cwd": "~"
+        },
+        "process_manager": {
+            "enabled": true,
+            "show_kernel": false,
+            "max_display": 15
+        },
+        "system_stats": {
+            "enabled": true
+        }
+    }
+}

@@ -19,17 +19,30 @@ We love new ideas! If you have an idea for a new feature, mode, or widget:
 1. Fork the repo and create your branch from `main`.
 2. If you've added code that should be tested, add tests.
 3. Ensure the test suite passes.
-4. Update the documentation (README.md) if your change adds new functionality.
+4. Update documentation if your change adds new functionality.
 5. Submit your Pull Request!
 
 ## Development Setup
-1. Clone the repo.
-2. Ensure you have Python 3.10+ installed.
-3. Install the dependencies for the monitor:
-   ```bash
-   pip install -e . --break-system-packages
-   ```
-4. Run `vmon` or `vtui` to test your changes locally.
+
+```bash
+# Clone the repo
+git clone https://github.com/ziuus/vanta.git
+cd vanta/monitor
+
+# Create a virtual environment and install
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+
+# Optional: GPU support
+pip install -e ".[gpu]"
+
+# Run tests
+pytest tests/ -v
+
+# Launch the TUI
+vtui
+```
 
 ## Code of Conduct
 Please note that this project is released with a Contributor Code of Conduct. By participating in this project you agree to abide by its terms. Be respectful and constructive!
