@@ -26,7 +26,7 @@ vmon [tui|web|both|help]
 - `both` — launch TUI + web dashboard together
 - `help` — show CLI usage
 
-## Screens (keys 1–5)
+## Screens (keys 1–6)
 
 | Key | Screen | Content |
 |-----|--------|---------|
@@ -35,6 +35,7 @@ vmon [tui|web|both|help]
 | `3` | Storage | Disk mount usage table |
 | `4` | Network | Live upload/download speed + total traffic |
 | `5` | Graphs | Large detailed sparklines with dual-resolution history (60s + 600s) |
+| `6` | Widgets | Full-screen gallery: big clock, calendar, animated matrix rain, music visualizer bars, pstree, custom text, yazi directory view |
 
 ## Keybinds
 
@@ -42,7 +43,7 @@ vmon [tui|web|both|help]
 
 | Key | Action |
 |-----|--------|
-| `1-5` | Switch to screen |
+| `1-6` | Switch to screen |
 | `?` | Open help overlay |
 | `T` | Toggle light/dark theme |
 | `q` | Quit |
@@ -98,6 +99,12 @@ vmon [tui|web|both|help]
 - Command-backed widget caching (no jitter on repeated refresh)
 - Help overlay with all keybinds
 
+### Widgets screen (screen 6)
+- Full-screen gallery of all extra widgets: big clock with date, calendar, animated matrix rain (green-hued), music visualizer with color bars, pstree, custom text sections, yazi directory listing
+- Config-driven — widgets can be enabled/disabled individualy in `config.json`
+- Animated matrix chars cycle each second with falling-column brightness effect
+- Music visualizer bars change shape and color every tick
+
 ### Web dashboard
 - Same data via Flask API at `/api/stats`
 - Animated with GSAP
@@ -147,7 +154,7 @@ storage/network/graphs screen rendering, dashboard config + widget loading/cachi
 ```
 src/monitor/
 ├── __main__.py                 # CLI entry points
-├── app.py                      # Textual app shell (5 screens)
+├── app.py                      # Textual app shell (6 screens)
 ├── server.py                   # Flask web dashboard + API
 ├── core/
 │   ├── models.py               # Data models (SystemSnapshot, etc.)
@@ -165,6 +172,7 @@ src/monitor/
 │   ├── storage.py              # Disk usage table
 │   ├── network.py              # Network stats cards
 │   ├── graphs.py               # Large sparklines + dual-resolution history
+│   ├── widgets.py              # Full-screen widget gallery (clock, matrix, calendar, music, etc.)
 │   └── help_screen.py          # Modal keybind overlay
 └── components/
     └── process_table.py        # Reusable process DataTable + actions

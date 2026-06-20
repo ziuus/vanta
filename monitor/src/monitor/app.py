@@ -11,6 +11,7 @@ from monitor.screens.processes import ProcessesScreen
 from monitor.screens.storage import StorageScreen
 from monitor.screens.network import NetworkScreen
 from monitor.screens.graphs import GraphScreen
+from monitor.screens.widgets import WidgetsScreen
 from monitor.screens.help_screen import HelpOverlay
 
 
@@ -65,6 +66,7 @@ class VantaMonitorTUI(App):
         Binding("3", "switch('storage')", "Storage", show=True),
         Binding("4", "switch('network')", "Network", show=True),
         Binding("5", "switch('graphs')", "Graphs", show=True),
+        Binding("6", "switch('widgets')", "Widgets", show=True),
         Binding("?", "help", "Help", show=True),
         Binding("q", "quit", "Quit", show=True),
         Binding("r", "refresh", "Refresh", show=False),
@@ -81,6 +83,7 @@ class VantaMonitorTUI(App):
             "storage": StorageScreen(),
             "network": NetworkScreen(),
             "graphs": GraphScreen(),
+            "widgets": WidgetsScreen(),
         }
 
     def compose(self) -> ComposeResult:
@@ -120,8 +123,8 @@ class VantaMonitorTUI(App):
 
         acc = LIGHT if is_light else DARK
         nav.update(
-            f"[1] [{acc['accent']}]Dashboard[/]  [2] Processes  [3] Storage  [4] Network  [5] Graphs  "
-            f"[?] Help  [[]/[]] widgets  [T] {theme}    [{acc['text_dim']}]q=quit[/]"
+            f"[1] [{acc['accent']}]Dashboard[/]  [2] Processes  [3] Storage  [4] Network  [5] Graphs  [6] Widgets  "
+            f"[?] Help  [T] {theme}    [{acc['text_dim']}]q=quit[/]"
         )
 
     def action_switch(self, name: str) -> None:

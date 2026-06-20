@@ -14,7 +14,12 @@ from time import monotonic
 from typing import Any
 
 BARS = "▁▂▃▄▅▆▇█"
-MATRIX_CHARS = "01アイウエオカキクケコ+-*/<>{}"
+MATRIX_CHARS = "01アイウエオカキクケコガギグゲゴザジズゼゾ\"+/*{}[]<>"
+# Green gradient palette
+MATRIX_DIM = "[#003300]"
+MATRIX_MID = "[#008800]"
+MATRIX_BRIGHT = "[#00ff41]"
+MATRIX_HIGH = "[#33ff77]"
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 DEFAULT_WIDGET_REFRESH_INTERVALS: dict[str, float] = {
     "clock": 1.0,
@@ -101,22 +106,33 @@ def build_custom_text_widget(cfg: dict[str, Any]) -> str:
     return "\n\n".join(blocks)
 
 
-def build_matrix_widget(cfg: dict[str, Any], *, width: int = 18, height: int = 6, seed: int | None = None) -> str:
+def build_matrix_widget(cfg: dict[str, Any], *, width: int = 22, height: int = 7, tick: int | None = None) -> str:
+    """Animated matrix rain — characters shift with each tick, green gradient coloring."""
     density = max(0.1, float(cfg.get("density", 1.0)))
-    rng = random.Random(seed if seed is not None else int(datetime.now().timestamp()))
+    tick = tick if tick is not None else int(datetime.now().timestamp())
+    rng = random.Random(tick)
     lines: list[str] = []
-    for _ in range(height):
-        line_chars = []
-        for _ in range(width):
-            if rng.random() < min(0.95, density * 0.45):
-                line_chars.append(rng.choice(MATRIX_CHARS))
+    for row in range(height):
+        line_chars: list[str] = []
+        for col in range(width):
+            if rng.random() < min(0.95, density * 0.4):
+                c = rng.choice(MATRIX_CHARS)
+                # Simulate a falling column: each row has different brightness
+                if row == 0:
+                    line_chars.append(f"{MATRIX_BRIGHT}{c}[/]")
+                elif row < height // 3:
+                    line_chars.append(f"{MATRIX_HIGH}{c}[/]")
+                elif row < height * 2 // 3:
+                    line_chars.append(f"{MATRIX_MID}{c}[/]")
+                else:
+                    line_chars.append(f"{MATRIX_DIM}{c}[/]")
             else:
-                line_chars.append(" ")
+                line_chars.append("  " if width > 30 else " ")
         lines.append("".join(line_chars))
     return "\n".join(lines)
 
 
-def build_music_widget(cfg: dict[str, Any], *, tick: int | None = None) -> str:
+def build_music_widget(cfg: dict[str, Any], *, tick: int | None = None, width: int = 20) -> str:
     bars = int(cfg.get("bars", 16))
     sensitivity = float(cfg.get("sensitivity", 0.5))
     tick = tick if tick is not None else int(datetime.now().timestamp())
