@@ -7,16 +7,12 @@ from textual.binding import Binding
 from monitor.core.theme import DARK, LIGHT
 from monitor.core.collectors import SystemCollector
 from monitor.screens.overview import OverviewScreen
-from monitor.screens.processes import ProcessesScreen
-from monitor.screens.storage import StorageScreen
-from monitor.screens.network import NetworkScreen
-from monitor.screens.graphs import GraphScreen
-from monitor.screens.widgets import WidgetsScreen
+from monitor.screens.filemanager import FileManagerScreen
 from monitor.screens.help_screen import HelpOverlay
 
 
 class VantaMonitorTUI(App):
-    """Keyboard-first system monitor with dedicated screen navigation."""
+    """Keyboard-first system monitor — unified dashboard + file manager."""
 
     CSS = f"""
     Screen {{
@@ -62,11 +58,7 @@ class VantaMonitorTUI(App):
 
     BINDINGS = [
         Binding("1", "switch('overview')", "Dashboard", show=True),
-        Binding("2", "switch('processes')", "Processes", show=True),
-        Binding("3", "switch('storage')", "Storage", show=True),
-        Binding("4", "switch('network')", "Network", show=True),
-        Binding("5", "switch('graphs')", "Graphs", show=True),
-        Binding("6", "switch('widgets')", "Widgets", show=True),
+        Binding("2", "switch('files')", "Files", show=True),
         Binding("?", "help", "Help", show=True),
         Binding("q", "quit", "Quit", show=True),
         Binding("r", "refresh", "Refresh", show=False),
@@ -79,11 +71,7 @@ class VantaMonitorTUI(App):
         self._theme = "light"
         self._screens = {
             "overview": OverviewScreen(),
-            "processes": ProcessesScreen(),
-            "storage": StorageScreen(),
-            "network": NetworkScreen(),
-            "graphs": GraphScreen(),
-            "widgets": WidgetsScreen(),
+            "files": FileManagerScreen(),
         }
 
     def compose(self) -> ComposeResult:
@@ -93,7 +81,6 @@ class VantaMonitorTUI(App):
 
     def on_mount(self) -> None:
         self.title = "Vanta Monitor"
-        # Install all screens so they can be referenced by name
         for name, screen in self._screens.items():
             self.install_screen(screen, name)
         self.push_screen("overview")
@@ -123,15 +110,13 @@ class VantaMonitorTUI(App):
 
         acc = LIGHT if is_light else DARK
         nav.update(
-            f"[1] [{acc['accent']}]Dashboard[/]  [2] Processes  [3] Storage  [4] Network  [5] Graphs  [6] Widgets  "
+            f"[1] [{acc['accent']}]Dashboard[/]  [2] Files  "
             f"[?] Help  [T] {theme}    [{acc['text_dim']}]q=quit[/]"
         )
 
     def action_switch(self, name: str) -> None:
-        """Switch to a named screen via install_screen/push_screen."""
         if name not in self._screens:
             return
-        # Push named screen — it's a no-op target if already on it
         self.push_screen(name)
 
     def action_help(self) -> None:
@@ -148,7 +133,6 @@ class VantaMonitorTUI(App):
         self._apply_theme(new)
 
     def on_screen_resume(self, screen) -> None:
-        """Re-apply theme classes when a screen is resumed (re-shown)."""
         is_light = self._theme == "light"
         if is_light:
             screen.add_class("vanta-light")

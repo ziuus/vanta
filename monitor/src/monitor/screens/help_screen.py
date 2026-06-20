@@ -15,39 +15,35 @@ def _tag(color: str, text: str) -> str:
 
 KEYBINDS = [
     (
-        "Screen navigation",
+        "Navigation",
         [
-            ("1", "Dashboard"),
-            ("2", "Processes"),
-            ("3", "Storage"),
-            ("4", "Network"),
-            ("5", "Graphs"),
+            ("1", "Dashboard (everything)"),
+            ("2", "File manager"),
             ("q", "Quit Vanta Monitor"),
         ],
     ),
     (
-        "Dashboard widget controls",
+        "Dashboard controls",
         [
-            ("[", "Previous widget page"),
-            ("]", "Next widget page"),
+            ("W", "Cycle widget (clock/cal/matrix/viz)"),
         ],
     ),
     (
-        "Process actions (on Processes screen)",
+        "File manager (screen 2)",
         [
-            ("k", "Kill selected process"),
-            ("s", "Stop (suspend) selected process"),
-            ("r", "Resume selected process"),
-            ("t", "Cycle sort column"),
-            ("Ctrl+T", "Toggle sort direction"),
-            ("/", "Focus filter input"),
+            ("j/k", "Move up/down"),
+            ("l", "Enter directory"),
+            ("h", "Parent directory"),
+            ("~", "Go home"),
+            ("g/G", "Top / bottom"),
         ],
     ),
     (
         "General",
         [
             ("?", "Toggle this help screen"),
-            ("r", "Force refresh current screen"),
+            ("r", "Force refresh"),
+            ("T", "Toggle light/dark theme"),
         ],
     ),
 ]

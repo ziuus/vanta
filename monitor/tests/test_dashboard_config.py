@@ -77,10 +77,13 @@ def test_custom_text_widget_joins_sections() -> None:
 
 
 def test_matrix_widget_respects_dimensions() -> None:
-    text = build_matrix_widget({"density": 1.0}, width=12, height=4, seed=7)
+    import re
+    text = build_matrix_widget({"density": 1.0}, width=12, height=4, tick=7)
     lines = text.splitlines()
     assert len(lines) == 4
-    assert all(len(line) == 12 for line in lines)
+    # Strip Rich markup tags for length check
+    plain = [re.sub(r"\[/?[^\]]*\]", "", l) for l in lines]
+    assert all(len(l) == 12 for l in plain), f"line lengths: {[len(l) for l in plain]}"
 
 
 def test_music_widget_renders_bar_rows() -> None:
