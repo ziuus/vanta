@@ -6,6 +6,12 @@ from textual.widgets import Static
 from textual.containers import Horizontal, Vertical
 from textual.binding import Binding
 
+from monitor.core.theme import DARK, LIGHT
+
+
+def _tag(color: str, text: str) -> str:
+    return f"[{color}]{text}[/]"
+
 
 KEYBINDS = [
     (
@@ -56,20 +62,35 @@ class HelpOverlay(Screen):
         Binding("q", "dismiss", "Close"),
     ]
 
+    def __init__(self, theme: str = "light"):
+        super().__init__()
+        self._theme_name = theme
+
+    @property
+    def pal(self) -> dict[str, str]:
+        return LIGHT if self._theme_name == "light" else DARK
+
     def compose(self) -> ComposeResult:
+        p = self.pal
         with Vertical(id="help-modal"):
-            yield Static("[#06b6d4]◈ Vanta Dashboard — Keybinds[/]", id="help-title")
+            yield Static(f"{_tag(p['accent'], '◈ Vanta Dashboard — Keybinds')}", id="help-title")
             for category, binds in KEYBINDS:
-                yield Static(f"[#64748b]{category}[/]", classes="help-category")
+                yield Static(f"{_tag(p['text_muted'], category)}", classes="help-category")
                 for key, action in binds:
                     yield Horizontal(
-                        Static(f"[#cbd5e1]{key:<8}[/]", classes="help-key"),
-                        Static(f"[#94a3b8]{action}[/]", classes="help-desc"),
+                        Static(f"[{p['text']}]{key:<8}[/]", classes="help-key"),
+                        Static(f"{_tag(p['text_dim'], action)}", classes="help-desc"),
                         classes="help-row",
                     )
-            yield Static("[#4a5568]Press [#cbd5e1]Esc[/], [#cbd5e1]?[/], or [#cbd5e1]q[/] to close[/]", id="help-footer")
+            yield Static(
+                f"{_tag(p['text_dim'], 'Press ')}{_tag(p['text'], 'Esc')}, "
+                f"{_tag(p['text'], '?')}, or {_tag(p['text'], 'q')} "
+                f"{_tag(p['text_dim'], 'to close')}",
+                id="help-footer",
+            )
 
     def apply_theme(self, theme: str) -> None:
+        self._theme_name = theme
         is_light = theme == "light"
         if is_light:
             self.add_class("vanta-light")

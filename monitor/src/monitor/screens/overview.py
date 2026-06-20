@@ -43,9 +43,14 @@ class OverviewScreen(Screen):
         self._net_down_hist = HistoryBuffer(size=120)
         self._disk_hist = HistoryBuffer(size=120)
         self._refresh_timer = None
-        self._last_error: str | None = None
         self._process_count = 0
         self._active_widget_names: list[str] = []
+        self._last_error: str | None = None
+        self._theme_name = "light"
+
+    @property
+    def pal(self) -> dict[str, str]:
+        return LIGHT if self._theme_name == "light" else DARK
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -249,9 +254,9 @@ class OverviewScreen(Screen):
                 cfg = self.dashboard_config.widget(name).settings
                 title_name = name.replace("_", " ").title()
                 content = self._widget_cache.render(name, cfg)
-                slot.update(f"[#64748b]{title_name}[/]\n{content}")
+                slot.update(f"[{self.pal['text_muted']}]{title_name}[/]\n{content}")
             else:
-                slot.update("[#334155]empty slot[/]")
+                slot.update(f"[{self.pal['text_dim']}]empty slot[/]")
 
     def action_prev_widget_page(self) -> None:
         if self._widget_pages:
@@ -266,11 +271,14 @@ class OverviewScreen(Screen):
             self._update_status_strip()
 
     def apply_theme(self, theme: str) -> None:
+        self._theme_name = theme
         is_light = theme == "light"
         if is_light:
             self.add_class("vanta-light")
         else:
             self.remove_class("vanta-light")
+        # Force widget slot re-render with correct colors
+        self._refresh_widget_slots()
 
     CSS = """ 
     #overview-body {

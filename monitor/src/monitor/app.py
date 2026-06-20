@@ -135,7 +135,8 @@ class VantaMonitorTUI(App):
         self.push_screen(name)
 
     def action_help(self) -> None:
-        self.push_screen(HelpOverlay())
+        help_screen = HelpOverlay(self._theme)
+        self.push_screen(help_screen)
 
     def action_refresh(self) -> None:
         screen = self.screen
