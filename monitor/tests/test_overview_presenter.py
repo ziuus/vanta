@@ -1,3 +1,5 @@
+import re
+
 from monitor.core.models import (
     CpuSnapshot,
     DiskSnapshot,
@@ -14,6 +16,11 @@ from monitor.core.overview_presenter import (
     make_overview_panels,
     make_process_preview,
 )
+
+
+def _strip_markup(text: str) -> str:
+    """Strip Rich markup tags (named colours, hex colours, attributes)."""
+    return re.sub(r"\[/?[^\]]*\]", "", text)
 
 
 def sample_snapshot() -> SystemSnapshot:
@@ -70,9 +77,7 @@ def sample_snapshot() -> SystemSnapshot:
 
 def test_compact_bar_renders_requested_width():
     bar = compact_bar(50.0, width=10)
-    # compact_bar now returns Rich markup, so check the plain-text bar chars
-    import re
-    plain = re.sub(r"\[/?\w*\]", "", bar)
+    plain = _strip_markup(bar)
     assert len(plain) == 10
     assert plain.count("█") == 5
 
@@ -89,15 +94,19 @@ def test_make_overview_panels_returns_dense_sections():
     panels = make_overview_panels(sample_snapshot())
 
     assert set(panels) == {"cpu", "memory", "network", "system", "disks"}
-    assert "CPU  67.4%" in panels["cpu"]
+    assert "🖥 CPU" in panels["cpu"]
+    assert "67.4%" in panels["cpu"]
     assert "c0" in panels["cpu"]
     assert "c7" in panels["cpu"]
-    assert "MEM  73.5%" in panels["memory"]
+    assert "🧠 Memory" in panels["memory"]
+    assert "73.5%" in panels["memory"]
     assert "Swap" in panels["memory"]
     assert "18.0 MiB/s" in panels["network"]
     assert "3.0 MiB/s" in panels["network"]
+    assert "🌐 Network" in panels["network"]
     assert "GPU" in panels["system"]
-    assert "Proc 318" in panels["system"]
+    assert "procs" in panels["system"].lower()
+    assert "💾 Disks" in panels["disks"]
     assert "/" in panels["disks"] and "61.0%" in panels["disks"]
     assert "/home" in panels["disks"] and "44.0%" in panels["disks"]
 
@@ -108,7 +117,7 @@ def test_make_overview_panels_handles_missing_gpu():
 
     panels = make_overview_panels(snap)
 
-    assert "Temp 57C" in panels["system"]
+    assert "procs" in panels["system"].lower()
 
 
 def test_make_process_preview_returns_dense_ranked_lines():

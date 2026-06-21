@@ -1,0 +1,122 @@
+/* ── Widgets screen ── */
+/* CSS variable defaults — overridden at runtime by the app's get_css_variables() */
+$bg: #0a0a0f;
+$surface: #0f0f1a;
+$surface-alt: #1a1a2e;
+$border: #1e1e3f;
+$text: #cbd5e1;
+$text-muted: #64748b;
+$text-dim: #4a5568;
+$accent: #06b6d4;
+$green: #22c55e;
+$yellow: #eab308;
+$red: #ef4444;
+
+#widgets-body {
+    padding: 0 1;
+    height: 1fr;
+}
+
+/* ── Top row: clock + calendar ── */
+#widgets-top {
+    height: 12;
+    margin-bottom: 1;
+}
+
+#clock-container {
+    width: 2fr;
+    margin-right: 1;
+    border: solid $border;
+    background: $surface;
+    padding: 0 1;
+    color: $text;
+}
+
+#clock-display {
+    text-style: bold;
+    height: 6;
+    color: $text;
+}
+
+#calendar-container {
+    width: 3fr;
+    border: solid $border;
+    background: $surface;
+    padding: 0 1;
+    color: $text;
+}
+
+/* ── Middle row: matrix + music ── */
+#widgets-mid {
+    height: 10;
+    margin-bottom: 1;
+}
+
+#matrix-container {
+    width: 2fr;
+    margin-right: 1;
+    border: solid $border;
+    background: $surface;
+    padding: 0 1;
+    color: $text;
+}
+
+#music-container {
+    width: 3fr;
+    border: solid $border;
+    background: $surface;
+    padding: 0 1;
+    color: $text;
+}
+
+#music-visualizer {
+    height: 7;
+    content-align: center middle;
+    color: $accent;
+}
+
+/* ── Bottom: fastfetch ── */
+#widgets-bottom {
+    height: 8;
+}
+
+#fastfetch-container {
+    height: 1fr;
+    border: solid $border;
+    background: $surface;
+    padding: 0 1;
+    color: $text;
+}
+
+/* ── Widget panel headers ── */
+.widget-header {
+    height: 1;
+    text-style: bold;
+    color: $accent;
+    background: $surface-alt;
+    padding: 0 1;
+    margin-bottom: 1;
+}
+
+/* ── Compact mode ── */
+.compact #clock-container,
+.compact #calendar-container,
+.compact #matrix-container,
+.compact #music-container,
+.compact #fastfetch-container {
+    padding: 0 1;
+}
+
+.compact #clock-display {
+    height: 4;
+}
+
+.compact #widgets-top { height: 10; }
+.compact #widgets-mid { height: 8; }
+.compact #widgets-bottom { height: 7; }
+
+/* ── Tiny mode ── */
+.tiny #widgets-top { height: 8; }
+.tiny #widgets-mid { height: 6; }
+.tiny #widgets-bottom { height: 5; }
+.tiny .widget-header { display: none; }

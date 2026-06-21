@@ -1,0 +1,148 @@
+/* ═══════════════════════════════════════════════════
+   Vanta Monitor — Base styles & theme variables
+   Variables are set programmatically by screen.apply_theme()
+   ═══════════════════════════════════════════════════ */
+
+/* Default dark-mode values (override at runtime) */
+$bg: #0a0a0f;
+$surface: #0f0f1a;
+$surface-alt: #1a1a2e;
+$border: #1e1e3f;
+$text: #cbd5e1;
+$text-muted: #64748b;
+$text-dim: #4a5568;
+$accent: #06b6d4;
+$green: #22c55e;
+$yellow: #eab308;
+$red: #ef4444;
+$error-bg: rgba(239, 68, 68, 0.12);
+$overlay-bg: rgba(10, 10, 15, 0.88);
+$overlay-surface: #0f0f1a;
+
+/* ── App-level chrome ── */
+Screen {
+    background: $bg;
+}
+
+Header {
+    background: $surface;
+    color: $text;
+}
+
+Footer {
+    background: $surface;
+    color: $text-muted;
+}
+
+/* ── Shared utility classes ── */
+.panel {
+    border: solid $border;
+    background: $surface;
+    padding: 0 1;
+    min-height: 6;
+    color: $text;
+}
+
+.panel-title {
+    text-style: bold;
+    color: $accent;
+}
+
+.sys-strip {
+    height: 1;
+    background: $surface;
+    border: solid $border;
+    padding: 0 1;
+    margin: 1 0;
+    color: $text-muted;
+}
+
+.status-strip {
+    height: 1;
+    background: $bg;
+    color: $text-dim;
+    padding: 0 1;
+    margin-bottom: 1;
+}
+
+.proc-detail-bar {
+    height: 2;
+    color: $text-muted;
+    background: $surface;
+    border: solid $border;
+    padding: 0 1;
+    margin: 0 0 1 0;
+}
+
+.proc-box {
+    border: solid $border;
+    background: $surface;
+    padding: 0 1;
+    color: $text;
+}
+
+/* ── Input widget ── */
+Input {
+    background: $bg;
+    color: $text;
+    border: solid $border;
+    padding: 0 1;
+}
+
+.search-hidden {
+    display: none;
+}
+
+.search-visible {
+    display: block;
+}
+
+/* ── Compact / tiny mode ── */
+.compact .panel {
+    min-height: 5;
+}
+
+.compact .proc-detail-bar {
+    height: 1;
+}
+
+.tiny .panel {
+    min-height: 4;
+    padding: 0 1;
+}
+
+.tiny .sys-strip {
+    display: none;
+}
+
+.tiny .proc-detail-bar {
+    display: none;
+}
+
+/* ── Light theme structural overrides ── */
+.vanta-light .status-strip {
+    color: $text-muted;
+    background: $bg;
+}
+
+.vanta-light .panel,
+.vanta-light .proc-box {
+    border: solid $border;
+    background: $surface;
+    color: $text;
+}
+
+.vanta-light .sys-strip {
+    background: $surface;
+    border: solid $border;
+}
+
+.vanta-light .proc-detail-bar {
+    background: $surface;
+    border: solid $border;
+}
+
+.vanta-light Input {
+    background: $bg;
+    border: solid $border;
+}

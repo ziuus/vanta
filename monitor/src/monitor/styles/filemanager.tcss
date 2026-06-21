@@ -1,0 +1,104 @@
+/* ── File manager screen ── */
+/* CSS variable defaults — overridden at runtime by apply_theme() */
+$bg: #0a0a0f;
+$surface: #0f0f1a;
+$surface-alt: #1a1a2e;
+$border: #1e1e3f;
+$text: #cbd5e1;
+$text-muted: #64748b;
+$text-dim: #4a5568;
+$accent: #06b6d4;
+$green: #22c55e;
+$yellow: #eab308;
+$red: #ef4444;
+$error-bg: rgba(239, 68, 68, 0.12);
+$overlay-bg: rgba(10, 10, 15, 0.88);
+$overlay-surface: #0f0f1a;
+
+#fm-body {
+    padding: 0 1;
+}
+
+#fm-list-col {
+    width: 2fr;
+    margin-right: 1;
+}
+
+.fm-path {
+    height: 1;
+    color: $accent;
+    text-style: bold;
+    margin-bottom: 0;
+}
+
+.fm-status {
+    height: 1;
+    color: $text-dim;
+    margin-bottom: 1;
+    padding: 0 1;
+}
+
+#fm-list {
+    height: 1fr;
+    border: solid $border;
+    background: $surface;
+}
+
+#fm-preview-col {
+    width: 1fr;
+}
+
+.fm-preview-header {
+    height: 1;
+    color: $accent;
+    text-style: bold;
+    margin-bottom: 0;
+}
+
+.fm-preview {
+    height: 1fr;
+    border: solid $border;
+    background: $surface;
+    padding: 1;
+    color: $text;
+}
+
+ListView {
+    background: $surface;
+}
+
+ListView > ListItem {
+    padding: 0 1;
+    color: $text;
+}
+
+ListView > ListItem:hover {
+    background: $surface-alt;
+}
+
+ListView > ListItem.--highlight {
+    background: $surface-alt;
+}
+
+.vanta-light .fm-preview,
+.vanta-light #fm-list {
+    border: solid $border;
+    background: $surface;
+    color: $text;
+}
+
+.vanta-light ListView {
+    background: $surface;
+}
+
+.vanta-light ListView > ListItem {
+    color: $text;
+}
+
+.vanta-light ListView > ListItem:hover {
+    background: $border;
+}
+
+.vanta-light ListView > ListItem.--highlight {
+    background: $border;
+}

@@ -1,0 +1,45 @@
+/* ── Overview screen ── */
+/* CSS variable defaults — overridden at runtime by apply_theme() */
+$bg: #0a0a0f;
+$surface: #0f0f1a;
+$surface-alt: #1a1a2e;
+$border: #1e1e3f;
+$text: #cbd5e1;
+$text-muted: #64748b;
+$text-dim: #4a5568;
+$accent: #06b6d4;
+$green: #22c55e;
+$yellow: #eab308;
+$red: #ef4444;
+$error-bg: rgba(239, 68, 68, 0.12);
+$overlay-bg: rgba(10, 10, 15, 0.88);
+$overlay-surface: #0f0f1a;
+
+#dash-body {
+    padding: 0 1;
+}
+
+#dash-top,
+#dash-mid {
+    height: auto;
+    margin-bottom: 0;
+}
+
+.left-panel {
+    width: 2fr;
+    margin-right: 1;
+}
+
+.right-panel {
+    width: 3fr;
+}
+
+#dash-gpuinfo {
+    height: auto;
+    min-height: 1;
+}
+
+#proc-search-input {
+    dock: bottom;
+    height: 1;
+}
