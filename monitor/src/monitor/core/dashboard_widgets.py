@@ -6,6 +6,7 @@ import calendar as pycalendar
 import math
 import os
 import random
+import shutil
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime
@@ -193,6 +194,19 @@ def build_image_widget(cfg: dict[str, Any]) -> str:
         return "No image configured"
     if not path.exists():
         return f"Image missing\n{path}"
+    # Try chafa for ANSI image rendering (works in any terminal)
+    chafa_bin = shutil.which("chafa")
+    if chafa_bin:
+        try:
+            result = subprocess.run(
+                [chafa_bin, "--symbols", "all", "--size", "24x12", str(path)],
+                capture_output=True, text=True, timeout=5,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                # Strip trailing newlines, chafa tends to add an extra blank line
+                return result.stdout.rstrip("\n")
+        except (subprocess.TimeoutExpired, OSError):
+            pass
     return f"Image\n{path.name}\n{path.stat().st_size // 1024} KiB"
 
 

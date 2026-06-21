@@ -1,4 +1,4 @@
-"""Media playback detection via playerctl."""
+"""Media playback detection and control via playerctl."""
 
 import shutil
 import subprocess
@@ -10,6 +10,10 @@ class MediaDetector:
 
     def __init__(self) -> None:
         self._has_playerctl = shutil.which("playerctl") is not None
+
+    @property
+    def available(self) -> bool:
+        return self._has_playerctl
 
     def detect(self) -> dict[str, Any] | None:
         """Return current playback info or *None* if nothing playing."""
@@ -45,3 +49,54 @@ class MediaDetector:
             }
         except (subprocess.TimeoutExpired, FileNotFoundError):
             return None
+
+
+class MediaController:
+    """Control media playback via playerctl commands."""
+
+    def __init__(self) -> None:
+        self._has_playerctl = shutil.which("playerctl") is not None
+
+    @property
+    def available(self) -> bool:
+        return self._has_playerctl
+
+    def play_pause(self) -> bool:
+        """Toggle play/pause. Returns True on success."""
+        if not self._has_playerctl:
+            return False
+        try:
+            subprocess.run(["playerctl", "play-pause"], capture_output=True, timeout=1)
+            return True
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            return False
+
+    def next(self) -> bool:
+        """Skip to next track. Returns True on success."""
+        if not self._has_playerctl:
+            return False
+        try:
+            subprocess.run(["playerctl", "next"], capture_output=True, timeout=1)
+            return True
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            return False
+
+    def previous(self) -> bool:
+        """Go to previous track. Returns True on success."""
+        if not self._has_playerctl:
+            return False
+        try:
+            subprocess.run(["playerctl", "previous"], capture_output=True, timeout=1)
+            return True
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            return False
+
+    def stop(self) -> bool:
+        """Stop playback. Returns True on success."""
+        if not self._has_playerctl:
+            return False
+        try:
+            subprocess.run(["playerctl", "stop"], capture_output=True, timeout=1)
+            return True
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            return False

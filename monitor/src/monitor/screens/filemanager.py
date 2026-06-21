@@ -11,7 +11,9 @@ from textual.widgets import Footer, Header, Static, ListView, ListItem
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 
-from monitor.core.theme import DARK, LIGHT
+from monitor.core.theme import get_palette, is_light_theme
+
+STYLES_DIR = Path(__file__).resolve().parent.parent / "styles"
 
 
 def _fmt_size(size: int) -> str:
@@ -107,15 +109,17 @@ class FileManagerScreen(Screen):
 
     @property
     def pal(self) -> dict[str, str]:
-        return LIGHT if self._theme_name == "light" else DARK
+        return get_palette(self._theme_name)
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         with Horizontal(id="fm-body"):
             with Vertical(id="fm-list-col"):
                 yield Static(id="fm-path", classes="fm-path")
+                yield Static(id="fm-status", classes="fm-status")
                 yield ListView(id="fm-list")
             with Vertical(id="fm-preview-col"):
+                yield Static(id="fm-preview-header", classes="fm-preview-header")
                 yield Static(id="fm-preview", classes="fm-preview")
         yield Footer()
 
@@ -137,7 +141,12 @@ class FileManagerScreen(Screen):
         self._cursor = 0
 
         self.query_one("#fm-path", Static).update(
-            f"[{p['accent']}]{self._cwd}[/]"
+            f"[{p['accent']}]💻[/]  [{p['text']}]{self._cwd}[/]"
+        )
+
+        count = len(entries)
+        self.query_one("#fm-status", Static).update(
+            f"[{p['text_dim']}]{count} item{'s' if count != 1 else ''}[/]"
         )
 
         list_view = self.query_one("#fm-list", ListView)
@@ -166,12 +175,15 @@ class FileManagerScreen(Screen):
 
     def _update_preview(self):
         p = self.pal
+        preview_header = self.query_one("#fm-preview-header", Static)
         preview_widget = self.query_one("#fm-preview", Static)
         if not self._entries:
+            preview_header.update(f"[{p['text_dim']}]Preview[/]")
             preview_widget.update(f"[{p['text_dim']}]empty directory[/]")
             return
         idx = min(self._cursor, len(self._entries) - 1)
         target = self._entries[idx]
+        preview_header.update(f"[{p['accent']}]● 📋 Preview[/]")
         if target.is_dir():
             try:
                 sub = list(target.iterdir())
@@ -257,12 +269,11 @@ class FileManagerScreen(Screen):
         self._update_preview()
 
     def action_dismiss(self) -> None:
-        self.app.push_screen("overview")
+        self.app.switch_screen("overview")
 
     def apply_theme(self, theme: str) -> None:
         self._theme_name = theme
-        is_light = theme == "light"
-        if is_light:
+        if is_light_theme(theme):
             self.add_class("vanta-light")
         else:
             self.remove_class("vanta-light")
@@ -270,66 +281,4 @@ class FileManagerScreen(Screen):
             self._load_dir()
             self._update_preview()
 
-    CSS = """
-    #fm-body {
-        padding: 0 1;
-    }
-    #fm-list-col {
-        width: 2fr;
-        margin-right: 1;
-    }
-    .fm-path {
-        height: 1;
-        color: #06b6d4;
-        text-style: bold;
-        margin-bottom: 1;
-    }
-    #fm-list {
-        height: 1fr;
-        border: solid #1e1e3f;
-        background: #0f0f1a;
-    }
-    #fm-preview-col {
-        width: 1fr;
-    }
-    .fm-preview {
-        height: 1fr;
-        border: solid #1e1e3f;
-        background: #0f0f1a;
-        padding: 1;
-        color: #cbd5e1;
-    }
-    ListView {
-        background: #0f0f1a;
-    }
-    ListView > ListItem {
-        padding: 0 1;
-        color: #cbd5e1;
-    }
-    ListView > ListItem:hover {
-        background: #1e1e3f;
-    }
-    ListView > ListItem.--highlight {
-        background: #1e1e3f;
-    }
-
-    /* Light theme */
-    .vanta-light .fm-preview,
-    .vanta-light #fm-list {
-        border: solid #d1d5db;
-        background: #ffffff;
-        color: #1a1a1a;
-    }
-    .vanta-light ListView {
-        background: #ffffff;
-    }
-    .vanta-light ListView > ListItem {
-        color: #1a1a1a;
-    }
-    .vanta-light ListView > ListItem:hover {
-        background: #e5e7eb;
-    }
-    .vanta-light ListView > ListItem.--highlight {
-        background: #e5e7eb;
-    }
-    """
+    CSS_PATH = str(STYLES_DIR / "filemanager.tcss")
