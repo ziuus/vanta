@@ -8,6 +8,7 @@ from monitor.core.models import ProcessRow
 from monitor.core.process_service import (
     KERNEL_PREFIXES,
     ProcessService,
+    _sanitize_env_preview,
     looks_like_kernel,
     next_sort_column,
     sort_key_for,
@@ -84,6 +85,19 @@ class TestSortKeyFor:
 
 
 class TestProcessServiceUnit:
+    def test_sanitize_env_preview_redacts_secret_like_keys(self):
+        preview = _sanitize_env_preview(
+            {
+                "AI_GATEWAY_API_KEY": "super-secret-value",
+                "PATH": "/usr/bin:/bin",
+                "SESSION_COOKIE": "abcdef",
+            },
+            limit=8,
+        )
+        assert any(entry == "AI_GATEWAY_API_KEY=<redacted>" for entry in preview)
+        assert any(entry == "SESSION_COOKIE=<redacted>" for entry in preview)
+        assert any(entry.startswith("PATH=/usr/bin") for entry in preview)
+
     def test_terminate_raises_on_bad_pid(self):
         svc = ProcessService()
         with pytest.raises(Exception):

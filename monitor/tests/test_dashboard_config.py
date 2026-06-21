@@ -66,12 +66,12 @@ def test_custom_text_widget_joins_sections() -> None:
     text = build_custom_text_widget(
         {
             "sections": [
-                {"title": "TODO", "content": "alpha\nbeta"},
+                {"title": "Status", "content": "alpha\nbeta"},
                 {"title": "Links", "content": "github.com/ziuus/vanta"},
             ]
         }
     )
-    assert "TODO" in text
+    assert "Status" in text
     assert "alpha" in text
     assert "Links" in text
 
@@ -176,11 +176,25 @@ def test_app_toggles_theme_through_action() -> None:
         app = VantaMonitorTUI()
         async with app.run_test(size=(120, 40)) as pilot:
             assert app._theme == "light", f"expected light got {app._theme}"
-            # Press T to toggle
             await pilot.press("T")
             assert app._theme == "dark"
-            # Toggle back
             await pilot.press("T")
             assert app._theme == "light"
+
+    asyncio.run(scenario())
+
+
+def test_app_cycles_theme_presets() -> None:
+    """Shift+P / P should move through the named palette presets."""
+    from monitor.app import VantaMonitorTUI
+
+    async def scenario() -> None:
+        app = VantaMonitorTUI()
+        async with app.run_test(size=(120, 40)) as pilot:
+            assert app._theme == "light"
+            await pilot.press("P")
+            assert app._theme == "dark"
+            await pilot.press("P")
+            assert app._theme == "monokai"
 
     asyncio.run(scenario())

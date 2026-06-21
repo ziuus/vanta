@@ -22,13 +22,26 @@ class MemorySnapshot:
 
 @dataclass(slots=True)
 class DiskSnapshot:
-    mountpoint: str
-    percent: float
-    used_bytes: int
-    free_bytes: int
-    total_bytes: int
+    device: str = ""
+    mountpoint: str = ""
+    percent: float = 0.0
+    used_bytes: int = 0
+    free_bytes: int = 0
+    total_bytes: int = 0
     io_read_bps: float = 0.0
     io_write_bps: float = 0.0
+    io_busy_percent: float = 0.0
+
+
+@dataclass(slots=True)
+class IfaceSnapshot:
+    name: str
+    upload_bps: float = 0.0
+    download_bps: float = 0.0
+    bytes_sent: int = 0
+    bytes_recv: int = 0
+    is_up: bool = False
+    speed: int = 0
 
 
 @dataclass(slots=True)
@@ -37,6 +50,7 @@ class NetworkSnapshot:
     download_bps: float
     bytes_sent: int
     bytes_recv: int
+    interfaces: list[IfaceSnapshot] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -46,6 +60,25 @@ class GpuSnapshot:
     memory_percent: float
     memory_used_bytes: int
     memory_total_bytes: int
+    memory_util_percent: float = 0.0
+    power_watts: float = 0.0
+    power_max_watts: float = 0.0
+    clock_graphics_mhz: int = 0
+    clock_mem_mhz: int = 0
+    encoder_util_percent: float = 0.0
+    decoder_util_percent: float = 0.0
+    pcie_tx_bps: float = 0.0
+    pcie_rx_bps: float = 0.0
+    name: str = ""
+
+
+@dataclass(slots=True)
+class BatterySnapshot:
+    percent: float
+    status: str  # Charging, Discharging, Full, Unknown, Not charging
+    power_watts: float = 0.0
+    time_to_empty_min: float | None = None
+    time_to_full_min: float | None = None
 
 
 @dataclass(slots=True)
@@ -57,16 +90,19 @@ class ProcessRow:
     status: str
     threads: int
     username: str | None
+    ppid: int = 0  # parent PID for tree views
 
 
 @dataclass(slots=True)
 class SystemSnapshot:
     cpu: CpuSnapshot
     memory: MemorySnapshot
-    disks: List[DiskSnapshot]
+    disks: list[DiskSnapshot]
     network: NetworkSnapshot
     gpu: Optional[GpuSnapshot]
     process_count: int
     thread_count: int
     uptime_seconds: float
     temperature_c: float | None
+    battery: Optional[BatterySnapshot] = None
+    cpu_power_watts: float = 0.0

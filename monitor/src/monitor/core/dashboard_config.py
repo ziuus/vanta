@@ -23,7 +23,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "custom_text": {
             "enabled": True,
             "sections": [
-                {"title": "TODO", "content": "• Refactor widgets\n• Add themes\n• Write tests"},
+                {"title": "Status", "content": "• Local-first Textual TUI\n• Web API on /api/*\n• Theme presets: light, dark, monokai, nord-light"},
                 {"title": "Links", "content": "• github.com/ziuus/vanta"},
             ],
         },

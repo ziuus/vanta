@@ -1,22 +1,31 @@
 #!/usr/bin/env python3
-"""Vanta Monitor Web Dashboard — Flask API server."""
+"""Vanta Monitor web dashboard and JSON API."""
+
+from __future__ import annotations
 
 import json
-import time
 from pathlib import Path
+from typing import Any
 
-from flask import Flask, send_file, jsonify, request
+from flask import Flask, jsonify, request, send_file
 from flask_cors import CORS
 
 from monitor.core.collectors import SystemCollector
+from monitor.core.dashboard_config import load_dashboard_config
+from monitor.core.process_service import ProcessService
 
 try:
     import pynvml
+
     PYNVML_AVAILABLE = True
 except ImportError:
     PYNVML_AVAILABLE = False
 
-# Initialize pynvml
+
+DEFAULT_PORT = 5001
+CONFIG_PATH = Path(__file__).parent.parent.parent / "config.json"
+HTML_DIR = Path(__file__).parent
+
 _gpu_handle = None
 if PYNVML_AVAILABLE:
     try:
@@ -24,13 +33,52 @@ if PYNVML_AVAILABLE:
         _gpu_handle = pynvml.nvmlDeviceGetHandleByIndex(0)
     except Exception:
         PYNVML_AVAILABLE = False
+        _gpu_handle = None
 
 
-DEFAULT_PORT = 5001
+app = Flask(__name__)
+CORS(app)
+collector = SystemCollector()
+process_service = ProcessService()
 
 
-def get_gpu_stats():
-    """Get GPU utilization, memory, and temperature."""
+def load_config() -> dict[str, Any]:
+    if CONFIG_PATH.exists():
+        with CONFIG_PATH.open() as f:
+            return json.load(f)
+    return load_dashboard_config(CONFIG_PATH).raw
+
+
+config = load_config()
+
+
+def _bool_arg(value: Any, *, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _int_arg(value: Any, *, default: int, minimum: int | None = None, maximum: int | None = None) -> int:
+    try:
+        result = int(value)
+    except (TypeError, ValueError):
+        result = default
+    if minimum is not None:
+        result = max(minimum, result)
+    if maximum is not None:
+        result = min(maximum, result)
+    return result
+
+
+def _sort_arg(value: Any, *, default: str = "cpu") -> str:
+    allowed = {"cpu", "memory", "pid", "threads", "name"}
+    candidate = str(value or default).strip().lower()
+    return candidate if candidate in allowed else default
+
+
+def get_gpu_stats() -> dict[str, float] | None:
     if not PYNVML_AVAILABLE or _gpu_handle is None:
         return None
     try:
@@ -38,44 +86,24 @@ def get_gpu_stats():
         mem_info = pynvml.nvmlDeviceGetMemoryInfo(_gpu_handle)
         temp = pynvml.nvmlDeviceGetTemperature(_gpu_handle, pynvml.NVML_TEMPERATURE_GPU)
         return {
-            "util": util.gpu,
+            "util": float(util.gpu),
             "mem_used": mem_info.used / (1024**3),
             "mem_total": mem_info.total / (1024**3),
             "mem_percent": (mem_info.used / mem_info.total) * 100,
-            "temp": temp,
+            "temp": float(temp),
         }
     except Exception:
         return None
 
 
-app = Flask(__name__)
-CORS(app)
-
-# Config path points to vanta/monitor/config.json
-CONFIG_PATH = Path(__file__).parent.parent.parent / "config.json"
-
-
-def load_config():
-    if CONFIG_PATH.exists():
-        with open(CONFIG_PATH) as f:
-            return json.load(f)
-    return {
-        "video": {"path": "", "auto_play": True},
-        "process": {"show_kernel": False, "max_display": 15, "auto_refresh": True},
-        "audio": {"simulated": True, "sensitivity": 0.5},
-        "ui": {"refresh_rate": 0.5, "theme": "dark"},
-    }
-
-
-config = load_config()
-collector = SystemCollector()
-
-HTML_DIR = Path(__file__).parent
-
-
 @app.route("/")
 def index():
     return send_file(HTML_DIR / "dashboard.html")
+
+
+@app.route("/api/health")
+def health():
+    return jsonify({"status": "ok", "surface": "web", "port": DEFAULT_PORT})
 
 
 @app.route("/api/stats")
@@ -85,7 +113,7 @@ def stats():
     except Exception:
         return jsonify({"error": "collection failed"}), 500
 
-    stats_data = {
+    stats_data: dict[str, Any] = {
         "cpu": snapshot.cpu.total_percent,
         "mem": snapshot.memory.percent,
         "disk": snapshot.disks[0].percent if snapshot.disks else 0,
@@ -99,78 +127,73 @@ def stats():
         "cpu_freq": snapshot.cpu.frequency_mhz / 1000 if snapshot.cpu.frequency_mhz else None,
         "cpu_cores": snapshot.cpu.core_count,
     }
-
-    # Add GPU stats if available
     gpu = get_gpu_stats()
     if gpu:
-        stats_data["gpu_util"] = gpu["util"]
-        stats_data["gpu_temp"] = gpu["temp"]
-        stats_data["gpu_mem_percent"] = gpu["mem_percent"]
-        stats_data["gpu_mem_used"] = gpu["mem_used"]
-
+        stats_data.update(
+            {
+                "gpu_util": gpu["util"],
+                "gpu_temp": gpu["temp"],
+                "gpu_mem_percent": gpu["mem_percent"],
+                "gpu_mem_used": gpu["mem_used"],
+            }
+        )
     return jsonify(stats_data)
 
 
 @app.route("/api/processes")
 def processes():
-    show_kernel = request.args.get("include_kernel", config.get("process", {}).get("show_kernel", False))
-    if isinstance(show_kernel, str):
-        show_kernel = show_kernel.lower() in ("true", "1", "yes")
-    max_display = request.args.get("limit", config.get("process", {}).get("max_display", 15))
-    if isinstance(max_display, str):
-        max_display = int(max_display)
-    sort_by = request.args.get("sort", "cpu")
-    query = request.args.get("query", "")
-
-    from monitor.core.process_service import ProcessService
-    svc = ProcessService()
-    rows = svc.list_processes(
-        include_kernel=show_kernel,
-        sort_by=sort_by,
-        query=query,
-        limit=int(max_display),
+    process_cfg = config.get("process", {})
+    rows = process_service.list_processes(
+        include_kernel=_bool_arg(request.args.get("include_kernel"), default=bool(process_cfg.get("show_kernel", False))),
+        sort_by=_sort_arg(request.args.get("sort"), default="cpu"),
+        descending=not _bool_arg(request.args.get("ascending"), default=False),
+        query=str(request.args.get("query", "")).strip(),
+        limit=_int_arg(request.args.get("limit"), default=int(process_cfg.get("max_display", 15)), minimum=1, maximum=500),
+        username=str(request.args.get("username", "")).strip() or None,
     )
-    return jsonify([
-        {"pid": r.pid, "name": r.name, "cpu": r.cpu_percent,
-         "mem": r.memory_percent, "threads": r.threads, "status": r.status,
-         "username": r.username}
-        for r in rows
-    ])
+    return jsonify(
+        [
+            {
+                "pid": row.pid,
+                "name": row.name,
+                "cpu": row.cpu_percent,
+                "mem": row.memory_percent,
+                "threads": row.threads,
+                "status": row.status,
+                "username": row.username,
+            }
+            for row in rows
+        ]
+    )
+
+
+@app.route("/api/process/<int:pid>")
+def process_detail(pid: int):
+    detail = process_service.get_process_detail(pid)
+    status = 200 if "error" not in detail else 404
+    return jsonify(detail), status
 
 
 @app.route("/api/process/<int:pid>/kill", methods=["POST"])
-def kill_process(pid):
-    import psutil
-    try:
-        p = psutil.Process(pid)
-        p.kill()
-        return jsonify({"success": True, "message": f"Killed PID {pid}"})
-    except psutil.NoSuchProcess:
-        return jsonify({"success": False, "message": "Process not found"}), 404
-    except psutil.AccessDenied:
-        return jsonify({"success": False, "message": "Access denied"}), 403
+def kill_process(pid: int):
+    return _run_process_action(lambda: process_service.terminate_process(pid))
 
 
 @app.route("/api/process/<int:pid>/stop", methods=["POST"])
-def stop_process(pid):
-    import psutil
-    try:
-        p = psutil.Process(pid)
-        p.suspend()
-        return jsonify({"success": True, "message": f"Stopped PID {pid}"})
-    except psutil.NoSuchProcess:
-        return jsonify({"success": False, "message": "Process not found"}), 404
-    except psutil.AccessDenied:
-        return jsonify({"success": False, "message": "Access denied"}), 403
+def stop_process(pid: int):
+    return _run_process_action(lambda: process_service.suspend_process(pid))
 
 
 @app.route("/api/process/<int:pid>/resume", methods=["POST"])
-def resume_process(pid):
+def resume_process(pid: int):
+    return _run_process_action(lambda: process_service.resume_process(pid))
+
+
+def _run_process_action(action):
     import psutil
+
     try:
-        p = psutil.Process(pid)
-        p.resume()
-        return jsonify({"success": True, "message": f"Resumed PID {pid}"})
+        return jsonify(action())
     except psutil.NoSuchProcess:
         return jsonify({"success": False, "message": "Process not found"}), 404
     except psutil.AccessDenied:
@@ -178,7 +201,8 @@ def resume_process(pid):
 
 
 if __name__ == "__main__":
-    print(f"""
+    print(
+        f"""
     ╔═══════════════════════════════════════════╗
     ║                                           ║
     ║     ◈ VANTA MONITOR - Web Dashboard ◈    ║
@@ -186,5 +210,6 @@ if __name__ == "__main__":
     ║     Open: http://localhost:{DEFAULT_PORT}           ║
     ║                                           ║
     ╚═══════════════════════════════════════════╝
-    """)
+    """
+    )
     app.run(host="0.0.0.0", port=DEFAULT_PORT, debug=False, threaded=True)

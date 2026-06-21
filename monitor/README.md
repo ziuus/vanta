@@ -1,186 +1,123 @@
 # Vanta Monitor
 
-Real-time system dashboard with a **Textual TUI** (primary) and an optional **Flask web dashboard**,
-backed by a shared data layer.
+Vanta Monitor is a local-first system monitor with a Textual TUI as the primary surface and an optional Flask web dashboard for quick browser access.
+
+What changed in this pass:
+- dense overview screen with real process controls
+- dedicated trend screen for CPU, memory, network throughput, and disk I/O
+- production-style process workflow: live search, user/kernel filters, tree view, signal menu, detail modal
+- responsive layout modes for short terminals
+- named theme presets instead of a single dark/light pair
 
 ## Quick start
 
 ```bash
 cd monitor
-pip install -e .
-vtui               # TUI dashboard (default)
-vmon web           # Web dashboard at :5001
-vmon both          # TUI + web simultaneously
+uv sync
+vtui
 ```
 
-Shorter aliases: `vtui`, `vweb`, `vboth`. Also: `vmon tui`, `vmon web`, `vmon both`, `vmon help`.
+Other entrypoints:
+- `vmon tui` — launch the Textual TUI
+- `vmon web` — launch the Flask dashboard on `http://localhost:5001`
+- `vmon both` — start both surfaces
 
-## CLI usage
+API readiness probes:
+- `GET /api/health` — simple health check
+- `GET /api/stats` — current machine snapshot
+- `GET /api/processes` — filtered process list
+- `GET /api/process/<pid>` — detailed process payload
 
-```bash
-vmon [tui|web|both|help]
-```
+## TUI screens
 
-- `tui` — launch the Textual dashboard (default)
-- `web` — launch the Flask dashboard on port 5001
-- `both` — launch TUI + web dashboard together
-- `help` — show CLI usage
-
-## Screens (keys 1–6)
-
-| Key | Screen | Content |
+| Key | Screen | Purpose |
 |-----|--------|---------|
-| `1` | Dashboard | Dense system monitor core + paged extra widgets from config |
-| `2` | Processes | Real-time process table with filter, kill/stop/resume, sort cycling |
-| `3` | Storage | Disk mount usage table |
-| `4` | Network | Live upload/download speed + total traffic |
-| `5` | Graphs | Large detailed sparklines with dual-resolution history (60s + 600s) |
-| `6` | Widgets | Full-screen gallery: big clock, calendar, animated matrix rain, music visualizer bars, pstree, custom text, yazi directory view |
+| `1` | Overview | Main operator surface: CPU, memory, network, disks, process list |
+| `2` | Graphs | Large trend panels for CPU, memory, network, and disk I/O |
+| `3` | Files | Keyboard file manager / quick directory browser |
 
 ## Keybinds
 
-### Global (all screens)
+### Global
 
 | Key | Action |
 |-----|--------|
-| `1-6` | Switch to screen |
-| `?` | Open help overlay |
-| `T` | Toggle light/dark theme |
+| `1-3` | Switch screens |
+| `?` | Help overlay |
+| `T` | Toggle light/dark |
+| `P` | Cycle theme preset |
+| `r` | Refresh current screen |
 | `q` | Quit |
 
-### Dashboard (screen 1)
+### Overview screen
 
 | Key | Action |
 |-----|--------|
-| `[` | Previous widget page |
-| `]` | Next widget page |
+| `j` / `k` or arrows | Move process selection |
+| `/` | Focus process search |
+| `Esc` | Clear search |
+| `c` / `C` | Cycle sort forward / backward |
+| `u` | Toggle kernel processes |
+| `U` | Toggle current-user filter |
+| `F8` | Toggle flat / tree view |
+| `d` | Open process detail modal |
+| `K` | Open signal menu |
+| Mouse click | Select process row |
 
-### Processes (screen 2)
+## Theme presets
 
-| Key | Action |
-|-----|--------|
-| `k` | Kill selected process |
-| `s` | Stop (suspend) selected process |
-| `r` | Resume selected process |
-| `t` | Cycle sort column (cpu → mem → pid → threads → name) |
-| `Ctrl+T` | Toggle sort direction (asc/desc) |
-| `/` | Focus filter input |
+Current presets:
+- `light`
+- `dark`
+- `monokai`
+- `nord-light`
 
-## Features
+`T` flips between light/dark families fast. `P` cycles all presets.
 
-### Dashboard panels
-- **CPU** — per-core utilization in a 2-column grid, total %, frequency, load average, sparkline history
-- **Memory** — total/used/free, percent bar with green/yellow/red color thresholds, swap
-- **Network** — upload/download speed + cumulative totals
-- **System** — GPU utilization + VRAM bars (if NVIDIA GPU detected via pynvml), temperature, uptime, process count
-- **Disks** — per-mount usage bars
-- **Disk IO** — aggregate read/write bps rates
-- **Top processes** — CPU-sorted process preview
+## Config
 
-### Visual polish
-- Color-coded utilization bars — green (<50%), yellow (<80%), red (≥80%) — on CPU, MEM, GPU, Disk panels
-- Process table CPU/MEM columns color-graded by utilization
-- Sort indicator with ▲▼ arrows in process status bar
-- Process detail strip with colored values
-
-### Theme
-- **Light by default** — press `T` to toggle dark mode
-- All screens and shell theme-aware simultaneously
-- No individual screen stuck in wrong theme
-
-### Responsive layout
-- Automatically adapts to terminal width/height
-- 3 modes: **full** (tall terminals), **compact** (medium), **tiny** (very small)
-- Widget page size adjusts to available horizontal space
-
-### Extras
-- Config-driven widget dock (`config.json`) — enable/disable widgets, customize refresh rate
-- Widget paging via `[` / `]`
-- Command-backed widget caching (no jitter on repeated refresh)
-- Help overlay with all keybinds
-
-### Widgets screen (screen 6)
-- Full-screen gallery of all extra widgets: big clock with date, calendar, animated matrix rain (green-hued), music visualizer with color bars, pstree, custom text sections, yazi directory listing
-- Config-driven — widgets can be enabled/disabled individualy in `config.json`
-- Animated matrix chars cycle each second with falling-column brightness effect
-- Music visualizer bars change shape and color every tick
-
-### Web dashboard
-- Same data via Flask API at `/api/stats`
-- Animated with GSAP
-- Accessible at `http://localhost:5001`
-
-## Config file
-
-Path: `monitor/config.json`
+Path: `config.json`
 
 ```json
 {
-  "ui": {
-    "refresh_rate": 0.5,
-    "theme": "light"
-  },
-  "process": {
-    "show_kernel": false,
-    "max_display": 15
-  },
-  "widgets": {
-    "dashboard": {"enabled": true},
-    "clock": {"enabled": true},
-    "calendar": {"enabled": true},
-    "matrix": {"enabled": true},
-    "music_viz": {"enabled": true},
-    "pstree": {"enabled": true},
-    "fastfetch": {"enabled": true},
-    "custom_text": {"enabled": true},
-    "process_manager": {"enabled": true},
-    "system_stats": {"enabled": true}
-  }
+  "ui": {"refresh_rate": 0.5, "theme": "light"},
+  "process": {"show_kernel": false, "max_display": 15, "auto_refresh": true}
 }
 ```
 
-## Tests
-
-```bash
-pytest tests/ -v
-```
-
-70 tests covering: collectors, history, overview presenter, process service, process presenter,
-graph presenter, CLI dispatch, dashboard overview/status/responsive/tiny modes, theme + toggle,
-storage/network/graphs screen rendering, dashboard config + widget loading/caching/pagination.
+Notes:
+- `ui.theme` may be any preset name listed above
+- process search/filter state is session-local, not written back to config
 
 ## Architecture
 
-```
+```text
 src/monitor/
-├── __main__.py                 # CLI entry points
-├── app.py                      # Textual app shell (6 screens)
-├── server.py                   # Flask web dashboard + API
+├── __main__.py
+├── app.py
+├── server.py
 ├── core/
-│   ├── models.py               # Data models (SystemSnapshot, etc.)
-│   ├── collectors.py           # Shared SystemCollector (psutil + pynvml)
-│   ├── history.py              # Bounded HistoryBuffer for sparklines
-│   ├── process_service.py      # Process listing + kill/stop/resume
-│   ├── overview_presenter.py   # Dense overview formatting + color bars
-│   ├── process_presenter.py    # Process status/detail formatting
-│   ├── graph_presenter.py      # Graph header/label/scale helpers
-│   ├── dashboard_config.py     # Typed dashboard config + layout rules
-│   └── dashboard_widgets.py    # Widget renderers + pagination/cache helpers
-├── screens/
-│   ├── overview.py             # Config-driven dashboard screen
-│   ├── processes.py            # Process table with actions
-│   ├── storage.py              # Disk usage table
-│   ├── network.py              # Network stats cards
-│   ├── graphs.py               # Large sparklines + dual-resolution history
-│   ├── widgets.py              # Full-screen widget gallery (clock, matrix, calendar, music, etc.)
-│   └── help_screen.py          # Modal keybind overlay
-└── components/
-    └── process_table.py        # Reusable process DataTable + actions
+│   ├── collectors.py
+│   ├── dashboard_config.py
+│   ├── graph_presenter.py
+│   ├── history.py
+│   ├── models.py
+│   ├── overview_presenter.py
+│   ├── process_presenter.py
+│   ├── process_service.py
+│   └── theme.py
+└── screens/
+    ├── filemanager.py
+    ├── graphs.py
+    ├── help_screen.py
+    └── overview.py
 ```
 
-See `ARCHITECTURE.md` for the full contributor-oriented structure.
+## Validation
 
-## Why independent
+```bash
+cd monitor
+uv run pytest -q
+```
 
-Self-contained Python package inside the Vanta umbrella. Runs standalone (`pip install vanta-monitor`)
-or as part of the larger `~/Projects/vanta` tmux dashboard suite.
+Current suite covers config loading, widgets/helpers, presenters, CLI dispatch, theme switching, overview screen interactions, graph screen rendering, and file manager navigation.

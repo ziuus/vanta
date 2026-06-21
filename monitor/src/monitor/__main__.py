@@ -14,9 +14,9 @@ def run_tui() -> None:
 
 def run_web() -> None:
     """Launch the Flask web dashboard."""
-    from monitor.server import app as flask_app
+    from monitor.server import DEFAULT_PORT, app as flask_app
 
-    flask_app.run(host="0.0.0.0", port=5001, debug=False, use_reloader=False)
+    flask_app.run(host="0.0.0.0", port=DEFAULT_PORT, debug=False, use_reloader=False)
 
 
 def run_both() -> None:
@@ -24,10 +24,10 @@ def run_both() -> None:
     import multiprocessing
 
     from monitor.app import VantaMonitorTUI as App
-    from monitor.server import app as flask_app
+    from monitor.server import DEFAULT_PORT, app as flask_app
 
     def _web() -> None:
-        flask_app.run(host="0.0.0.0", port=5001, debug=False, use_reloader=False)
+        flask_app.run(host="0.0.0.0", port=DEFAULT_PORT, debug=False, use_reloader=False)
 
     p = multiprocessing.Process(target=_web, daemon=True)
     p.start()
