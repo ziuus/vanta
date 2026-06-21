@@ -1,12 +1,18 @@
-"""Help overlay showing all keyboard bindings for the Vanta Monitor TUI."""
+"""Help overlay showing global and screen-specific keyboard bindings."""
+
+from __future__ import annotations
+
+from pathlib import Path
 
 from textual.app import ComposeResult
+from textual.binding import Binding
+from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import Static
-from textual.containers import Horizontal, Vertical
-from textual.binding import Binding
 
-from monitor.core.theme import DARK, LIGHT
+from monitor.core.theme import get_palette, is_light_theme, theme_label
+
+STYLES_DIR = Path(__file__).resolve().parent.parent / "styles"
 
 
 def _tag(color: str, text: str) -> str:
@@ -17,41 +23,37 @@ KEYBINDS = [
     (
         "Navigation",
         [
-            ("1", "Dashboard (everything)"),
-            ("2", "File manager"),
+            ("1", "Overview dashboard"),
+            ("2", "Graphs / trends"),
+            ("3", "File manager"),
             ("q", "Quit Vanta Monitor"),
         ],
     ),
     (
-        "Dashboard controls",
+        "Overview",
         [
-            ("W", "Cycle widget (clock/cal/matrix/viz)"),
-        ],
-    ),
-    (
-        "File manager (screen 2)",
-        [
-            ("j/k", "Move up/down"),
-            ("l", "Enter directory"),
-            ("h", "Parent directory"),
-            ("~", "Go home"),
-            ("g/G", "Top / bottom"),
+            ("j/k", "Move process selection"),
+            ("/", "Search by name or PID"),
+            ("c / C", "Cycle sort forward / backward"),
+            ("u / U", "Toggle kernel / current-user filter"),
+            ("F8", "Toggle flat/tree process view"),
+            ("d", "Open process detail"),
+            ("K", "Open signal menu"),
         ],
     ),
     (
         "General",
         [
-            ("?", "Toggle this help screen"),
-            ("r", "Force refresh"),
-            ("T", "Toggle light/dark theme"),
+            ("?", "Open or close help"),
+            ("r", "Force refresh current screen"),
+            ("T", "Toggle light/dark"),
+            ("P", "Cycle theme preset"),
         ],
     ),
 ]
 
 
 class HelpOverlay(Screen):
-    """Modal help screen that overlays the current screen."""
-
     BINDINGS = [
         Binding("escape", "dismiss", "Close"),
         Binding("?", "dismiss", "Close"),
@@ -64,80 +66,30 @@ class HelpOverlay(Screen):
 
     @property
     def pal(self) -> dict[str, str]:
-        return LIGHT if self._theme_name == "light" else DARK
+        return get_palette(self._theme_name)
 
     def compose(self) -> ComposeResult:
         p = self.pal
         with Vertical(id="help-modal"):
-            yield Static(f"{_tag(p['accent'], '◈ Vanta Dashboard — Keybinds')}", id="help-title")
+            yield Static(f"{_tag(p['accent'], '◈ Vanta Monitor — Keybinds')}  [{p['text_dim']}]{theme_label(self._theme_name)}[/]", id="help-title")
             for category, binds in KEYBINDS:
-                yield Static(f"{_tag(p['text_muted'], category)}", classes="help-category")
+                yield Static(_tag(p["text_muted"], category), classes="help-category")
                 for key, action in binds:
                     yield Horizontal(
                         Static(f"[{p['text']}]{key:<8}[/]", classes="help-key"),
-                        Static(f"{_tag(p['text_dim'], action)}", classes="help-desc"),
+                        Static(_tag(p["text_dim"], action), classes="help-desc"),
                         classes="help-row",
                     )
             yield Static(
-                f"{_tag(p['text_dim'], 'Press ')}{_tag(p['text'], 'Esc')}, "
-                f"{_tag(p['text'], '?')}, or {_tag(p['text'], 'q')} "
-                f"{_tag(p['text_dim'], 'to close')}",
+                f"{_tag(p['text_dim'], 'Press ')}{_tag(p['text'], 'Esc')}, {_tag(p['text'], '?')}, or {_tag(p['text'], 'q')} {_tag(p['text_dim'], 'to close')}",
                 id="help-footer",
             )
 
     def apply_theme(self, theme: str) -> None:
         self._theme_name = theme
-        is_light = theme == "light"
-        if is_light:
+        if is_light_theme(theme):
             self.add_class("vanta-light")
         else:
             self.remove_class("vanta-light")
 
-    CSS = """
-    HelpOverlay {
-        align: center middle;
-        background: rgba(10, 10, 15, 0.88);
-    }
-    #help-modal {
-        width: 54;
-        height: auto;
-        border: solid #06b6d4;
-        background: #0f0f1a;
-        padding: 1 2;
-    }
-    #help-title {
-        text-style: bold;
-        padding: 0 0 1 0;
-        text-align: center;
-    }
-    .help-category {
-        text-style: bold;
-        padding: 1 0 0 0;
-        border-top: solid #1e1e3f;
-    }
-    .help-row {
-        height: 1;
-        padding: 0 1;
-    }
-    .help-key {
-        width: 10;
-    }
-    .help-desc {
-        width: 1fr;
-    }
-    #help-footer {
-        text-align: center;
-        padding: 1 0 0 0;
-    }
-    
-    .vanta-light HelpOverlay {
-        background: rgba(255, 255, 255, 0.88);
-    }
-    .vanta-light #help-modal {
-        border: solid #0891b2;
-        background: #ffffff;
-    }
-    .vanta-light .help-category {
-        border-top: solid #d1d5db;
-    }
-    """
+    CSS_PATH = str(STYLES_DIR / "help.tcss")

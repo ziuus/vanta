@@ -1,6 +1,32 @@
 import psutil
+import signal
 from monitor.core.models import ProcessRow
-from typing import Optional
+
+
+SECRET_ENV_TOKENS = (
+    "key",
+    "token",
+    "secret",
+    "password",
+    "passwd",
+    "cookie",
+    "session",
+    "credential",
+    "auth",
+)
+
+
+def _sanitize_env_preview(env: dict[str, str], *, limit: int = 8) -> list[str]:
+    preview: list[str] = []
+    for key in sorted(env)[:limit]:
+        value = str(env[key])
+        lowered = key.lower()
+        if any(token in lowered for token in SECRET_ENV_TOKENS):
+            value = "<redacted>"
+        elif len(value) > 96:
+            value = value[:93] + "..."
+        preview.append(f"{key}={value}"[:120])
+    return preview
 
 
 # Kernel process name prefixes and substrings — used to filter OS threads
@@ -66,6 +92,18 @@ KERNEL_PREFIXES: tuple[str, ...] = (
     "nvidia-worker",
 )
 
+# Human-readable signal names
+SIGNALS: dict[str, int] = {
+    "TERM": signal.SIGTERM,
+    "KILL": signal.SIGKILL,
+    "STOP": signal.SIGSTOP,
+    "CONT": signal.SIGCONT,
+    "HUP": signal.SIGHUP,
+    "INT": signal.SIGINT,
+    "USR1": signal.SIGUSR1,
+    "USR2": signal.SIGUSR2,
+}
+
 
 def looks_like_kernel(name_lower: str) -> bool:
     """Heuristic: kernel threads start with a known prefix or contain '/'."""
@@ -94,18 +132,31 @@ def sort_key_for(column: str) -> callable:
         val = getattr(row, attr, row.cpu_percent)
         if isinstance(val, float | int):
             return val
-        return str(val)
+        return str(val).lower()
 
     return keyfn
 
 
+SORT_COLUMNS = ["cpu", "memory", "pid", "threads", "name"]
+
+
 def next_sort_column(current: str) -> str:
-    columns = ["cpu", "memory", "pid", "threads", "name"]
     normalized = current.strip().lower()
-    if normalized not in columns:
-        return columns[0]
-    idx = columns.index(normalized)
-    return columns[(idx + 1) % len(columns)]
+    if normalized not in SORT_COLUMNS:
+        return SORT_COLUMNS[0]
+    idx = SORT_COLUMNS.index(normalized)
+    return SORT_COLUMNS[(idx + 1) % len(SORT_COLUMNS)]
+
+
+def prev_sort_column(current: str) -> str:
+    normalized = current.strip().lower()
+    if normalized not in SORT_COLUMNS:
+        return SORT_COLUMNS[0]
+    idx = SORT_COLUMNS.index(normalized)
+    return SORT_COLUMNS[(idx - 1) % len(SORT_COLUMNS)]
+
+
+SIGNAL_LIST = ["TERM", "KILL", "STOP", "CONT", "HUP", "INT", "USR1", "USR2"]
 
 
 class ProcessService:
@@ -117,10 +168,13 @@ class ProcessService:
         descending: bool = True,
         query: str = "",
         limit: int = 50,
+        username: str | None = None,
     ) -> list[ProcessRow]:
         rows: list[ProcessRow] = []
         query_lower = query.lower().strip()
-        for proc in psutil.process_iter(["pid", "name", "cpu_percent", "memory_percent", "status", "num_threads", "username"]):
+        for proc in psutil.process_iter(
+            ["pid", "name", "cpu_percent", "memory_percent", "status", "num_threads", "username", "ppid"]
+        ):
             try:
                 info = proc.info
                 name = (info.get("name") or "").strip()
@@ -128,6 +182,8 @@ class ProcessService:
                 if not include_kernel and looks_like_kernel(name_lower):
                     continue
                 if query_lower and query_lower not in name_lower and query_lower not in str(info["pid"]):
+                    continue
+                if username and info.get("username") != username:
                     continue
                 rows.append(
                     ProcessRow(
@@ -138,6 +194,7 @@ class ProcessService:
                         status=str(info.get("status") or "unknown"),
                         threads=int(info.get("num_threads") or 0),
                         username=info.get("username"),
+                        ppid=info.get("ppid") or 0,
                     )
                 )
             except (psutil.NoSuchProcess, psutil.AccessDenied):
@@ -146,8 +203,60 @@ class ProcessService:
         rows.sort(key=keyfn, reverse=descending)
         return rows[:limit]
 
+    def get_process_detail(self, pid: int) -> dict:
+        """Return detailed info about a process."""
+        try:
+            p = psutil.Process(pid)
+            with p.oneshot():
+                mem = p.memory_info()
+                try:
+                    env = p.environ()
+                    env_preview = _sanitize_env_preview(env)
+                except (psutil.AccessDenied, OSError, AttributeError):
+                    env_preview = []
+                try:
+                    fds = p.num_fds()
+                except (psutil.AccessDenied, AttributeError):
+                    fds = None
+                try:
+                    affinity = p.cpu_affinity()
+                except (psutil.AccessDenied, AttributeError):
+                    affinity = []
+                try:
+                    connections = len(p.connections())
+                except (psutil.AccessDenied, OSError):
+                    connections = None
+                return {
+                    "pid": pid,
+                    "name": p.name(),
+                    "exe": p.exe(),
+                    "cmdline": " ".join(p.cmdline()) if p.cmdline() else "",
+                    "cwd": p.cwd(),
+                    "username": p.username(),
+                    "status": p.status(),
+                    "cpu_percent": p.cpu_percent(interval=0.0),
+                    "memory_percent": p.memory_percent(),
+                    "memory_rss": mem.rss if mem else 0,
+                    "memory_vms": mem.vms if mem else 0,
+                    "threads": p.num_threads(),
+                    "children": len(p.children()),
+                    "fds": fds,
+                    "connections": connections,
+                    "create_time": p.create_time(),
+                    "nice": p.nice(),
+                    "cpu_affinity": affinity,
+                    "environment_preview": env_preview,
+                }
+        except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+            return {"pid": pid, "name": f"<{e}>", "error": str(e)}
+
+    def send_signal(self, pid: int, sig_name: str) -> dict:
+        sig = SIGNALS.get(sig_name.upper(), signal.SIGTERM)
+        p = psutil.Process(pid)
+        p.send_signal(sig)
+        return {"success": True, "signal": sig_name, "message": f"Sent {sig_name} to PID {pid}"}
+
     def terminate_process(self, pid: int) -> dict:
-        """Kill a process. Returns {'success': True} or raises on access."""
         p = psutil.Process(pid)
         p.terminate()
         return {"success": True, "message": f"Terminated PID {pid}"}
@@ -161,4 +270,3 @@ class ProcessService:
         p = psutil.Process(pid)
         p.resume()
         return {"success": True, "message": f"Resumed PID {pid}"}
-
