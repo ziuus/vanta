@@ -23,6 +23,8 @@ cd ~/Projects/vanta
 
 The monitor is a self-contained Python package at `monitor/`. It runs independently from the tmux dashboard.
 
+![Vanta Monitor TUI Dashboard](assets/image.png)
+
 ```bash
 cd monitor
 pip install -e .
