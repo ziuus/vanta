@@ -61,6 +61,7 @@ tmux kill-session -t vanta 2>/dev/null
 
 # Start new session (detached)
 tmux -f "$TMUX_CONF" new-session -d -s vanta
+tmux set-option -t vanta @vanta_mode "$mode"
 
 # Add windows based on mode
 case "$mode" in

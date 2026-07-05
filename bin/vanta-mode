@@ -118,9 +118,12 @@ main() {
         work)   setup_work ;;
         chill)  setup_chill ;;
         monitor) setup_monitor ;;
-        help|--help|-h) show_help ;;
-        *)      echo "Unknown mode: $mode" && show_help ;;
+        help|--help|-h) show_help; exit 0 ;;
+        *)      echo "Unknown mode: $mode" && show_help; exit 1 ;;
     esac
+
+    tmux set-option -t "$SESSION" @vanta_mode "$mode"
+    tmux refresh-client -S
 }
 
 main "$@"

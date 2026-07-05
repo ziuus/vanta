@@ -79,6 +79,7 @@ start_monitor() {
     # Create a fresh session with just the monitor
     tmux -f "$TMUX_CONF" new-session -d -s vanta -n monitor \
         "$VANTA_DIR/modules/monitor.sh $web_flag"
+    tmux set-option -t vanta @vanta_mode "monitor"
 
     # Web display: add a pane showing the URL
     if [ "$web_flag" = "both" ] || [ "$web_flag" = "web" ]; then
