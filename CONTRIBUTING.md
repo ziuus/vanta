@@ -1,48 +1,61 @@
-# Contributing to Vanta
+# Vanta – Contribution Guide
 
-First off, thank you for considering contributing to Vanta! It's people like you that make open-source such a great community.
-
-## How Can I Contribute?
-
-### Reporting Bugs
-If you find a bug, please create an issue on GitHub. Include as much detail as possible:
-* Your operating system and terminal emulator.
-* Steps to reproduce the bug.
-* Screenshots if applicable.
-
-### Suggesting Enhancements
-We love new ideas! If you have an idea for a new feature, mode, or widget:
-* Open an issue using the "enhancement" label.
-* Describe how it should work and why it would be useful.
-
-### Pull Requests
-1. Fork the repo and create your branch from `main`.
-2. If you've added code that should be tested, add tests.
-3. Ensure the test suite passes.
-4. Update documentation if your change adds new functionality.
-5. Submit your Pull Request!
-
-## Development Setup
+## Getting Started
 
 ```bash
-# Clone the repo
-git clone https://github.com/ziuus/vanta.git
-cd vanta/monitor
-
-# Create a virtual environment and install
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-
-# Optional: GPU support
-pip install -e ".[gpu]"
-
-# Run tests
-pytest tests/ -v
-
-# Launch the TUI
-vtui
+git clone https://github.com/ziuus/vanta
+cd vanta
+cargo run
 ```
 
-## Code of Conduct
-Please note that this project is released with a Contributor Code of Conduct. By participating in this project you agree to abide by its terms. Be respectful and constructive!
+Vanta requires Rust 1.96+.
+
+## Codebase
+
+```
+src/
+├── main.rs          — entrypoint, terminal init, event loop
+├── app.rs           — Theme, App state, screen routing, render
+├── config.rs        — Config loading (TOML)
+├── screens/
+│   ├── mod.rs       — Screen enum
+│   ├── overview.rs  — system monitoring view
+│   └── widgets.rs   — flex/eye-candy view
+├── monitors/
+│   ├── mod.rs
+│   ├── cpu.rs       — CPU bars + per-core display
+│   └── memory.rs    — RAM + swap gauges
+└── widgets/
+    ├── mod.rs
+    ├── clock.rs     — date/time display
+    └── matrix.rs    — matrix rain animation
+```
+
+## Controls
+
+| Key | Action |
+|-----|--------|
+| `1` | Overview (monitoring) |
+| `2` | Widgets (eye candy) |
+| `t` | Toggle theme |
+| `q` | Quit |
+
+## Adding a new widget
+
+1. Create `src/widgets/<name>.rs` with `pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme)`
+2. Add `pub mod <name>;` to `src/widgets/mod.rs`
+3. Render it from `src/screens/widgets.rs`
+
+## Stack
+
+- **Ratatui** 0.29 — TUI framework
+- **Crossterm** 0.28 — terminal backend
+- **sysinfo** 0.33 — system information
+- **chrono** — date/time
+- **rand** — random (matrix rain)
+
+## Code Style
+
+- `cargo fmt` before committing
+- `cargo clippy` — no warnings
+- Keep widget render functions stateless where possible

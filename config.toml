@@ -1,0 +1,13 @@
+[ui]
+refresh_rate = 0.5
+theme = "dark"
+
+[widgets]
+cpu = true
+memory = true
+network = true
+disk = true
+clock = true
+calendar = true
+matrix = true
+music_viz = true
