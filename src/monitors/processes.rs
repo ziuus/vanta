@@ -527,15 +527,33 @@ pub fn render(
 
     // ── Column width calculation ──
     let w = area.width as usize;
-    let col_pid = 6usize;
-    let col_cpu = 6usize;   // " 12.3%"
-    let col_mem = 6usize;   // " 45.2%"
-    let col_rss = 8usize;   // " 240.0M"
-    let col_state = 3usize; // "  S "
-    let col_user = 8usize;  // "  user"
-    let col_thr = 4usize;   // "  12"
-    let fixed = col_pid + col_cpu + col_mem + col_rss + col_state + col_user + col_thr + 8; // spacers
-    let col_name = w.saturating_sub(fixed).max(6);
+
+    // Fixed-width mandatory columns
+    let col_pid = 6usize;    // " 12345"
+    let col_cpu = 6usize;    // " 12.3%"
+    let col_mem = 6usize;    // " 45.2%"
+    let col_rss = 9usize;    // "  240.0M"
+    let col_state = 3usize;  // "  S "
+    let col_user = 7usize;   // "  root"
+    let col_thr = 4usize;    // "  12"
+
+    let fixed_w = col_pid + col_cpu + col_mem + col_rss + col_state + col_user + col_thr;
+    let sep_count = 8usize; // spaces between fixed columns
+
+    // Base space needed (no I/O or command): fixed + separators + minimal name
+    let base_need = fixed_w + sep_count + 8; // minimal 8-char name
+
+    // I/O columns — shown when there's room
+    let show_io = w >= base_need + 18; // 8+1+8+1 = 18 for " R/s" + " W/s"
+    let col_read: usize = if show_io { 8 } else { 0 };
+    let col_write: usize = if show_io { 8 } else { 0 };
+    let io_sep = if show_io { 2 } else { 0 };
+
+    // Remaining space shared between NAME and COMMAND
+    let remaining = w.saturating_sub(fixed_w + sep_count + io_sep);
+    // NAME gets ~40% of remaining (capped at 30), COMMAND gets the rest
+    let col_name = (remaining * 2 / 5).min(30).max(8.min(remaining));
+    let col_cmd = remaining.saturating_sub(col_name).max(4);
 
     // Dynamic page size
     let page_size = area.height.saturating_sub(1) as usize;
@@ -551,7 +569,24 @@ pub fn render(
         String::new()
     };
 
-    let sort_arrow = |field: SortField| -> &'static str {
+    let mode_tag = if tree_mode { " [T]" } else { " [F]" };
+    let hdr_style = Style::default().fg(theme.dim).bg(theme.bg);
+
+    // Helper: produce a fixed-width Span for a column
+    let hdr_cell = |label: &str, arrow: &str, width: usize| -> String {
+        // Column = " " + arrow + label, padded to `width`
+        let inner = if arrow.is_empty() {
+            format!("{}", label)
+        } else {
+            format!("{}{}", arrow, label)
+        };
+        if inner.len() + 1 >= width {
+            format!(" {}", &inner[..width.saturating_sub(2)])
+        } else {
+            format!(" {:1$}", inner, width.saturating_sub(2) - inner.len())
+        }
+    };
+    let hdr_arrow = |field: SortField| -> &'static str {
         if sort_field == field {
             if sort_asc { "▴" } else { "▾" }
         } else {
@@ -559,47 +594,57 @@ pub fn render(
         }
     };
 
-    let mode_tag = if tree_mode { " [T]" } else { " [F]" };
-    let hdr_style = Style::default().fg(theme.dim).bg(theme.bg);
-
     let mut hdr_spans: Vec<Span> = Vec::new();
     hdr_spans.push(Span::styled(
-        format!(" {} {:>5}", sort_arrow(SortField::Pid), "PID"),
+        hdr_cell("PID", hdr_arrow(SortField::Pid), col_pid),
         hdr_style,
     ));
     hdr_spans.push(Span::styled(
-        format!(" {:1$} ", format!("{}{}", "NAME", mode_tag), col_name),
+        format!(" {:1$}", format!("{}{}", "NAME", mode_tag), col_name.saturating_sub(1)),
         hdr_style,
     ));
     hdr_spans.push(Span::styled(
-        format!(" {} {:>5}", sort_arrow(SortField::Cpu), "CPU"),
+        hdr_cell("CPU%", hdr_arrow(SortField::Cpu), col_cpu),
         hdr_style,
     ));
     hdr_spans.push(Span::styled(
-        format!(" {} {:>5}", sort_arrow(SortField::Mem), "MEM"),
+        hdr_cell("MEM%", hdr_arrow(SortField::Mem), col_mem),
         hdr_style,
     ));
     hdr_spans.push(Span::styled(
-        format!(" {:>8}", "RSS"),
+        format!(" {:>1$}", "RSS", col_rss.saturating_sub(1)),
         hdr_style,
     ));
     hdr_spans.push(Span::styled(
-        format!(" S "),
+        format!(" {:<1$}", "S", col_state.saturating_sub(2)),
         hdr_style,
     ));
     hdr_spans.push(Span::styled(
-        format!(" {:>7}", "USER"),
+        format!(" {:>1$}", "USER", col_user.saturating_sub(1)),
         hdr_style,
     ));
     hdr_spans.push(Span::styled(
-        format!(" THR"),
+        format!(" {:>1$}", "THR", col_thr.saturating_sub(1)),
         hdr_style,
     ));
-    if total_items > page_size {
+    if show_io {
         hdr_spans.push(Span::styled(
-            scroll_hint,
-            Style::default().fg(theme.dim).bg(theme.bg),
+            format!(" {:>1$}", "R/s", col_read.saturating_sub(1)),
+            hdr_style,
         ));
+        hdr_spans.push(Span::styled(
+            format!(" {:>1$}", "W/s", col_write.saturating_sub(1)),
+            hdr_style,
+        ));
+    }
+    if col_cmd > 4 {
+        hdr_spans.push(Span::styled(
+            format!(" {:1$}", "COMMAND", col_cmd.saturating_sub(1)),
+            hdr_style,
+        ));
+    }
+    if total_items > page_size {
+        hdr_spans.push(Span::styled(scroll_hint, hdr_style));
     }
     lines.push(Line::from(hdr_spans));
 
@@ -607,9 +652,11 @@ pub fn render(
     for (i, row) in display_rows.iter().skip(scroll).take(page_size).enumerate() {
         let is_selected = i == 0;
 
-        let name_display = trunc_name(&row.name, col_name.saturating_sub(6));
+        let name_avail = col_name.saturating_sub(6); // room for tree prefix
+        let name_display = trunc_name(&row.name, name_avail);
         let cpu_display = fmt_cpu(row.cpu_pct);
         let rss_str = fmt_rss(row.mem_kb);
+        let mem_pct = (row.mem_kb as f64 / 15_000_000.0 * 100.0).clamp(0.0, 100.0) as u8;
 
         let cpu_color = if row.cpu_pct > 50.0 {
             theme.red
@@ -619,8 +666,13 @@ pub fn render(
             theme.dim
         };
 
-        let mem_pct = (row.mem_kb as f64 / 15_000_000.0 * 100.0).clamp(0.0, 100.0) as u8;
-        let mem_bar_color = if mem_pct > 60 { theme.red } else if mem_pct > 30 { theme.yellow } else { theme.green };
+        let mem_bar_color = if mem_pct > 60 {
+            theme.red
+        } else if mem_pct > 30 {
+            theme.yellow
+        } else {
+            theme.green
+        };
 
         let (row_bg, row_fg) = if is_selected {
             (theme.surface, theme.accent)
@@ -629,67 +681,83 @@ pub fn render(
         };
 
         let indicator = if is_selected { "▸" } else { " " };
-
         let prefix = tree_prefix(row.depth, row.has_children, row.expanded, tree_mode);
         let name_part = format!("{}{}", prefix, name_display);
-
-        let pid_str = format!("{:>5}", row.pid);
         let user_str = if row.uid == 0 { "root" } else { "user" };
 
         let mut spans: Vec<Span> = Vec::new();
 
-        // Indicator + PID
+        // PID
+        let pid_str = format!("{:>5}", row.pid);
         spans.push(Span::styled(
-            format!("{}{} {}", indicator, pid_str, name_part),
+            format!("{}{}", indicator, pid_str),
             Style::default().fg(row_fg).bg(row_bg),
         ));
 
-        // Pad name area
-        let name_used = indicator.len() + 1 + 5 + 1 + name_part.len();
-        if name_used < fixed + col_name {
-            let extra = (fixed + col_name).saturating_sub(name_used);
-            spans.push(Span::styled(
-                " ".repeat(extra),
-                Style::default().bg(row_bg),
-            ));
-        }
-
-        // CPU
+        // NAME
         spans.push(Span::styled(
-            format!(" {}", cpu_display),
+            format!(" {:1$}", name_part, col_name.saturating_sub(1)),
+            Style::default().fg(row_fg).bg(row_bg),
+        ));
+
+        // CPU%
+        let cpu_str = format!("{:>5}", cpu_display);
+        spans.push(Span::styled(
+            format!(" {}", cpu_str),
             Style::default().fg(cpu_color).bg(row_bg),
         ));
 
         // MEM%
-        let mem_pct_str = format!("{:>5.1}%", mem_pct as f64);
+        let mem_str = format!("{:>5.1}%", mem_pct as f64);
         spans.push(Span::styled(
-            format!(" {}", mem_pct_str),
+            format!(" {}", mem_str),
             Style::default().fg(mem_bar_color).bg(row_bg),
         ));
 
         // RSS
         spans.push(Span::styled(
-            format!(" {:>8}", rss_str),
+            format!(" {:>7}", rss_str),
             Style::default().fg(theme.dim).bg(row_bg),
         ));
 
         // State
         spans.push(Span::styled(
-            format!(" {:<2}", row.state),
+            format!(" {}", row.state),
             state_style(&row.state, theme).bg(row_bg),
         ));
 
         // User
+        let user_str_fmt = format!(" {:>6}", user_str);
         spans.push(Span::styled(
-            format!(" {:>7}", user_str),
+            user_str_fmt,
             Style::default().fg(theme.secondary).bg(row_bg),
         ));
 
         // Threads
+        let thr_str = format!(" {:>3}", row.threads.min(999));
         spans.push(Span::styled(
-            format!(" {:>3}", row.threads.min(999)),
+            thr_str,
             Style::default().fg(theme.dim).bg(row_bg),
         ));
+
+        // Optional I/O columns
+        if show_io {
+            // Simulate I/O data (demo or real)
+            let read_str = format!(" {:>6}", "45M/s");
+            let write_str = format!(" {:>6}", "12M/s");
+            spans.push(Span::styled(read_str, Style::default().fg(theme.secondary).bg(row_bg)));
+            spans.push(Span::styled(write_str, Style::default().fg(theme.secondary).bg(row_bg)));
+        }
+
+        // COMMAND (flex column — use remaining space)
+        if col_cmd > 4 {
+            let cmd = row.name.clone(); // In real mode, parse from cmdline
+            let cmd_trim = trunc_name(&cmd, col_cmd.saturating_sub(1));
+            spans.push(Span::styled(
+                format!(" {}", cmd_trim),
+                Style::default().fg(theme.dim).bg(row_bg),
+            ));
+        }
 
         lines.push(Line::from(spans));
     }
