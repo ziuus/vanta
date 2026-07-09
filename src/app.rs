@@ -17,6 +17,7 @@ struct Summary {
     cpu_pct: f32,
     mem_pct: f64,
     gpu_pct: u64,
+    disk_pct: f64,
     net_dl: String,
     net_ul: String,
     bat_pct: Option<u8>,
@@ -48,6 +49,17 @@ fn collect_summary() -> Summary {
             s.parse::<u64>().ok()
         })
         .unwrap_or(0);
+
+    // Disk usage (root filesystem via df)
+    let disk_pct = std::process::Command::new("df")
+        .args(["-h", "--output=pcent", "/"])
+        .output()
+        .ok()
+        .and_then(|o| {
+            let s = String::from_utf8_lossy(&o.stdout);
+            s.lines().nth(1)?.trim().trim_end_matches('%').parse::<f64>().ok()
+        })
+        .unwrap_or(0.0);
 
     // Network (aggregate dl/ul from /sys/class/net)
     let (mut rx_total, mut tx_total) = (0u64, 0u64);
@@ -112,6 +124,7 @@ fn collect_summary() -> Summary {
         cpu_pct,
         mem_pct,
         gpu_pct,
+        disk_pct,
         net_dl: fmt_bytes(rx_total),
         net_ul: fmt_bytes(tx_total),
         bat_pct,
@@ -127,6 +140,7 @@ pub enum SortField {
     Pid,
     Name,
     Cpu,
+    Rss,
 }
 
 impl SortField {
@@ -136,6 +150,7 @@ impl SortField {
             SortField::Mem => "MEM",
             SortField::Pid => "PID",
             SortField::Name => "NAME",
+            SortField::Rss => "RSS",
         }
     }
     pub fn next(&self) -> Self {
@@ -143,7 +158,8 @@ impl SortField {
             SortField::Cpu => SortField::Mem,
             SortField::Mem => SortField::Pid,
             SortField::Pid => SortField::Name,
-            SortField::Name => SortField::Cpu,
+            SortField::Name => SortField::Rss,
+            SortField::Rss => SortField::Cpu,
         }
     }
 }
@@ -467,31 +483,68 @@ impl App {
         // ── Collect summary for top bar ──
         let sum = collect_summary();
 
-        // ── Title bar: summary header ──
+        // ── Title bar: health summary bar with semantic colors ──
         let theme_icon = if matches!(self.theme.bg, Color::Rgb(10, 10, 15)) {
             "🌙"
         } else {
             "☀"
         };
 
-        let bat_str = sum.bat_pct.map_or(String::new(), |p| format!(" · 🔋{}%", p));
+        let dim = self.theme.dim;
+        let bg = self.theme.bg;
+        let green = self.theme.green;
+        let yellow = self.theme.yellow;
+        let red = self.theme.red;
+        let secondary = self.theme.secondary;
+        let accent = self.theme.accent;
 
-        let title_text = format!(
-            " vanta {}  {} · {} · CPU {:.0}% · MEM {:.0}% · GPU {}% · ↓{} ↑{}{}     [T]heme [q]uit",
-            theme_icon,
-            sum.os.split_whitespace().next().unwrap_or("Linux"),
-            sum.uptime,
-            sum.cpu_pct,
-            sum.mem_pct,
-            sum.gpu_pct,
-            sum.net_dl,
-            sum.net_ul,
-            bat_str,
-        );
-        let title_style = Style::default().fg(self.theme.dim).bg(self.theme.bg);
+        // Semantic coloring helpers
+        let cpu_col = if sum.cpu_pct > 80.0 { red } else if sum.cpu_pct > 50.0 { yellow } else { green };
+        let mem_col = if sum.mem_pct > 90.0 { red } else if sum.mem_pct > 70.0 { yellow } else { green };
+        let gpu_col = if sum.gpu_pct > 80 { red } else if sum.gpu_pct > 50 { yellow } else { green };
+        let disk_col = if sum.disk_pct > 90.0 { red } else if sum.disk_pct > 70.0 { yellow } else { green };
+        let bat_col = match sum.bat_pct {
+            Some(p) if p < 10 => red,
+            Some(p) if p < 20 => yellow,
+            _ => green,
+        };
+
+        let os_name = sum.os.split_whitespace().next().unwrap_or("Linux");
+
+        let mut bar = Vec::with_capacity(12);
+
+        // Static info (dim)
+        bar.push(Span::styled(format!(" vanta {} ", theme_icon), Style::default().fg(accent).bg(bg)));
+        bar.push(Span::styled(format!("{} {} ", os_name, sum.uptime), Style::default().fg(dim).bg(bg)));
+
+        // Health stats (colored)
+        bar.push(Span::styled(format!(" CPU {:.0}% ", sum.cpu_pct), Style::default().fg(cpu_col).bg(bg)));
+        bar.push(Span::styled(format!(" MEM {:.0}% ", sum.mem_pct), Style::default().fg(mem_col).bg(bg)));
+        bar.push(Span::styled(format!(" GPU {}% ", sum.gpu_pct), Style::default().fg(gpu_col).bg(bg)));
+        bar.push(Span::styled(format!(" DISK {:.0}% ", sum.disk_pct), Style::default().fg(disk_col).bg(bg)));
+
+        // Network (blue)
+        bar.push(Span::styled(format!(" ↓{} ", sum.net_dl), Style::default().fg(secondary).bg(bg)));
+        bar.push(Span::styled(format!(" ↑{} ", sum.net_ul), Style::default().fg(secondary).bg(bg)));
+
+        // Battery (semantic)
+        if let Some(p) = sum.bat_pct {
+            bar.push(Span::styled(format!(" 🔋{}% ", p), Style::default().fg(bat_col).bg(bg)));
+        }
+
+        // Push controls to the right
+        bar.push(Span::styled("    [T]heme [q]uit", Style::default().fg(dim).bg(bg)));
+
+        // Fill remaining space
+        let used: usize = bar.iter().map(|s| s.content.len()).sum();
+        let avail = title_bar.width as usize;
+        if used < avail {
+            bar.push(Span::styled(" ".repeat(avail - used), Style::default().bg(bg)));
+        }
+
         f.render_widget(
-            Paragraph::new(Line::from(Span::styled(&title_text, title_style)))
-                .style(Style::default().bg(self.theme.bg)),
+            Paragraph::new(Line::from(bar))
+                .style(Style::default().bg(bg)),
             title_bar,
         );
 

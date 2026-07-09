@@ -17,6 +17,8 @@ struct ProcInfo {
     mem_kb: u64,
     cpu_pct: f64,
     state: String,
+    threads: u64,
+    uid: u32,
 }
 
 fn read_proc_name(pid: u32) -> String {
@@ -47,6 +49,34 @@ fn read_proc_vmrss(pid: u32) -> u64 {
             if let Some(rss) = line.strip_prefix("VmRSS:") {
                 let val: String = rss.chars().filter(|c| c.is_ascii_digit()).collect();
                 return val.parse::<u64>().unwrap_or(0);
+            }
+        }
+    }
+    0
+}
+
+fn read_proc_threads(pid: u32) -> u64 {
+    let path = format!("/proc/{}/status", pid);
+    if let Ok(content) = fs::read_to_string(&path) {
+        for line in content.lines() {
+            if let Some(threads) = line.strip_prefix("Threads:") {
+                return threads.trim().parse::<u64>().unwrap_or(0);
+            }
+        }
+    }
+    0
+}
+
+fn read_proc_uid(pid: u32) -> u32 {
+    let path = format!("/proc/{}/status", pid);
+    if let Ok(content) = fs::read_to_string(&path) {
+        for line in content.lines() {
+            if let Some(uid_line) = line.strip_prefix("Uid:") {
+                return uid_line
+                    .split_whitespace()
+                    .next()
+                    .and_then(|s| s.parse::<u32>().ok())
+                    .unwrap_or(0);
             }
         }
     }
@@ -118,6 +148,8 @@ fn collect_processes(
                         mem_kb: mem,
                         cpu_pct: read_proc_cpu(pid, total_jiffies),
                         state: read_proc_state(pid),
+                        threads: read_proc_threads(pid),
+                        uid: read_proc_uid(pid),
                     });
                 }
             }
@@ -163,6 +195,15 @@ fn collect_processes(
                     a.cpu_pct.total_cmp(&b.cpu_pct as &f64)
                 } else {
                     b.cpu_pct.total_cmp(&a.cpu_pct)
+                }
+            });
+        }
+        SortField::Rss => {
+            procs.sort_by(|a, b| {
+                if sort_asc {
+                    a.mem_kb.cmp(&b.mem_kb)
+                } else {
+                    b.mem_kb.cmp(&a.mem_kb)
                 }
             });
         }
@@ -235,6 +276,8 @@ struct TreeRow {
     depth: usize,
     has_children: bool,
     expanded: bool,
+    threads: u64,
+    uid: u32,
 }
 
 fn flatten_tree(
@@ -259,6 +302,8 @@ fn flatten_tree(
                 depth: node.depth,
                 has_children: !node.children.is_empty(),
                 expanded: !is_collapsed,
+                threads: node.info.threads,
+                uid: node.info.uid,
             });
             if !is_collapsed {
                 walk(&node.children, collapsed, rows);
@@ -277,12 +322,9 @@ fn sort_tree(nodes: &mut Vec<ProcNode>, by: SortField, asc: bool) {
             SortField::Pid => a.info.pid.cmp(&b.info.pid),
             SortField::Name => a.info.name.cmp(&b.info.name),
             SortField::Cpu => a.info.cpu_pct.total_cmp(&b.info.cpu_pct as &f64),
+            SortField::Rss => a.info.mem_kb.cmp(&b.info.mem_kb),
         };
-        if asc {
-            cmp
-        } else {
-            cmp.reverse()
-        }
+        if asc { cmp } else { cmp.reverse() }
     });
     for child in nodes.iter_mut() {
         sort_tree(&mut child.children, by, asc);
@@ -320,13 +362,13 @@ fn fmt_cpu(pct: f64) -> String {
     }
 }
 
-/// Format memory KB to human-readable string.
-fn fmt_mem(mem_kb: u64) -> String {
+/// Format RSS memory KB for the 8-char wide column.
+fn fmt_rss(mem_kb: u64) -> String {
     let mb = mem_kb as f64 / 1024.0;
     if mb > 1024.0 {
-        format!("{:>7.1}G", mb / 1024.0)
+        format!("{:>8.1}G", mb / 1024.0)
     } else {
-        format!("{:>7.0}M", mb)
+        format!("{:>8.0}M", mb)
     }
 }
 
@@ -385,53 +427,55 @@ fn tree_prefix(depth: usize, has_children: bool, expanded: bool, tree_mode: bool
 /// Generate a stable fake process list for demo/screenshot mode.
 fn generate_demo_procs() -> Vec<ProcInfo> {
     let demos = [
-        ("systemd", 1, 0, 4096, 0.3, "S"),
-        ("init", 2, 0, 128, 0.0, "S"),
-        ("kthreadd", 3, 0, 0, 0.0, "S"),
-        ("ksoftirqd/0", 6, 2, 0, 0.1, "S"),
-        ("migration/0", 7, 2, 0, 0.0, "S"),
-        ("rcu_sched", 9, 2, 0, 0.2, "S"),
-        ("shell", 512, 1, 2048, 0.5, "S"),
-        ("sshd", 768, 1, 4096, 0.1, "S"),
-        ("bash", 1024, 512, 3072, 0.2, "S"),
-        ("login", 1536, 1, 4096, 0.0, "S"),
-        ("vim", 2048, 1024, 8192, 1.2, "S"),
-        ("kitty", 2304, 1024, 16384, 0.8, "S"),
-        ("firefox", 3072, 1024, 245760, 4.5, "S"),
-        ("Web Content", 3073, 3072, 81920, 3.1, "S"),
-        ("Web Content", 3074, 3072, 65536, 2.8, "S"),
-        ("GPU Process", 3075, 3072, 49152, 1.5, "S"),
-        ("chrome", 4096, 1024, 196608, 3.2, "S"),
-        ("Chrome_child", 4097, 4096, 65536, 2.1, "S"),
-        ("Chrome_child", 4098, 4096, 49152, 1.8, "S"),
-        ("code", 5120, 1024, 184320, 6.7, "S"),
-        ("code_helper", 5121, 5120, 32768, 0.5, "S"),
-        ("node", 5184, 5120, 45056, 2.3, "S"),
-        ("nvim", 5632, 1024, 16384, 0.9, "S"),
-        ("spotify", 6144, 1024, 81920, 1.4, "S"),
-        ("discord", 6656, 1024, 131072, 2.2, "S"),
-        ("kitty", 7168, 1024, 16384, 0.6, "S"),
-        ("zsh", 7169, 7168, 4096, 0.1, "S"),
-        ("cargo", 7720, 7169, 14336, 8.5, "R"),
-        ("rustc", 7721, 7720, 98304, 15.2, "R"),
-        ("sway", 8192, 1, 24576, 0.4, "S"),
-        ("pipewire", 8448, 1, 16384, 0.3, "S"),
-        ("wireplumber", 8704, 1, 8192, 0.2, "S"),
-        ("mutter", 8960, 1, 32768, 0.5, "S"),
-        ("gnome-shell", 9216, 1, 65536, 1.1, "S"),
-        ("containerd", 9728, 1, 20480, 0.3, "S"),
-        ("dockerd", 9984, 1, 49152, 0.6, "S"),
-        ("vanta", 10001, 1024, 12288, 0.8, "S"),
+        ("systemd", 1, 0, 4096, 0.3, "S", 62, 0),
+        ("init", 2, 0, 128, 0.0, "S", 1, 0),
+        ("kthreadd", 3, 0, 0, 0.0, "S", 1, 0),
+        ("ksoftirqd/0", 6, 2, 0, 0.1, "S", 1, 0),
+        ("migration/0", 7, 2, 0, 0.0, "S", 1, 0),
+        ("rcu_sched", 9, 2, 0, 0.2, "S", 1, 0),
+        ("shell", 512, 1, 2048, 0.5, "S", 2, 0),
+        ("sshd", 768, 1, 4096, 0.1, "S", 1, 0),
+        ("bash", 1024, 512, 3072, 0.2, "S", 1, 1000),
+        ("login", 1536, 1, 4096, 0.0, "S", 1, 0),
+        ("vim", 2048, 1024, 8192, 1.2, "S", 1, 1000),
+        ("kitty", 2304, 1024, 16384, 0.8, "S", 4, 1000),
+        ("firefox", 3072, 1024, 245760, 4.5, "S", 18, 1000),
+        ("Web Content", 3073, 3072, 81920, 3.1, "S", 8, 1000),
+        ("Web Content", 3074, 3072, 65536, 2.8, "S", 6, 1000),
+        ("GPU Process", 3075, 3072, 49152, 1.5, "S", 4, 1000),
+        ("chrome", 4096, 1024, 196608, 3.2, "S", 14, 1000),
+        ("Chrome_child", 4097, 4096, 65536, 2.1, "S", 5, 1000),
+        ("Chrome_child", 4098, 4096, 49152, 1.8, "S", 4, 1000),
+        ("code", 5120, 1024, 184320, 6.7, "S", 12, 1000),
+        ("code_helper", 5121, 5120, 32768, 0.5, "S", 3, 1000),
+        ("node", 5184, 5120, 45056, 2.3, "S", 8, 1000),
+        ("nvim", 5632, 1024, 16384, 0.9, "S", 2, 1000),
+        ("spotify", 6144, 1024, 81920, 1.4, "S", 6, 1000),
+        ("discord", 6656, 1024, 131072, 2.2, "S", 10, 1000),
+        ("kitty", 7168, 1024, 16384, 0.6, "S", 4, 1000),
+        ("zsh", 7169, 7168, 4096, 0.1, "S", 1, 1000),
+        ("cargo", 7720, 7169, 14336, 8.5, "R", 4, 1000),
+        ("rustc", 7721, 7720, 98304, 15.2, "R", 8, 1000),
+        ("sway", 8192, 1, 24576, 0.4, "S", 3, 1000),
+        ("pipewire", 8448, 1, 16384, 0.3, "S", 3, 1000),
+        ("wireplumber", 8704, 1, 8192, 0.2, "S", 2, 1000),
+        ("mutter", 8960, 1, 32768, 0.5, "S", 6, 1000),
+        ("gnome-shell", 9216, 1, 65536, 1.1, "S", 8, 1000),
+        ("containerd", 9728, 1, 20480, 0.3, "S", 5, 0),
+        ("dockerd", 9984, 1, 49152, 0.6, "S", 8, 0),
+        ("vanta", 10001, 1024, 12288, 0.8, "S", 3, 1000),
     ];
     demos
         .iter()
-        .map(|&(name, pid, ppid, mem_kb, cpu_pct, state)| ProcInfo {
+        .map(|&(name, pid, ppid, mem_kb, cpu_pct, state, threads, uid)| ProcInfo {
             name: name.to_string(),
             pid,
             ppid,
             mem_kb,
             cpu_pct,
             state: state.to_string(),
+            threads,
+            uid,
         })
         .collect()
 }
@@ -474,12 +518,26 @@ pub fn render(
                 depth: 0,
                 has_children: false,
                 expanded: false,
+                threads: p.threads,
+                uid: p.uid,
             })
             .collect();
         (rows, total)
     };
 
-    // Dynamic page size: available rows = area height - 1 (header line)
+    // ── Column width calculation ──
+    let w = area.width as usize;
+    let col_pid = 6usize;
+    let col_cpu = 6usize;   // " 12.3%"
+    let col_mem = 6usize;   // " 45.2%"
+    let col_rss = 8usize;   // " 240.0M"
+    let col_state = 3usize; // "  S "
+    let col_user = 8usize;  // "  user"
+    let col_thr = 4usize;   // "  12"
+    let fixed = col_pid + col_cpu + col_mem + col_rss + col_state + col_user + col_thr + 8; // spacers
+    let col_name = w.saturating_sub(fixed).max(6);
+
+    // Dynamic page size
     let page_size = area.height.saturating_sub(1) as usize;
     let max_scroll = total_items.saturating_sub(page_size);
     let scroll = scroll_offset.min(max_scroll);
@@ -493,44 +551,65 @@ pub fn render(
         String::new()
     };
 
-    let sort_cpu = if sort_field == SortField::Cpu {
-        if sort_asc { "▴" } else { "▾" }
-    } else { "" };
-    let sort_mem = if sort_field == SortField::Mem {
-        if sort_asc { "▴" } else { "▾" }
-    } else { "" };
-    let sort_pid = if sort_field == SortField::Pid {
-        if sort_asc { "▴" } else { "▾" }
-    } else { "" };
-    let sort_name = if sort_field == SortField::Name {
-        if sort_asc { "▴" } else { "▾" }
-    } else { "" };
+    let sort_arrow = |field: SortField| -> &'static str {
+        if sort_field == field {
+            if sort_asc { "▴" } else { "▾" }
+        } else {
+            ""
+        }
+    };
 
     let mode_tag = if tree_mode { " [T]" } else { " [F]" };
-
-    // Use a slightly brighter header style
     let hdr_style = Style::default().fg(theme.dim).bg(theme.bg);
-    lines.push(Line::from(vec![
-        Span::styled(format!("{}{:>5}", sort_pid, "PID"), hdr_style),
-        Span::styled(
-            format!(" {}{:12}", sort_name, format!("NAME{}", mode_tag)),
-            hdr_style,
-        ),
-        Span::styled(format!(" {}{:>5}", sort_cpu, "CPU"), hdr_style),
-        Span::styled(format!(" {}{:>8}", sort_mem, "MEM"), hdr_style),
-        Span::styled(format!("  S  {}", scroll_hint), Style::default().fg(theme.dim)),
-    ]));
+
+    let mut hdr_spans: Vec<Span> = Vec::new();
+    hdr_spans.push(Span::styled(
+        format!(" {} {:>5}", sort_arrow(SortField::Pid), "PID"),
+        hdr_style,
+    ));
+    hdr_spans.push(Span::styled(
+        format!(" {:1$} ", format!("{}{}", "NAME", mode_tag), col_name),
+        hdr_style,
+    ));
+    hdr_spans.push(Span::styled(
+        format!(" {} {:>5}", sort_arrow(SortField::Cpu), "CPU"),
+        hdr_style,
+    ));
+    hdr_spans.push(Span::styled(
+        format!(" {} {:>5}", sort_arrow(SortField::Mem), "MEM"),
+        hdr_style,
+    ));
+    hdr_spans.push(Span::styled(
+        format!(" {:>8}", "RSS"),
+        hdr_style,
+    ));
+    hdr_spans.push(Span::styled(
+        format!(" S "),
+        hdr_style,
+    ));
+    hdr_spans.push(Span::styled(
+        format!(" {:>7}", "USER"),
+        hdr_style,
+    ));
+    hdr_spans.push(Span::styled(
+        format!(" THR"),
+        hdr_style,
+    ));
+    if total_items > page_size {
+        hdr_spans.push(Span::styled(
+            scroll_hint,
+            Style::default().fg(theme.dim).bg(theme.bg),
+        ));
+    }
+    lines.push(Line::from(hdr_spans));
 
     // ── Data rows ──
-    let name_width = 14usize; // slightly wider for full-width panel
-
     for (i, row) in display_rows.iter().skip(scroll).take(page_size).enumerate() {
         let is_selected = i == 0;
 
-        let mem_str = fmt_mem(row.mem_kb);
-        let name_display = trunc_name(&row.name, name_width);
-
+        let name_display = trunc_name(&row.name, col_name.saturating_sub(6));
         let cpu_display = fmt_cpu(row.cpu_pct);
+        let rss_str = fmt_rss(row.mem_kb);
 
         let cpu_color = if row.cpu_pct > 50.0 {
             theme.red
@@ -540,33 +619,40 @@ pub fn render(
             theme.dim
         };
 
-        // Selected row gets a background + brighter foreground
+        let mem_pct = (row.mem_kb as f64 / 15_000_000.0 * 100.0).clamp(0.0, 100.0) as u8;
+        let mem_bar_color = if mem_pct > 60 { theme.red } else if mem_pct > 30 { theme.yellow } else { theme.green };
+
         let (row_bg, row_fg) = if is_selected {
             (theme.surface, theme.accent)
         } else {
             (theme.bg, theme.text)
         };
 
-        let indicator = if is_selected { "▸ " } else { "  " };
+        let indicator = if is_selected { "▸" } else { " " };
 
         let prefix = tree_prefix(row.depth, row.has_children, row.expanded, tree_mode);
-        let pid_str = format!("{:>5}", row.pid);
+        let name_part = format!("{}{}", prefix, name_display);
 
-        // Build the full row spans
+        let pid_str = format!("{:>5}", row.pid);
+        let user_str = if row.uid == 0 { "root" } else { "user" };
+
         let mut spans: Vec<Span> = Vec::new();
 
-        // Indicator + PID with bg
+        // Indicator + PID
         spans.push(Span::styled(
-            format!("{}{}", indicator, pid_str),
+            format!("{}{} {}", indicator, pid_str, name_part),
             Style::default().fg(row_fg).bg(row_bg),
         ));
 
-        // Name + prefix
-        let name_part = format!(" {}{}", prefix, name_display);
-        spans.push(Span::styled(
-            name_part,
-            Style::default().fg(row_fg).bg(row_bg),
-        ));
+        // Pad name area
+        let name_used = indicator.len() + 1 + 5 + 1 + name_part.len();
+        if name_used < fixed + col_name {
+            let extra = (fixed + col_name).saturating_sub(name_used);
+            spans.push(Span::styled(
+                " ".repeat(extra),
+                Style::default().bg(row_bg),
+            ));
+        }
 
         // CPU
         spans.push(Span::styled(
@@ -574,16 +660,35 @@ pub fn render(
             Style::default().fg(cpu_color).bg(row_bg),
         ));
 
-        // MEM
+        // MEM%
+        let mem_pct_str = format!("{:>5.1}%", mem_pct as f64);
         spans.push(Span::styled(
-            format!(" {}", mem_str),
+            format!(" {}", mem_pct_str),
+            Style::default().fg(mem_bar_color).bg(row_bg),
+        ));
+
+        // RSS
+        spans.push(Span::styled(
+            format!(" {:>8}", rss_str),
             Style::default().fg(theme.dim).bg(row_bg),
         ));
 
         // State
         spans.push(Span::styled(
-            format!("  {}", row.state),
+            format!(" {:<2}", row.state),
             state_style(&row.state, theme).bg(row_bg),
+        ));
+
+        // User
+        spans.push(Span::styled(
+            format!(" {:>7}", user_str),
+            Style::default().fg(theme.secondary).bg(row_bg),
+        ));
+
+        // Threads
+        spans.push(Span::styled(
+            format!(" {:>3}", row.threads.min(999)),
+            Style::default().fg(theme.dim).bg(row_bg),
         ));
 
         lines.push(Line::from(spans));

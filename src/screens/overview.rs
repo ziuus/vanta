@@ -19,41 +19,40 @@ pub fn render(
 ) {
     // Split area: top section (metrics/widgets) | bottom section (processes full-width)
     let chunks = Layout::vertical([
-        Constraint::Ratio(2, 5),  // Top: metrics + widgets
-        Constraint::Ratio(3, 5),  // Bottom: processes
+        Constraint::Ratio(4, 9),  // Top: metrics + widgets (slightly bigger for primary)
+        Constraint::Ratio(5, 9),  // Bottom: processes
     ])
     .split(area);
 
-    // ── Top section: 3-column grid ──
+    // ── Top section: 3-column grid, primary gets wider ──
     let cols = Layout::horizontal([
-        Constraint::Ratio(1, 3),
-        Constraint::Ratio(1, 3),
-        Constraint::Ratio(1, 3),
+        Constraint::Ratio(4, 10),  // Primary: CPU, Memory, Disk, Network
+        Constraint::Ratio(3, 10),  // Secondary: Clock, Calendar, Media
+        Constraint::Ratio(3, 10),  // Peripheral: GPU, Visualizer, System
     ])
     .split(chunks[0]);
 
-    // Column 1: Monitoring
+    // Column 1: Primary monitoring (4 stacked panels)
     let col1 = Layout::vertical([
-        Constraint::Ratio(1, 3),
-        Constraint::Ratio(1, 3),
-        Constraint::Ratio(1, 3),
+        Constraint::Ratio(1, 4),  // CPU
+        Constraint::Ratio(1, 4),  // Memory
+        Constraint::Ratio(1, 4),  // Disk
+        Constraint::Ratio(1, 4),  // Network
     ])
     .split(cols[0]);
 
-    // Column 2: System (dynamic — includes optional Media between Clock and Calendar)
+    // Column 2: Secondary widgets
     let col2 = if config.widgets.media {
         Layout::vertical([
-            Constraint::Ratio(1, 3),  // Clock
+            Constraint::Ratio(2, 5),  // Clock (bigger)
             Constraint::Length(3),     // Media (compact)
-            Constraint::Ratio(1, 3),  // Calendar
-            Constraint::Ratio(1, 3),  // Disk
+            Constraint::Ratio(2, 5),  // Calendar (bigger)
         ])
         .split(cols[1])
     } else {
         Layout::vertical([
-            Constraint::Ratio(1, 3),
-            Constraint::Ratio(1, 3),
-            Constraint::Ratio(1, 3),
+            Constraint::Ratio(1, 2),  // Clock
+            Constraint::Ratio(1, 2),  // Calendar
         ])
         .split(cols[1])
     };
@@ -66,7 +65,7 @@ pub fn render(
     ])
     .split(cols[2]);
 
-    // ── Column 1: Monitoring ──
+    // ── Column 1: Primary Monitoring ──
 
     // CPU
     if config.widgets.cpu {
@@ -86,16 +85,25 @@ pub fn render(
         memory::render(f, inner, theme, config.demo);
     }
 
+    // Disk
+    if config.widgets.disk {
+        let is_focused = focused == Some(PanelId::Disk);
+        let block = panel(" Disk ", "💾 ", theme, is_focused);
+        let inner = block.inner(col1[2]);
+        f.render_widget(block, col1[2]);
+        disk::render(f, inner, theme, config.demo);
+    }
+
     // Network
     if config.widgets.network {
         let is_focused = focused == Some(PanelId::Network);
         let block = panel(" Network ", "🌐 ", theme, is_focused);
-        let inner = block.inner(col1[2]);
-        f.render_widget(block, col1[2]);
+        let inner = block.inner(col1[3]);
+        f.render_widget(block, col1[3]);
         network::render(f, inner, theme, config.demo);
     }
 
-    // ── Column 2: System ──
+    // ── Column 2: Secondary ──
 
     let mut ci = 0_usize;
 
@@ -126,19 +134,9 @@ pub fn render(
         let inner = block.inner(col2[ci]);
         f.render_widget(block, col2[ci]);
         calendar::render(f, inner, theme, states.calendar_month_offset);
-        ci += 1;
     }
 
-    // Disk
-    if config.widgets.disk {
-        let is_focused = focused == Some(PanelId::Disk);
-        let block = panel(" Disk ", "💾 ", theme, is_focused);
-        let inner = block.inner(col2[ci]);
-        f.render_widget(block, col2[ci]);
-        disk::render(f, inner, theme, config.demo);
-    }
-
-    // ── Column 3: GPU + Visualizer + System Info ──
+    // ── Column 3: Peripheral ──
 
     // GPU
     if config.widgets.gpu {
