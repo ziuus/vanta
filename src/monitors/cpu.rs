@@ -128,9 +128,23 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme, demo: bool) {
     }
     let chunks = Layout::vertical(constraints).split(area);
 
+    // ── Temperature warning check ──
+    let max_core_temp = core_temps
+        .iter()
+        .skip(1) // skip package placeholder (index 0)
+        .copied()
+        .fold(f64::NEG_INFINITY, f64::max);
+    let temp_warning = max_core_temp.is_finite() && max_core_temp > 70.0;
+    let temp_critical = max_core_temp.is_finite() && max_core_temp > 85.0;
+
     // ── Compact header ──
     let mut info = String::new();
-    let color = usage_color(cpu_usage, theme);
+    let mut color = usage_color(cpu_usage, theme);
+    if temp_critical {
+        color = theme.red;
+    } else if temp_warning {
+        color = theme.yellow;
+    }
     info.push_str(&format!(" CPU  {}  {:.1}%", '█', cpu_usage));
     info.push_str(&format!(
         "  load {:.2} {:.2} {:.2}",
@@ -139,6 +153,11 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme, demo: bool) {
     info.push_str(&format!("  |  {}c", core_count));
     if let Some(t) = temp_c {
         info.push_str(&format!("  ·  {}°C", t as u16));
+    }
+    if temp_critical {
+        info.push_str("  CRITICAL");
+    } else if temp_warning {
+        info.push_str("  HOT");
     }
     if freq_mhz > 0 {
         info.push_str(&format!("  ·  {} MHz", freq_mhz));

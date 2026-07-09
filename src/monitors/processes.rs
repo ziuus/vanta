@@ -1,5 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::sync::{LazyLock, Mutex};
+use std::time::Instant;
 
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
@@ -9,9 +11,20 @@ use ratatui::Frame;
 
 use crate::app::{self, SortField};
 
+/// Tracks previous I/O counters for rate calculation.
+struct IoPrev {
+    read: u64,
+    write: u64,
+    time: Instant,
+}
+
+static PREV_IO: LazyLock<Mutex<HashMap<u32, IoPrev>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
 #[derive(Debug, Clone)]
 struct ProcInfo {
     name: String,
+    cmdline: String,
     pid: u32,
     ppid: u32,
     mem_kb: u64,
@@ -19,6 +32,8 @@ struct ProcInfo {
     state: String,
     threads: u64,
     uid: u32,
+    read_bps: f64,   // bytes/sec (delta from /proc/[pid]/io)
+    write_bps: f64,  // bytes/sec
 }
 
 fn read_proc_name(pid: u32) -> String {
@@ -101,7 +116,7 @@ fn read_proc_cpu(pid: u32, total_jiffies: f64) -> f64 {
 fn read_proc_ppid(pid: u32) -> u32 {
     let path = format!("/proc/{}/stat", pid);
     if let Ok(content) = fs::read_to_string(&path) {
-        let rest = content.split(')').last().unwrap_or("");
+        let rest = content.split(')').next_back().unwrap_or("");
         let parts: Vec<&str> = rest.split_whitespace().collect();
         if parts.len() > 2 {
             return parts[1].parse::<u32>().unwrap_or(0);
@@ -126,6 +141,67 @@ fn read_total_jiffies() -> f64 {
     1.0
 }
 
+/// Per-process I/O rates from /proc/[pid]/io (read_bytes / write_bytes delta).
+fn read_proc_io_rates(pid: u32) -> (f64, f64) {
+    let path = format!("/proc/{}/io", pid);
+    let content = match fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => return (0.0, 0.0),
+    };
+
+    let mut read_bytes = 0u64;
+    let mut write_bytes = 0u64;
+    for line in content.lines() {
+        if let Some(val) = line.strip_prefix("read_bytes:") {
+            read_bytes = val.trim().parse().unwrap_or(0);
+        } else if let Some(val) = line.strip_prefix("write_bytes:") {
+            write_bytes = val.trim().parse().unwrap_or(0);
+        }
+    }
+
+    let now = Instant::now();
+    let mut prev_map = PREV_IO.lock().unwrap();
+    let (rb, wb) = if let Some(prev) = prev_map.get(&pid) {
+        let dt = now.saturating_duration_since(prev.time);
+        let secs = dt.as_secs_f64();
+        if secs > 0.0 {
+            let r = (read_bytes.saturating_sub(prev.read)) as f64 / secs;
+            let w = (write_bytes.saturating_sub(prev.write)) as f64 / secs;
+            (r, w)
+        } else {
+            (0.0, 0.0)
+        }
+    } else {
+        (0.0, 0.0)
+    };
+
+    prev_map.insert(
+        pid,
+        IoPrev {
+            read: read_bytes,
+            write: write_bytes,
+            time: now,
+        },
+    );
+    (rb, wb)
+}
+
+/// Read full command line from /proc/[pid]/cmdline (null-byte separated).
+fn read_proc_cmdline(pid: u32) -> String {
+    let path = format!("/proc/{}/cmdline", pid);
+    match fs::read(&path) {
+        Ok(bytes) => {
+            // cmdline is NUL-separated: join with spaces, trim trailing NUL
+            let s = String::from_utf8_lossy(&bytes)
+                .trim_end_matches('\0')
+                .to_string();
+            let s = s.replace('\0', " ");
+            if s.is_empty() { "?".to_string() } else { s }
+        }
+        Err(_) => "?".to_string(),
+    }
+}
+
 fn collect_processes(
     sort_field: SortField,
     sort_asc: bool,
@@ -141,8 +217,10 @@ fn collect_processes(
             if let Ok(pid) = name_str.parse::<u32>() {
                 let mem = read_proc_vmrss(pid);
                 if mem > 0 {
+                    let (rb, wb) = read_proc_io_rates(pid);
                     procs.push(ProcInfo {
                         name: read_proc_name(pid),
+                        cmdline: read_proc_cmdline(pid),
                         pid,
                         ppid: read_proc_ppid(pid),
                         mem_kb: mem,
@@ -150,6 +228,8 @@ fn collect_processes(
                         state: read_proc_state(pid),
                         threads: read_proc_threads(pid),
                         uid: read_proc_uid(pid),
+                        read_bps: rb,
+                        write_bps: wb,
                     });
                 }
             }
@@ -192,7 +272,7 @@ fn collect_processes(
         SortField::Cpu => {
             procs.sort_by(|a, b| {
                 if sort_asc {
-                    a.cpu_pct.total_cmp(&b.cpu_pct as &f64)
+                    a.cpu_pct.total_cmp(&b.cpu_pct)
                 } else {
                     b.cpu_pct.total_cmp(&a.cpu_pct)
                 }
@@ -270,6 +350,7 @@ fn build_tree(procs: &[ProcInfo]) -> Vec<ProcNode> {
 struct TreeRow {
     pid: u32,
     name: String,
+    cmdline: String,
     mem_kb: u64,
     cpu_pct: f64,
     state: String,
@@ -278,6 +359,8 @@ struct TreeRow {
     expanded: bool,
     threads: u64,
     uid: u32,
+    read_bps: f64,
+    write_bps: f64,
 }
 
 fn flatten_tree(
@@ -296,6 +379,7 @@ fn flatten_tree(
             rows.push(TreeRow {
                 pid: node.info.pid,
                 name: node.info.name.clone(),
+                cmdline: node.info.cmdline.clone(),
                 mem_kb: node.info.mem_kb,
                 cpu_pct: node.info.cpu_pct,
                 state: node.info.state.clone(),
@@ -304,6 +388,8 @@ fn flatten_tree(
                 expanded: !is_collapsed,
                 threads: node.info.threads,
                 uid: node.info.uid,
+                read_bps: node.info.read_bps,
+                write_bps: node.info.write_bps,
             });
             if !is_collapsed {
                 walk(&node.children, collapsed, rows);
@@ -315,13 +401,13 @@ fn flatten_tree(
     rows
 }
 
-fn sort_tree(nodes: &mut Vec<ProcNode>, by: SortField, asc: bool) {
+fn sort_tree(nodes: &mut [ProcNode], by: SortField, asc: bool) {
     nodes.sort_by(|a, b| {
         let cmp = match by {
             SortField::Mem => a.info.mem_kb.cmp(&b.info.mem_kb),
             SortField::Pid => a.info.pid.cmp(&b.info.pid),
             SortField::Name => a.info.name.cmp(&b.info.name),
-            SortField::Cpu => a.info.cpu_pct.total_cmp(&b.info.cpu_pct as &f64),
+            SortField::Cpu => a.info.cpu_pct.total_cmp(&b.info.cpu_pct),
             SortField::Rss => a.info.mem_kb.cmp(&b.info.mem_kb),
         };
         if asc { cmp } else { cmp.reverse() }
@@ -366,9 +452,24 @@ fn fmt_cpu(pct: f64) -> String {
 fn fmt_rss(mem_kb: u64) -> String {
     let mb = mem_kb as f64 / 1024.0;
     if mb > 1024.0 {
-        format!("{:>8.1}G", mb / 1024.0)
+        format!("{:>7.1}G", mb / 1024.0)
     } else {
-        format!("{:>8.0}M", mb)
+        format!("{:>7.0}M", mb)
+    }
+}
+
+/// Format I/O rate (bytes/sec) for a 6-char column (right-aligned).
+fn fmt_io_rate(bps: f64) -> String {
+    if bps <= 0.0 {
+        "    --".to_string()
+    } else if bps >= 1_000_000_000.0 {
+        format!("{:>6.1}G", bps / 1_000_000_000.0)
+    } else if bps >= 1_000_000.0 {
+        format!("{:>6.0}M", bps / 1_000_000.0)
+    } else if bps >= 1_000.0 {
+        format!("{:>6.0}K", bps / 1_000.0)
+    } else {
+        format!("{:>6.0}B", bps)
     }
 }
 
@@ -424,58 +525,62 @@ fn tree_prefix(depth: usize, has_children: bool, expanded: bool, tree_mode: bool
     String::new()
 }
 
-/// Generate a stable fake process list for demo/screenshot mode.
+/// Stable fake process list for demo/screenshot mode.
 fn generate_demo_procs() -> Vec<ProcInfo> {
-    let demos = [
-        ("systemd", 1, 0, 4096, 0.3, "S", 62, 0),
-        ("init", 2, 0, 128, 0.0, "S", 1, 0),
-        ("kthreadd", 3, 0, 0, 0.0, "S", 1, 0),
-        ("ksoftirqd/0", 6, 2, 0, 0.1, "S", 1, 0),
-        ("migration/0", 7, 2, 0, 0.0, "S", 1, 0),
-        ("rcu_sched", 9, 2, 0, 0.2, "S", 1, 0),
-        ("shell", 512, 1, 2048, 0.5, "S", 2, 0),
-        ("sshd", 768, 1, 4096, 0.1, "S", 1, 0),
-        ("bash", 1024, 512, 3072, 0.2, "S", 1, 1000),
-        ("login", 1536, 1, 4096, 0.0, "S", 1, 0),
-        ("vim", 2048, 1024, 8192, 1.2, "S", 1, 1000),
-        ("kitty", 2304, 1024, 16384, 0.8, "S", 4, 1000),
-        ("firefox", 3072, 1024, 245760, 4.5, "S", 18, 1000),
-        ("Web Content", 3073, 3072, 81920, 3.1, "S", 8, 1000),
-        ("Web Content", 3074, 3072, 65536, 2.8, "S", 6, 1000),
-        ("GPU Process", 3075, 3072, 49152, 1.5, "S", 4, 1000),
-        ("chrome", 4096, 1024, 196608, 3.2, "S", 14, 1000),
-        ("Chrome_child", 4097, 4096, 65536, 2.1, "S", 5, 1000),
-        ("Chrome_child", 4098, 4096, 49152, 1.8, "S", 4, 1000),
-        ("code", 5120, 1024, 184320, 6.7, "S", 12, 1000),
-        ("code_helper", 5121, 5120, 32768, 0.5, "S", 3, 1000),
-        ("node", 5184, 5120, 45056, 2.3, "S", 8, 1000),
-        ("nvim", 5632, 1024, 16384, 0.9, "S", 2, 1000),
-        ("spotify", 6144, 1024, 81920, 1.4, "S", 6, 1000),
-        ("discord", 6656, 1024, 131072, 2.2, "S", 10, 1000),
-        ("kitty", 7168, 1024, 16384, 0.6, "S", 4, 1000),
-        ("zsh", 7169, 7168, 4096, 0.1, "S", 1, 1000),
-        ("cargo", 7720, 7169, 14336, 8.5, "R", 4, 1000),
-        ("rustc", 7721, 7720, 98304, 15.2, "R", 8, 1000),
-        ("sway", 8192, 1, 24576, 0.4, "S", 3, 1000),
-        ("pipewire", 8448, 1, 16384, 0.3, "S", 3, 1000),
-        ("wireplumber", 8704, 1, 8192, 0.2, "S", 2, 1000),
-        ("mutter", 8960, 1, 32768, 0.5, "S", 6, 1000),
-        ("gnome-shell", 9216, 1, 65536, 1.1, "S", 8, 1000),
-        ("containerd", 9728, 1, 20480, 0.3, "S", 5, 0),
-        ("dockerd", 9984, 1, 49152, 0.6, "S", 8, 0),
-        ("vanta", 10001, 1024, 12288, 0.8, "S", 3, 1000),
+    // Tuple: (name, cmdline, pid, ppid, mem_kb, cpu_pct, state, threads, uid, read_bps, write_bps)
+    let demos: [(&str, &str, u32, u32, u64, f64, &str, u64, u32, f64, f64); 35] = [
+        ("systemd", "/usr/lib/systemd/systemd --system", 1, 0, 4096, 0.3, "S", 62, 0, 200.0, 50.0),
+        ("init", "init", 2, 0, 128, 0.0, "S", 1, 0, 0.0, 0.0),
+        ("kthreadd", "kthreadd", 3, 0, 0, 0.0, "S", 1, 0, 0.0, 0.0),
+        ("ksoftirqd/0", "ksoftirqd/0", 6, 2, 0, 0.1, "S", 1, 0, 0.0, 0.0),
+        ("migration/0", "migration/0", 7, 2, 0, 0.0, "S", 1, 0, 0.0, 0.0),
+        ("rcu_sched", "rcu_sched", 9, 2, 0, 0.2, "S", 1, 0, 0.0, 0.0),
+        ("shell", "/sbin/shell", 512, 1, 2048, 0.5, "S", 2, 0, 0.0, 0.0),
+        ("sshd", "/usr/sbin/sshd -D", 768, 1, 4096, 0.1, "S", 1, 0, 0.0, 0.0),
+        ("bash", "/usr/bin/bash", 1024, 512, 3072, 0.2, "S", 1, 1000, 0.0, 0.0),
+        ("login", "/bin/login", 1536, 1, 4096, 0.0, "S", 1, 0, 0.0, 0.0),
+        ("vim", "/usr/bin/vim ~/.config/nvim/init.lua", 2048, 1024, 8192, 1.2, "S", 1, 1000, 0.0, 8000.0),
+        ("kitty", "/usr/bin/kitty 0", 2304, 1024, 16384, 0.8, "S", 4, 1000, 0.0, 0.0),
+        ("firefox", "/usr/lib/firefox/firefox -contentproc", 3072, 1024, 245760, 4.5, "S", 18, 1000, 5000.0, 15000.0),
+        ("Web Content", "/usr/lib/firefox/firefox -contentproc -childID 1", 3073, 3072, 81920, 3.1, "S", 8, 1000, 12000.0, 4500.0),
+        ("Web Content", "/usr/lib/firefox/firefox -contentproc -childID 2", 3074, 3072, 65536, 2.8, "S", 6, 1000, 8000.0, 3000.0),
+        ("GPU Process", "/usr/lib/firefox/firefox -gpu-process", 3075, 3072, 49152, 1.5, "S", 4, 1000, 2000.0, 500.0),
+        ("chrome", "/opt/google/chrome/chrome", 4096, 1024, 196608, 3.2, "S", 14, 1000, 18000.0, 22000.0),
+        ("Chrome_child", "/opt/google/chrome/chrome --type=renderer", 4097, 4096, 65536, 2.1, "S", 5, 1000, 9000.0, 4000.0),
+        ("Chrome_child", "/opt/google/chrome/chrome --type=renderer --lang=en", 4098, 4096, 49152, 1.8, "S", 4, 1000, 6000.0, 2000.0),
+        ("code", "/usr/share/code/code --enable-crashpad", 5120, 1024, 184320, 6.7, "S", 12, 1000, 25000.0, 35000.0),
+        ("code_helper", "/usr/share/code/code --type=zygote", 5121, 5120, 32768, 0.5, "S", 3, 1000, 0.0, 0.0),
+        ("node", "/usr/bin/node /home/user/projects/vanta/node_modules/.bin/rollup -c", 5184, 5120, 45056, 2.3, "S", 8, 1000, 45000.0, 12000.0),
+        ("nvim", "/usr/bin/nvim --headless -c q", 5632, 1024, 16384, 0.9, "S", 2, 1000, 3000.0, 1000.0),
+        ("spotify", "/usr/bin/spotify --force-device-scale-factor=1", 6144, 1024, 81920, 1.4, "S", 6, 1000, 8000.0, 500.0),
+        ("discord", "/usr/bin/discord --type=renderer", 6656, 1024, 131072, 2.2, "S", 10, 1000, 4000.0, 2000.0),
+        ("kitty", "/usr/bin/kitty 1", 7168, 1024, 16384, 0.6, "S", 4, 1000, 0.0, 0.0),
+        ("zsh", "/usr/bin/zsh --login", 7169, 7168, 4096, 0.1, "S", 1, 1000, 0.0, 0.0),
+        ("cargo", "/usr/bin/cargo build --release", 7720, 7169, 14336, 8.5, "R", 4, 1000, 45000.0, 12000.0),
+        ("rustc", "/usr/bin/rustc --edition 2021 src/main.rs", 7721, 7720, 98304, 15.2, "R", 8, 1000, 120000.0, 80000.0),
+        ("sway", "/usr/bin/sway --unsupported-gpu", 8192, 1, 24576, 0.4, "S", 3, 1000, 0.0, 0.0),
+        ("pipewire", "/usr/bin/pipewire", 8448, 1, 16384, 0.3, "S", 3, 1000, 500.0, 200.0),
+        ("wireplumber", "/usr/bin/wireplumber", 8704, 1, 8192, 0.2, "S", 2, 1000, 100.0, 50.0),
+        ("gnome-shell", "/usr/bin/gnome-shell", 9216, 1, 65536, 1.1, "S", 8, 1000, 0.0, 0.0),
+        ("dockerd", "/usr/bin/dockerd -H fd://", 9984, 1, 49152, 0.6, "S", 8, 0, 3000.0, 10000.0),
+        ("vanta", "/home/user/.cargo/bin/vanta", 10001, 1024, 12288, 0.8, "S", 3, 1000, 0.0, 0.0),
     ];
     demos
         .iter()
-        .map(|&(name, pid, ppid, mem_kb, cpu_pct, state, threads, uid)| ProcInfo {
-            name: name.to_string(),
-            pid,
-            ppid,
-            mem_kb,
-            cpu_pct,
-            state: state.to_string(),
-            threads,
-            uid,
+        .map(|&(name, cmdline, pid, ppid, mem_kb, cpu_pct, state, threads, uid, rb, wb)| {
+            ProcInfo {
+                name: name.to_string(),
+                cmdline: cmdline.to_string(),
+                pid,
+                ppid,
+                mem_kb,
+                cpu_pct,
+                state: state.to_string(),
+                threads,
+                uid,
+                read_bps: rb,
+                write_bps: wb,
+            }
         })
         .collect()
 }
@@ -493,7 +598,6 @@ pub fn render(
     demo: bool,
 ) {
     let procs = if demo {
-        // Stable fake process list for screenshots
         generate_demo_procs()
     } else {
         collect_processes(sort_field, sort_asc, search)
@@ -512,6 +616,7 @@ pub fn render(
             .map(|p| TreeRow {
                 pid: p.pid,
                 name: p.name.clone(),
+                cmdline: p.cmdline.clone(),
                 mem_kb: p.mem_kb,
                 cpu_pct: p.cpu_pct,
                 state: p.state.clone(),
@@ -520,6 +625,8 @@ pub fn render(
                 expanded: false,
                 threads: p.threads,
                 uid: p.uid,
+                read_bps: p.read_bps,
+                write_bps: p.write_bps,
             })
             .collect();
         (rows, total)
@@ -572,11 +679,10 @@ pub fn render(
     let mode_tag = if tree_mode { " [T]" } else { " [F]" };
     let hdr_style = Style::default().fg(theme.dim).bg(theme.bg);
 
-    // Helper: produce a fixed-width Span for a column
+    // Helper: produce a fixed-width cell string
     let hdr_cell = |label: &str, arrow: &str, width: usize| -> String {
-        // Column = " " + arrow + label, padded to `width`
         let inner = if arrow.is_empty() {
-            format!("{}", label)
+            label.to_string()
         } else {
             format!("{}{}", arrow, label)
         };
@@ -740,18 +846,24 @@ pub fn render(
             Style::default().fg(theme.dim).bg(row_bg),
         ));
 
-        // Optional I/O columns
+        // I/O columns — per-process rates from /proc/[pid]/io deltas
         if show_io {
-            // Simulate I/O data (demo or real)
-            let read_str = format!(" {:>6}", "45M/s");
-            let write_str = format!(" {:>6}", "12M/s");
+            let read_str = fmt_io_rate(row.read_bps);
+            let write_str = fmt_io_rate(row.write_bps);
             spans.push(Span::styled(read_str, Style::default().fg(theme.secondary).bg(row_bg)));
             spans.push(Span::styled(write_str, Style::default().fg(theme.secondary).bg(row_bg)));
         }
 
         // COMMAND (flex column — use remaining space)
         if col_cmd > 4 {
-            let cmd = row.name.clone(); // In real mode, parse from cmdline
+            let cmd = if demo {
+                // Demo mode uses the hardcoded cmdline
+                row.cmdline.clone()
+            } else if !row.cmdline.is_empty() && row.cmdline != "?" {
+                row.cmdline.clone()
+            } else {
+                row.name.clone()
+            };
             let cmd_trim = trunc_name(&cmd, col_cmd.saturating_sub(1));
             spans.push(Span::styled(
                 format!(" {}", cmd_trim),
