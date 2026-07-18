@@ -25,9 +25,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
         0.0
     };
 
-    let swap_used_gb = swap_used as f64 / 1_073_741_824.0;
-    let swap_total_gb = swap_total as f64 / 1_073_741_824.0;
-    let swap_pct = if swap_total > 0 { (swap_used as f64 / swap_total as f64) * 100.0 } else { 0.0 };
+    // Unused variables removed
 
     // Compact: RAM gauge + Swap gauge side by side
     let chunks = Layout::vertical([
