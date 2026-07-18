@@ -56,9 +56,15 @@ pub fn render(
     .spacing(1)
     .split(chunks[0]);
 
-    // ── Column 1: Primary monitoring (Combined Analytics Box) ──
-    // We will render the section header first, then split its inner area
-    // This removes the individual borders and makes them look like one cohesive block!
+    // ── Column 1: Primary monitoring (4 stacked panels) ──
+    let col1 = Layout::vertical([
+        Constraint::Min(8),       // CPU
+        Constraint::Length(5),    // Memory
+        Constraint::Length(4),    // Disk
+        Constraint::Length(4),    // Network
+    ])
+    .spacing(0)
+    .split(cols[0]);
 
     // ── Column 2: Secondary widgets ──
     let col2 = if config.widgets.media {
@@ -89,35 +95,22 @@ pub fn render(
     .spacing(1)
     .split(cols[2]);
 
-    // ── Column 1: Primary Monitoring (Analytics) ──
-    // Determine if any of the widgets in this group are focused
-    let analytics_focused = matches!(
-        focused,
-        Some(PanelId::Cpu) | Some(PanelId::Memory) | Some(PanelId::Disk) | Some(PanelId::Network)
-    );
-    let analytics_inner = section_header(f, cols[0], "System Analytics", theme, analytics_focused);
-
-    // Split the inner area into the 4 widgets, keeping 1 line spacing between them
-    let col1 = Layout::vertical([
-        Constraint::Min(8),       // CPU
-        Constraint::Length(3),    // Memory
-        Constraint::Length(3),    // Disk
-        Constraint::Length(3),    // Network
-    ])
-    .spacing(1)
-    .split(analytics_inner);
-
+    // ── Column 1: Primary Monitoring ──
     if config.widgets.cpu {
-        cpu::render(f, col1[0], theme);
+        let inner = section_header(f, col1[0], " CPU", theme, focused == Some(PanelId::Cpu));
+        cpu::render(f, inner, theme);
     }
     if config.widgets.memory {
-        memory::render(f, col1[1], theme);
+        let inner = section_header(f, col1[1], "󰍛 Memory", theme, focused == Some(PanelId::Memory));
+        memory::render(f, inner, theme);
     }
     if config.widgets.disk {
-        disk::render(f, col1[2], theme);
+        let inner = section_header(f, col1[2], "󰋊 Disk", theme, focused == Some(PanelId::Disk));
+        disk::render(f, inner, theme);
     }
     if config.widgets.network {
-        network::render(f, col1[3], theme);
+        let inner = section_header(f, col1[3], "󰤨 Network", theme, focused == Some(PanelId::Network));
+        network::render(f, inner, theme);
     }
 
     // ── Column 2: Secondary ──

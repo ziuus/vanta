@@ -148,16 +148,26 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
 
             let usage = cores[idx];
             let c = usage_color(usage);
-            let label = format!("c{}", idx);
-            let bar_line = crate::widgets::bar::draw_premium_bar(
-                &label, 3,
-                "", 0, // No extra stats
-                (usage as f64 / 100.0).clamp(0.0, 1.0),
-                c, theme.surface,
-                gauge_area.width,
-            );
+            
+            // Render as: c0 ....... 50%
+            let label_w = 3; // "c0 "
+            let pct_w = 4; // " 50%"
+            let dots_w = gauge_area.width.saturating_sub((label_w + pct_w) as u16) as usize;
+            
+            // Create the dotted line, dimmed
+            let dots = if dots_w > 0 {
+                "·".repeat(dots_w)
+            } else {
+                String::new()
+            };
 
-            f.render_widget(Paragraph::new(bar_line), gauge_area);
+            let line = Line::from(vec![
+                Span::styled(format!("c{:<2}", idx), Style::default().fg(Color::White)),
+                Span::styled(dots, Style::default().fg(theme.dim)),
+                Span::styled(format!("{:>3.0}%", usage), Style::default().fg(c)),
+            ]);
+
+            f.render_widget(Paragraph::new(line), gauge_area);
         }
     }
 }
