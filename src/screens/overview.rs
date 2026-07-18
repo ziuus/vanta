@@ -76,7 +76,7 @@ pub fn render(
 
     // ── Column 1: Hardware metrics ──
     let mut c1_constraints = vec![];
-    if config.widgets.profile { c1_constraints.push(Constraint::Length(9)); } // Vanta Logo
+    if config.widgets.profile { c1_constraints.push(Constraint::Length(14)); } // Vanta Logo
     if config.widgets.cpu { c1_constraints.push(Constraint::Min(8)); } // Expands
     if config.widgets.memory { c1_constraints.push(Constraint::Length(4)); } 
     if config.widgets.disk { c1_constraints.push(Constraint::Length(4)); }   
@@ -96,7 +96,7 @@ pub fn render(
 
     // ── Column 3: Time / Media / Visualizer / Video ──
     let mut c3_constraints = vec![];
-    if config.widgets.clock { c3_constraints.push(Constraint::Length(6)); } 
+    if config.widgets.clock { c3_constraints.push(Constraint::Length(8)); } 
     if config.widgets.calendar { c3_constraints.push(Constraint::Length(9)); } 
     if config.widgets.media { c3_constraints.push(Constraint::Length(3)); } 
     if config.widgets.music_viz { c3_constraints.push(Constraint::Min(0)); }

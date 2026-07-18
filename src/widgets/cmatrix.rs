@@ -19,9 +19,9 @@ pub fn render(f: &mut Frame, area: Rect, _tick: u64) {
         return;
     }
 
-    // 60 FPS tick derived from real time
+    // Derived tick for smooth ~15-20 units per second speed
     let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
-    let tick = now / 16; // ~60 ticks per second
+    let tick = now / 60;
 
 
     let width = area.width as usize;

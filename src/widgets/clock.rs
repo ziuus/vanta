@@ -71,20 +71,20 @@ fn is_leap(year: i64) -> bool {
     (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
 }
 
-fn big_char(c: char) -> [&'static str; 3] {
+fn big_char(c: char) -> [&'static str; 5] {
     match c {
-        '0' => [" _ ", "| |", "|_|"],
-        '1' => ["   ", "  |", "  |"],
-        '2' => [" _ ", " _|", "|_ "],
-        '3' => [" _ ", " _|", " _|"],
-        '4' => ["   ", "|_|", "  |"],
-        '5' => [" _ ", "|_ ", " _|"],
-        '6' => [" _ ", "|_ ", "|_|"],
-        '7' => [" _ ", "  |", "  |"],
-        '8' => [" _ ", "|_|", "|_|"],
-        '9' => [" _ ", "|_|", " _|"],
-        ':' => ["   ", " . ", " . "],
-        _   => ["   ", "   ", "   "],
+        '0' => ["████", "█  █", "█  █", "█  █", "████"],
+        '1' => ["   █", "   █", "   █", "   █", "   █"],
+        '2' => ["████", "   █", "████", "█   ", "████"],
+        '3' => ["████", "   █", "████", "   █", "████"],
+        '4' => ["█  █", "█  █", "████", "   █", "   █"],
+        '5' => ["████", "█   ", "████", "   █", "████"],
+        '6' => ["████", "█   ", "████", "█  █", "████"],
+        '7' => ["████", "   █", "   █", "   █", "   █"],
+        '8' => ["████", "█  █", "████", "█  █", "████"],
+        '9' => ["████", "█  █", "████", "   █", "████"],
+        ':' => ["    ", " ██ ", "    ", " ██ ", "    "],
+        _   => ["    ", "    ", "    ", "    ", "    "],
     }
 }
 
@@ -139,37 +139,45 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
     let batteries = read_batteries();
 
     // Compact: time, date, uptime, battery gauge
-    let rows_count = 5; // 3 for big time + 1 date + 1 battery
+    let rows_count = 7; // 5 for big time + 1 date + 1 battery
     let chunks = Layout::vertical(
         (0..rows_count).map(|_| Constraint::Length(1)).collect::<Vec<_>>(),
     )
     .split(area);
 
     // Big Time
-    let mut time_lines = vec![String::new(), String::new(), String::new()];
-    for c in time_str.chars() {
+    let mut time_lines = vec![String::new(), String::new(), String::new(), String::new(), String::new()];
+    for (i, c) in time_str.chars().enumerate() {
         let ch = big_char(c);
-        time_lines[0].push_str(ch[0]);
-        time_lines[1].push_str(ch[1]);
-        time_lines[2].push_str(ch[2]);
+        // Add spacing between characters
+        let space = if i > 0 { " " } else { "" };
+        time_lines[0].push_str(&format!("{}{}", space, ch[0]));
+        time_lines[1].push_str(&format!("{}{}", space, ch[1]));
+        time_lines[2].push_str(&format!("{}{}", space, ch[2]));
+        time_lines[3].push_str(&format!("{}{}", space, ch[3]));
+        time_lines[4].push_str(&format!("{}{}", space, ch[4]));
     }
-    for i in 0..3 {
-        f.render_widget(
-            Paragraph::new(Line::from(Span::styled(&time_lines[i], Style::default().fg(theme.accent))))
-                .style(Style::default().bg(theme.bg))
-                .alignment(ratatui::layout::Alignment::Center),
-            chunks[i],
-        );
+    for i in 0..5 {
+        if i < chunks.len() {
+            f.render_widget(
+                Paragraph::new(Line::from(Span::styled(&time_lines[i], Style::default().fg(theme.accent))))
+                    .style(Style::default().bg(theme.bg))
+                    .alignment(ratatui::layout::Alignment::Center),
+                chunks[i],
+            );
+        }
     }
 
     // Date + uptime combined on one line
-    let dt = format!("{}  ·  {}", date_str, uptime);
-    f.render_widget(
-        Paragraph::new(Line::from(Span::styled(&dt, Style::default().fg(theme.dim))))
-            .style(Style::default().bg(theme.bg))
-            .alignment(ratatui::layout::Alignment::Center),
-        chunks[3],
-    );
+    if 5 < chunks.len() {
+        let dt = format!("{}  ·  {}", date_str, uptime);
+        f.render_widget(
+            Paragraph::new(Line::from(Span::styled(&dt, Style::default().fg(theme.dim))))
+                .style(Style::default().bg(theme.bg))
+                .alignment(ratatui::layout::Alignment::Center),
+            chunks[5],
+        );
+    }
 
     // Battery
     if let Some(bat) = batteries.first() {
