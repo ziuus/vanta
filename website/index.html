@@ -1,173 +1,200 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="lenis">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Vanta — The Ultimate Terminal Dashboard</title>
+  <title>Vanta | Premium Terminal Cockpit</title>
   
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <link href="https://api.fontshare.com/v2/css?f[]=clash-display@200,300,400,500,600,700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
   
   <link rel="stylesheet" href="style.css" />
   
-  <!-- GSAP & ScrollTrigger -->
+  <!-- GSAP & Lenis for smooth scroll -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/studio-freight/lenis@1.0.29/bundled/lenis.min.js"></script>
+  <!-- Three.js for WebGL Background -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
 </head>
 <body class="theme-dark">
 
-  <!-- Noise Overlay -->
+  <!-- Custom Cursor -->
+  <div class="cursor-dot"></div>
+  <div class="cursor-ring"></div>
+
+  <!-- Intro Screen -->
+  <div class="intro-overlay">
+    <div class="intro-logo">VANTA</div>
+    <div class="intro-progress">
+       <div class="intro-progress-bar"></div>
+    </div>
+  </div>
+
+  <!-- Backgrounds -->
   <div class="noise-overlay"></div>
-  
-  <!-- Aurora Background -->
+  <canvas id="webgl-canvas"></canvas>
   <div class="aurora-bg"></div>
 
-  <!-- Navigation -->
   <nav class="nav">
     <div class="nav-content">
-      <div class="logo">Vanta</div>
+      <div class="logo magnetic">Vanta.</div>
       <div class="nav-links">
-        <a href="#features" class="nav-link">Features</a>
-        <a href="#modes" class="nav-link">Modes</a>
-        <a href="https://github.com/ziuus/vanta" target="_blank" class="nav-link">GitHub</a>
+        <a href="#features" class="nav-link magnetic-text">Features</a>
+        <a href="#showcase" class="nav-link magnetic-text">Tour</a>
+        <a href="https://github.com/ziuus/vanta" target="_blank" class="nav-link magnetic-text">GitHub</a>
       </div>
     </div>
   </nav>
 
-  <!-- Hero Section -->
-  <section class="hero">
-    <div class="hero-content">
-      <div class="badge fade-in">v0.1.0 — Built in Rust</div>
-      <h1 class="hero-title split-text">Your machine,<br><span class="accent-text">one pane.</span></h1>
-      <p class="hero-subtitle fade-in">Six keyboard-driven modes that turn your terminal into a live cockpit. Zero tabs. Zero mouse. Total control.</p>
-      <div class="hero-actions fade-in">
-        <a href="#install" class="btn btn-primary magnetic">Install Vanta</a>
-        <a href="https://github.com/ziuus/vanta" target="_blank" class="btn btn-secondary magnetic">View Source</a>
-      </div>
-    </div>
-
-    <!-- 3D Perspective Terminal Mockup -->
-    <div class="hero-visual perspective-3d">
-      <div class="terminal-mockup liquid-glass floating">
-        <div class="terminal-bar">
-          <div class="dots">
-            <span></span><span></span><span></span>
-          </div>
-          <div class="title">vanta --demo</div>
+  <main>
+    <!-- HERO SECTION -->
+    <section class="hero" id="hero">
+      <div class="hero-content">
+        <div class="badge fade-in">
+           <span class="badge-dot"></span> v0.1.0 — Built in Rust
         </div>
-        <div class="terminal-body">
-          <div class="code-line"><span class="prompt">zius@machine:~$</span> cargo run --release</div>
-          <div class="code-line dim">Compiling vanta v0.1.0...</div>
-          <div class="code-line"><span class="accent">┌─ OVERVIEW ──────────────────────────┐</span></div>
-          <div class="code-line">│ CPU  <span class="highlight">23%</span> ████░░░  | MEM  <span class="highlight">6.2/16GB</span> │</div>
-          <div class="code-line">│ DISK <span class="highlight">34%</span> ██████░  | NET  <span class="highlight">↑1.2 ↓0.4</span>│</div>
-          <div class="code-line">│ GPU  <span class="highlight">45%</span> ███████  | UPT  <span class="highlight">2d 4h</span>    │</div>
-          <div class="code-line"><span class="accent">└─────────────────────────────────────┘</span><span class="cursor"></span></div>
+        <h1 class="hero-title" id="hero-title">
+          Your machine, <br>
+          <span class="accent-glow">one pane.</span>
+        </h1>
+        <p class="hero-subtitle fade-in">
+          Six keyboard-driven modes that turn your terminal into a live cockpit. Zero tabs. Zero mouse. Total control.
+        </p>
+        <div class="hero-actions fade-in">
+          <a href="#install" class="btn btn-primary magnetic">
+             <span class="btn-text">Install Vanta</span>
+             <div class="btn-bg"></div>
+          </a>
+          <a href="https://github.com/ziuus/vanta" target="_blank" class="btn btn-secondary magnetic">
+             <span class="btn-text">View Source</span>
+          </a>
         </div>
       </div>
-    </div>
-  </section>
 
-  <!-- Features Section -->
-  <section id="features" class="section bento-section">
-    <div class="section-header">
-      <h2 class="section-title gs-reveal">Zero dependencies.<br>Infinite monitoring.</h2>
-    </div>
-    
-    <div class="bento-grid">
-      <!-- Large Cell -->
-      <div class="bento-cell cell-large liquid-glass gs-reveal">
-        <div class="cell-content">
-          <div class="cell-icon">⚡</div>
-          <h3>Real-time Metrics</h3>
-          <p>CPU per-core utilisation, temperature, frequency, memory, swap, disk I/O, network throughput with sparklines, and GPU utilisation updated instantly.</p>
-        </div>
-        <div class="cell-visual">
-          <div class="mini-chart">
-            <div class="bar" style="height: 40%"></div>
-            <div class="bar" style="height: 60%"></div>
-            <div class="bar" style="height: 30%"></div>
-            <div class="bar" style="height: 80%"></div>
-            <div class="bar" style="height: 50%"></div>
-            <div class="bar" style="height: 90%"></div>
-            <div class="bar" style="height: 20%"></div>
+      <div class="hero-visual">
+        <div class="perspective-wrapper">
+          <div class="terminal-mockup liquid-glass floating">
+             <div class="terminal-bar">
+               <div class="dots"><span></span><span></span><span></span></div>
+               <div class="title">vanta --demo</div>
+             </div>
+             <div class="terminal-body">
+               <div class="code-line"><span class="prompt">zius@vanta:~$</span> <span class="typing-text">cargo run --release</span></div>
+               <div class="code-line dim sys-loading" style="opacity: 0">Compiling vanta v0.1.0...</div>
+               <div class="sys-dashboard" style="opacity: 0; margin-top: 10px;">
+                 <div class="code-line"><span class="accent">┌─ SYSTEM OVERVIEW ───────────────────┐</span></div>
+                 <div class="code-line">│ CPU  <span class="highlight">23%</span> <span class="bar-chart">████░░░░░░</span> | MEM  <span class="highlight">6.2GB</span>  │</div>
+                 <div class="code-line">│ DISK <span class="highlight">34%</span> <span class="bar-chart">██████░░░░</span> | NET  <span class="highlight">↑1.2</span>   │</div>
+                 <div class="code-line">│ GPU  <span class="highlight">45%</span> <span class="bar-chart">███████░░░</span> | UPT  <span class="highlight">2d 4h</span>  │</div>
+                 <div class="code-line"><span class="accent">└─────────────────────────────────────┘</span><span class="term-cursor"></span></div>
+               </div>
+             </div>
           </div>
         </div>
       </div>
+    </section>
+
+    <!-- HORIZONTAL SCROLL SHOWCASE -->
+    <section class="section showcase-section" id="showcase">
+       <div class="showcase-content">
+          <h2 class="section-title split-words">The Ultimate Dashboard.</h2>
+          <p class="section-subtitle">Real-time telemetry meets keyboard mastery.</p>
+       </div>
+       <div class="horizontal-scroll-container">
+          <div class="horizontal-scroll-track">
+             <div class="h-card liquid-glass-refraction">
+                <h3>Real-time Metrics</h3>
+                <p>CPU per-core utilisation, temperature, frequency, memory, swap, disk I/O.</p>
+             </div>
+             <div class="h-card liquid-glass-refraction">
+                <h3>Process Explorer</h3>
+                <p>Find, sort, kill, and inspect processes natively. Full tree view included.</p>
+             </div>
+             <div class="h-card liquid-glass-refraction">
+                <h3>Media & MPRIS</h3>
+                <p>Control your music, view live visualizers, and check playback status.</p>
+             </div>
+             <div class="h-card liquid-glass-refraction">
+                <h3>Four Themes</h3>
+                <p>Built-in themes (Dark, Light, Dracula, Solarized) with hot-swapping.</p>
+             </div>
+          </div>
+       </div>
+    </section>
+
+    <!-- BENTO GRID SECTION -->
+    <section id="features" class="section bento-section">
+      <div class="section-header">
+        <h2 class="section-title split-words">Zero dependencies.<br>Infinite monitoring.</h2>
+      </div>
       
-      <!-- Small Cell 1 -->
-      <div class="bento-cell cell-small liquid-glass gs-reveal">
-        <div class="cell-content">
-          <div class="cell-icon">🔍</div>
-          <h3>Process Explorer</h3>
-          <p>Find, sort, kill, and inspect processes natively. Full tree view included.</p>
+      <div class="bento-grid">
+        <!-- Large Cell -->
+        <div class="bento-cell cell-large liquid-glass-refraction gs-reveal">
+          <div class="cell-bg gradient-mesh"></div>
+          <div class="cell-content">
+            <div class="cell-icon">⚡</div>
+            <h3>Sub-millisecond latency</h3>
+            <p>Built in Rust for native performance. It barely registers on its own dashboard. Vanta doesn't consume your system to monitor it.</p>
+          </div>
+          <div class="cell-visual">
+            <div class="dynamic-chart">
+               <!-- generated via JS -->
+            </div>
+          </div>
+        </div>
+        
+        <!-- Small Cell 1 -->
+        <div class="bento-cell cell-small liquid-glass-refraction gs-reveal">
+          <div class="cell-content">
+            <div class="cell-icon">🔍</div>
+            <h3>Process Tree</h3>
+            <p>Hierarchical view of every process running on your machine.</p>
+          </div>
+        </div>
+
+        <!-- Small Cell 2 -->
+        <div class="bento-cell cell-small liquid-glass-refraction gs-reveal">
+          <div class="cell-content">
+            <div class="cell-icon">🎨</div>
+            <h3>Aesthetic UI</h3>
+            <p>Ratatui powered beautiful terminal user interface.</p>
+          </div>
         </div>
       </div>
+    </section>
 
-      <!-- Small Cell 2 -->
-      <div class="bento-cell cell-small liquid-glass gs-reveal">
-        <div class="cell-content">
-          <div class="cell-icon">🎵</div>
-          <h3>Media & MPRIS</h3>
-          <p>Control your music, view live visualizers, and check playback status.</p>
+    <!-- INSTALL SECTION -->
+    <section class="section install-section" id="install">
+      <div class="install-container liquid-glass-refraction gs-reveal">
+        <div class="glow-orb"></div>
+        <h2 class="section-title split-words">Take control today.</h2>
+        <p>Cargo required for installation.</p>
+        
+        <div class="code-block">
+          <div class="code-header">
+            <span class="dot" style="background:#ff5f57"></span>
+            <span class="dot" style="background:#febc2e"></span>
+            <span class="dot" style="background:#28c840"></span>
+          </div>
+          <div class="code-body">
+             <code>cargo install --git https://github.com/ziuus/vanta</code>
+             <button class="copy-btn magnetic">Copy</button>
+          </div>
         </div>
       </div>
-      
-      <!-- Medium Cell -->
-      <div class="bento-cell cell-medium liquid-glass gs-reveal">
-        <div class="cell-content">
-          <div class="cell-icon">🎨</div>
-          <h3>Themable</h3>
-          <p>Four built-in themes (Dark, Light, Dracula, Solarized) with hot-swapping.</p>
-        </div>
-      </div>
-    </div>
-  </section>
+    </section>
+  </main>
 
-  <!-- Split Diagonal Section -->
-  <section class="section diagonal-split">
-    <div class="split-content gs-reveal-left">
-      <h2>Keyboard-Driven Perfection</h2>
-      <p>No mouse required. Navigate the entire interface, switch modes, explore processes, and control media entirely through intuitive keybindings.</p>
-      <ul class="feature-list">
-        <li><code>1-6</code> Switch Modes</li>
-        <li><code>T</code> Cycle Themes</li>
-        <li><code>/</code> Search Processes</li>
-        <li><code>Space</code> Play/Pause Media</li>
-      </ul>
+  <footer class="footer">
+    <div class="footer-content">
+       <div class="footer-logo magnetic">Vanta.</div>
+       <p>&copy; 2026 zius. Built with Rust & Ratatui.</p>
+       <div class="footer-links">
+          <a href="https://github.com/ziuus/vanta" target="_blank" class="magnetic-text">GitHub</a>
+       </div>
     </div>
-    <div class="split-visual gs-reveal-right">
-      <div class="floating-keys">
-        <div class="key liquid-glass magnetic">1</div>
-        <div class="key liquid-glass magnetic">T</div>
-        <div class="key liquid-glass magnetic">Space</div>
-        <div class="key liquid-glass magnetic">Esc</div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Install Section -->
-  <section id="install" class="section install-section">
-    <div class="install-container liquid-glass gs-reveal">
-      <h2 class="section-title">Ready to take control?</h2>
-      <p>Requires Rust toolchain.</p>
-      
-      <div class="code-block">
-        <div class="code-header">
-          <span class="dot" style="background:#ff5f57"></span>
-          <span class="dot" style="background:#febc2e"></span>
-          <span class="dot" style="background:#28c840"></span>
-        </div>
-        <pre><code>cargo install --git https://github.com/ziuus/vanta</code></pre>
-      </div>
-    </div>
-  </section>
-
-  <!-- Footer -->
-  <footer class="footer liquid-glass">
-    <p>&copy; 2026 zius. Built with Rust & Ratatui.</p>
-    <a href="https://github.com/ziuus/vanta" target="_blank">GitHub</a>
   </footer>
 
   <script src="main.js"></script>
