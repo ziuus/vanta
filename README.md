@@ -1,74 +1,94 @@
-# vanta
+<div align="center">
+  <br />
+  <h1>vanta</h1>
+  <p>
+    <strong>Your machine, one pane.</strong><br/>
+    A blazingly fast, highly aesthetic terminal system dashboard built in Rust.
+  </p>
+  <a href="https://website-pi-seven-nty4ogjp2f.vercel.app">
+    <img src="https://img.shields.io/badge/Live_Landing_Page-030712?style=for-the-badge&logo=vercel&logoColor=white" alt="Live Landing Page" />
+  </a>
+  <a href="https://github.com/ziuus/vanta/releases">
+    <img src="https://img.shields.io/github/v/release/ziuus/vanta?style=for-the-badge&color=4A9E8E" alt="Latest Release" />
+  </a>
+  <a href="https://crates.io/crates/vanta">
+    <img src="https://img.shields.io/crates/v/vanta?style=for-the-badge&color=28c840" alt="Crates.io" />
+  </a>
+  <br /><br />
+  <img src="docs/screenshot.png" alt="Vanta Dashboard Screenshot" width="800" />
+</div>
 
-[🚀 Live Landing Page](website/index.html)
+<hr />
 
-**Rust TUI system dashboard.** Single-pane, keyboard-driven, 6 dashboard modes.
+## 🚀 The Ultimate Terminal Cockpit
 
-![screenshot](docs/screenshot.png)
+**Vanta** collapses all the system metrics you care about into a single, beautiful terminal pane. It's fully keyboard-driven with zero mouse dependency and no floating tabs.
 
----
+With six dedicated dashboard modes, Vanta transforms from a dense technical monitor to pure terminal eye-candy with a single keystroke.
 
-## Modes
+## ⚡ Core Modes
 
-| Key | Mode | What you see |
+| Key | Mode | Description |
 |-----|------|-------------|
-| `1` | **Overview** | Full monitoring grid — CPU, memory, disk, network, GPU, clock, calendar, media player, music visualizer, system info, live process table |
-| `2` | **Monitor** | Focused system metrics — CPU, memory, disk, network, GPU, system info |
-| `3` | **Processes** | Full-width live process table with sort, search, tree view, collapse, detail view |
-| `4` | **Media** | Large music visualizer + media player info + clock |
-| `5` | **Aesthetic** | Clock, calendar, music visualizer, and matrix rain — four‑panel eye candy |
-| `6` | **Settings** | Current theme, mode switching help, config file path, keyboard reference |
+| `1` | **Overview** | Full monitoring grid: CPU, Memory, Disk, Network, GPU, Clock, Calendar, Media Player, System Info, and Live Processes. |
+| `2` | **Monitor** | Focused hardware metrics layout for quick glance-and-go health checks. |
+| `3` | **Processes** | Full-width process table with sort, search, tree-view, collapse, and immediate kill signals. |
+| `4` | **Media** | Large music visualizer + MPRIS player controls + prominent clock. |
+| `5` | **Aesthetic** | Pure eye candy: Matrix Rain, Calendar, Visualizer, and Clock. |
+| `6` | **Settings** | Configuration help, active theme selection, and full keyboard reference. |
 
 ---
 
-## Controls
+## 🎹 Keyboard Mastery
 
+No mouse. No touch. Just keys.
+
+### Global Actions
 | Key | Action |
 |-----|--------|
-| `1`–`6` | Switch dashboard mode |
-| `T` | Cycle theme (dark → light → dracula → solarized‑light) |
+| `1`–`6` | Switch dashboard modes |
+| `T` | Cycle themes (changes persist to config) |
 | `Tab` / `Shift‑Tab` | Cycle panel focus |
-| `↑` `↓` `←` `→` | Navigate focused panel (scroll processes, cycle calendar month) |
+| `↑` `↓` `←` `→` | Navigate the active panel |
 | `Esc` | Clear panel focus |
 | `q` | Quit |
 
-**Processes panel** (mode `3`):
+### Process Explorer (`Mode 3`)
 | Key | Action |
 |-----|--------|
-| `s` | Cycle sort field |
+| `s` | Cycle sort fields (PID, CPU, Mem, User) |
 | `/` | Enter search mode |
 | `t` | Toggle tree view |
-| `Space` | Collapse / expand tree node |
-| `i` | Toggle detail view |
-| `c` | Toggle compact command |
-| `k` | Kill selected process |
+| `Space` | Collapse / Expand tree node |
+| `i` | View process details |
+| `c` | Toggle compact command view |
+| `k` | Send Kill signal |
 
-**Media panel** (mode `4`):
+### Media Player (`Mode 4`)
 | Key | Action |
 |-----|--------|
-| `Space` | Play / pause |
-| `n` | Next track |
-| `p` | Previous track |
-| `+` / `-` | Volume up / down |
+| `Space` | Play / Pause |
+| `n` / `p` | Next / Previous track |
+| `+` / `-` | Volume Up / Down |
 
 ---
 
-## Themes
+## 🎨 Professional Themes
 
-Four built-in themes, cycled with `T`:
+Cycle through four meticulously designed color palettes using `T`:
 
-- `dark` — default, deep background
-- `light` — light background
-- `dracula` — purple‑accented dark
-- `solarized-light` — warm light
+1. **Dark** (Default) — Deep, immersive terminal blacks.
+2. **Light** — High-contrast, clean paper white.
+3. **Dracula** — Classic purple-accented dark theme.
+4. **Solarized Light** — Warm, easy-on-the-eyes daylight theme.
 
-The active theme is persisted to `~/.config/vanta/config.toml` and restored on next launch.
+Your selection is automatically persisted to `~/.config/vanta/config.toml`.
 
 ---
 
-## Config
+## ⚙️ Configuration
 
-File: `~/.config/vanta/config.toml`
+Vanta is fully modular. Configure widgets, refresh rates, and your default theme via `~/.config/vanta/config.toml`:
 
 ```toml
 [ui]
@@ -86,42 +106,43 @@ calendar = true
 music_viz = true
 processes = true
 media = true
+cmatrix = true
 ```
-
-Set any widget to `false` to hide it from the UI.
 
 ---
 
-## Install
+## 📥 Installation
 
+You will need the Rust toolchain installed.
+
+**From Cargo:**
 ```bash
 cargo install --git https://github.com/ziuus/vanta
 ```
 
-Or build from source:
-
+**From Source:**
 ```bash
-git clone https://github.com/ziuus/vanta
+git clone https://github.com/ziuus/vanta.git
 cd vanta
-cargo run            # live monitoring
-cargo run -- --demo  # demo mode (fake data)
+cargo run --release            # Live hardware monitoring
+cargo run --release -- --demo  # Demo mode with simulated data
 ```
 
 ---
 
-## Stack
+## 🏗️ Architecture
 
-| Component | Tool |
-|-----------|------|
-| TUI framework | Ratatui 0.29 |
-| Terminal backend | Crossterm |
-| System info | sysinfo |
-| Media control | playerctl (MPRIS) |
-| Date/time | chrono |
-| Rand | rand |
+| Layer | Technology |
+|-------|------------|
+| **Core Framework** | Rust + Ratatui `0.29` |
+| **Terminal IO** | Crossterm |
+| **Telemetry** | `sysinfo`, NVML |
+| **Media Sync** | MPRIS (`playerctl` interop) |
+| **Time & Rand** | `chrono`, `rand` |
 
 ---
 
-## License
-
-MIT
+<div align="center">
+  <p>Built with 🖤 by <a href="https://github.com/ziuus">zius</a></p>
+  <p>Released under the MIT License.</p>
+</div>

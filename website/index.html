@@ -1,367 +1,175 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Vanta — rust TUI system dashboard</title>
-  <meta name="description" content="Single‑pane, keyboard‑driven system dashboard. 6 modes, real‑time CPU/memory/disk/GPU/network, process explorer, media controls, aesthetic eye candy.">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Vanta — The Ultimate Terminal Dashboard</title>
+  
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<style>
-/* ────── reset & tokens ────── */
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{--bg:#0b0c0e;--surface:#131416;--surface-raised:#1a1b1f;--border:#232428;--accent:#4A9E8E;--accent-glow:rgba(74,158,142,.25);--ink:#ecedee;--ink-dim:#8a8b8e;--ink-muted:#58595c;--font-display:'Inter',system-ui,-apple-system,sans-serif;--font-mono:'JetBrains Mono','Cascadia Code','Fira Code',monospace;--r:12px;--g:8px;--max-w:1100px}
-html{scroll-behavior:smooth;font-size:100%}
-body{font-family:var(--font-display);background:var(--bg);color:var(--ink);line-height:1.65;-webkit-font-smoothing:antialiased}
-img{max-width:100%;height:auto;display:block}
-a{color:var(--accent);text-decoration:none;transition:color .2s}
-a:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:2px}
-a:hover{color:#6acebb}
-code{font-family:var(--font-mono);background:var(--surface-raised);padding:2px 7px;border-radius:5px;font-size:.8125rem;color:var(--ink-dim)}
-pre{font-family:var(--font-mono);background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:calc(var(--g)*3);overflow-x:auto;font-size:.8125rem;line-height:1.7;color:var(--ink-dim)}
-
-/* ────── utility ────── */
-.wrap{max-width:var(--max-w);margin:0 auto;padding:0 calc(var(--g)*3)}
-.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
-
-/* ────── section rhythm ────── */
-section{padding:calc(var(--g)*12) 0}
-section + section{border-top:1px solid var(--border)}
-.section-label{font-size:.6875rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);margin-bottom:calc(var(--g)*1.5)}
-.section-title{font-size:clamp(1.5rem,3.5vw,2.5rem);font-weight:700;line-height:1.2;letter-spacing:-.02em;color:var(--ink);margin-bottom:calc(var(--g)*1.5)}
-.section-desc{font-size:1rem;color:var(--ink-dim);max-width:560px;margin-bottom:calc(var(--g)*6);line-height:1.6}
-
-/* ────── hero ────── */
-.hero{min-height:85vh;display:flex;flex-direction:column;justify-content:center;position:relative;overflow:hidden}
-.hero::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 80% 50% at 50% 20%,var(--accent-glow),transparent 70%);pointer-events:none}
-.hero-content{position:relative;z-index:1;max-width:800px}
-.hero-badge{display:inline-flex;align-items:center;gap:calc(var(--g)*1);background:var(--surface);border:1px solid var(--border);border-radius:100px;padding:calc(var(--g)*.75) calc(var(--g)*1.5) calc(var(--g)*.75) calc(var(--g)*.5);margin-bottom:calc(var(--g)*3);font-size:.75rem;color:var(--ink-dim)}
-.hero-badge .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex-shrink:0}
-.hero h1{font-size:clamp(2.25rem,6.5vw,4.5rem);font-weight:800;letter-spacing:-.035em;line-height:1.08;color:var(--ink);margin-bottom:calc(var(--g)*2);text-wrap:balance}
-.hero h1 span{color:var(--accent)}
-.hero .sub{font-size:clamp(1rem,1.8vw,1.125rem);color:var(--ink-dim);max-width:540px;line-height:1.7;margin-bottom:calc(var(--g)*4)}
-.hero-actions{display:flex;gap:calc(var(--g)*2);flex-wrap:wrap}
-.btn{display:inline-flex;align-items:center;gap:calc(var(--g)*1);padding:calc(var(--g)*1.5) calc(var(--g)*3.5);border-radius:var(--r);font-weight:600;font-size:.9375rem;transition:all .25s;cursor:pointer;border:0;text-decoration:none!important}
-.btn-primary{background:var(--accent);color:#fff;box-shadow:0 0 0 1px var(--accent)}
-.btn-primary:hover{background:#3d8c7c;transform:translateY(-2px);box-shadow:0 6px 20px var(--accent-glow)}
-.btn-primary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.btn-secondary{background:var(--surface);color:var(--ink);border:1px solid var(--border)}
-.btn-secondary:hover{background:var(--surface-raised);border-color:var(--ink-muted);transform:translateY(-1px)}
-.btn-secondary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-
-/* ────── terminal mockup in hero ────── */
-.hero-terminal{position:relative;z-index:1;margin-top:calc(var(--g)*6);background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.5)}
-.terminal-bar{display:flex;align-items:center;gap:calc(var(--g)*.5);padding:calc(var(--g)*1.25) calc(var(--g)*2);background:var(--surface-raised);border-bottom:1px solid var(--border)}
-.terminal-dot{width:10px;height:10px;border-radius:50%}
-.terminal-dot:nth-child(1){background:#ff5f57}
-.terminal-dot:nth-child(2){background:#febc2e}
-.terminal-dot:nth-child(3){background:#28c840}
-.terminal-title{font-size:.6875rem;color:var(--ink-muted);margin-left:calc(var(--g)*1);font-family:var(--font-mono)}
-.terminal-body{padding:calc(var(--g)*2.5);font-family:var(--font-mono);font-size:.75rem;line-height:1.7;color:var(--ink-dim);overflow-x:auto}
-.terminal-body .prompt{color:var(--accent)}
-.terminal-body .highlight{color:#e6e6e6}
-.terminal-body .dim{color:var(--ink-muted)}
-.terminal-cursor{display:inline-block;width:7px;height:14px;background:var(--accent);animation:blink 1s step-end infinite;vertical-align:text-bottom;margin-left:2px}
-@keyframes blink{50%{opacity:0}}
-
-/* ────── feature sections (alternating layout) ────── */
-.feature-row{display:grid;grid-template-columns:1fr 1fr;gap:calc(var(--g)*6);align-items:center}
-.feature-row + .feature-row{margin-top:calc(var(--g)*10)}
-.feature-text h3{font-size:1.25rem;font-weight:600;margin-bottom:calc(var(--g)*1.5);color:var(--ink)}
-.feature-text p{font-size:.9375rem;color:var(--ink-dim);line-height:1.7}
-.feature-text ul{list-style:none;margin-top:calc(var(--g)*2)}
-.feature-text ul li{position:relative;padding-left:calc(var(--g)*2.5);margin-bottom:calc(var(--g)*1.5);font-size:.875rem;color:var(--ink-dim)}
-.feature-text ul li::before{content:'';position:absolute;left:0;top:9px;width:6px;height:6px;border-radius:50%;background:var(--accent)}
-.feature-visual{position:relative}
-.feature-visual .term-box{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:calc(var(--g)*2);font-family:var(--font-mono);font-size:.6875rem;line-height:1.6;color:var(--ink-dim)}
-.feature-visual .term-box .g{color:var(--accent)}
-.feature-visual .term-box .b{color:#e6e6e6}
-.feature-visual .term-box .d{color:var(--ink-muted)}
-[data-reverse=true] .feature-row{direction:rtl}
-[data-reverse=true] .feature-text{direction:ltr}
-[data-reverse=true] .feature-visual{direction:ltr}
-
-/* ────── modes showcase (NOT cards — a tabular/list) ────── */
-.modes-list{display:grid;gap:calc(var(--g)*1)}
-.mode-item{display:grid;grid-template-columns:40px 140px 1fr;gap:calc(var(--g)*2);padding:calc(var(--g)*2) calc(var(--g)*2.5);background:var(--surface);border:1px solid var(--border);border-radius:var(--r);transition:border-color .2s,background .2s}
-.mode-item:hover{border-color:var(--accent);background:var(--surface-raised)}
-.mode-key{font-family:var(--font-mono);font-size:.8125rem;font-weight:600;color:var(--accent);text-align:right}
-.mode-name{font-weight:600;font-size:.875rem;color:var(--ink)}
-.mode-desc{font-size:.8125rem;color:var(--ink-dim);line-height:1.5}
-
-/* ────── install ────── */
-.install-grid{display:grid;grid-template-columns:1fr 1fr;gap:calc(var(--g)*3)}
-.install-block{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:calc(var(--g)*3)}
-.install-block h3{font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--accent);margin-bottom:calc(var(--g)*2)}
-.install-block pre{margin:0}
-
-/* ────── keyboard visual ────── */
-.kb-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:calc(var(--g)*2)}
-.kb-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:calc(var(--g)*2.5)}
-.kb-card h3{font-size:.6875rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin-bottom:calc(var(--g)*1.5)}
-.kb-card kbd{display:inline-block;font-family:var(--font-mono);font-size:.6875rem;padding:1px 6px;border-radius:4px;background:var(--surface-raised);border:1px solid var(--border);color:var(--ink);margin:1px 0}
-.kb-card p{font-size:.8125rem;color:var(--ink-dim);line-height:1.8}
-
-/* ────── themes ────── */
-.themes-showcase{display:flex;gap:calc(var(--g)*2);flex-wrap:wrap}
-.theme-swatch{display:flex;align-items:center;gap:calc(var(--g)*1.5);padding:calc(var(--g)*1.5) calc(var(--g)*2.5);background:var(--surface);border:1px solid var(--border);border-radius:100px;font-size:.8125rem;color:var(--ink);transition:border-color .2s}
-.theme-swatch.active{border-color:var(--accent)}
-.theme-swatch .dot{width:14px;height:14px;border-radius:50%;flex-shrink:0;border:1px solid rgba(255,255,255,.08)}
-
-/* ────── github footer ────── */
-footer{border-top:1px solid var(--border);padding:calc(var(--g)*4) 0;font-size:.75rem;color:var(--ink-muted);text-align:center}
-footer a{color:var(--ink-dim)}
-footer a:hover{color:var(--accent)}
-
-/* ────── responsive ────── */
-@media(max-width:900px){
-  .feature-row{grid-template-columns:1fr;gap:calc(var(--g)*3)}
-  .feature-row + .feature-row{margin-top:calc(var(--g)*6)}
-  [data-reverse=true] .feature-row{direction:ltr}
-  .mode-item{grid-template-columns:30px 100px 1fr}
-  .install-grid{grid-template-columns:1fr}
-}
-@media(max-width:600px){
-  section{padding:calc(var(--g)*6) 0}
-  .hero h1{font-size:clamp(1.75rem,8vw,2.5rem)}
-  .mode-item{grid-template-columns:30px 1fr;gap:calc(var(--g)*1)}
-  .mode-key{text-align:left}
-  .mode-name{grid-column:2;grid-row:1}
-  .mode-desc{grid-column:1/-1}
-  .themes-showcase{gap:calc(var(--g)*1)}
-  .btn{padding:calc(var(--g)*1.25) calc(var(--g)*2.5)}
-}
-
-/* ────── subtle terminal animation ────── */
-.term-char{opacity:.4;transition:opacity .1s}
-</style>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="style.css" />
+  
+  <!-- GSAP & ScrollTrigger -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
 </head>
-<body>
+<body class="theme-dark">
 
-<!-- ─── hero ─── -->
-<section class="hero">
-  <div class="wrap hero-content">
-    <div class="hero-badge">
-      <span class="dot"></span>
-      v0.1.0 &mdash; rust + ratatui
-    </div>
-    <h1>Your machine,<br><span>one pane.</span></h1>
-    <p class="sub">Six keyboard-driven modes that turn your terminal into a live cockpit &mdash; CPU, memory, disk, GPU, network, processes, media, and eye candy. No tabs, no windows, no mouse.</p>
-    <div class="hero-actions">
-      <a href="#install" class="btn btn-primary">Install vanta</a>
-      <a href="#modes" class="btn btn-secondary">Explore modes &darr;</a>
-      <a href="https://github.com/ziuus/vanta" target="_blank" class="btn btn-secondary">GitHub &nearr;</a>
-    </div>
+  <!-- Noise Overlay -->
+  <div class="noise-overlay"></div>
+  
+  <!-- Aurora Background -->
+  <div class="aurora-bg"></div>
 
-    <!-- terminal mockup -->
-    <div class="hero-terminal" aria-hidden="true">
-      <div class="terminal-bar">
-        <span class="terminal-dot"></span><span class="terminal-dot"></span><span class="terminal-dot"></span>
-        <span class="terminal-title">vanta &mdash; demo mode</span>
-      </div>
-      <div class="terminal-body">
-<span class="dim"># vanta dashboard — demo (fake data)</span>
-<span class="prompt">$</span> <span class="highlight">cargo run -- --demo</span>
-<span class="dim">   Compiling vanta v0.1.0</span>
-<span class="dim">    Finished `dev` profile + 6 widgets</span>
-
-<span class="prompt">┌─</span> OVERVIEW <span class="dim">━━━━━━━━━━━━━━━━━━━━━━━━━━━</span>
-<span class="prompt">│</span> CPU  <span class="highlight">23%</span>  ████░░░░░░  <span class="dim">|</span>  mem  <span class="highlight">6.2/15.6 GB</span>
-<span class="prompt">│</span> disk <span class="highlight">340 GB</span> █████████░░  <span class="dim">|</span>  net  <span class="highlight">↑1.2 ↓0.4 Mbps</span>
-<span class="prompt">│</span> GPU  <span class="highlight">45%</span>  ████████░░░  <span class="dim">|</span>  <span class="highlight">4</span> processes<span class="terminal-cursor"></span>
-</pre>
+  <!-- Navigation -->
+  <nav class="nav">
+    <div class="nav-content">
+      <div class="logo">Vanta</div>
+      <div class="nav-links">
+        <a href="#features" class="nav-link">Features</a>
+        <a href="#modes" class="nav-link">Modes</a>
+        <a href="https://github.com/ziuus/vanta" target="_blank" class="nav-link">GitHub</a>
       </div>
     </div>
-  </div>
-</section>
+  </nav>
 
-<!-- ─── modes (list, not cards) ─── -->
-<section id="modes">
-  <div class="wrap">
-    <p class="section-label">Dashboard modes</p>
-    <h2 class="section-title">Six views, one keystroke apart</h2>
-    <p class="section-desc">Press <kbd style="font-family:var(--font-mono);background:var(--surface-raised);padding:1px 6px;border-radius:3px;font-size:.75rem">1</kbd>&ndash;<kbd style="font-family:var(--font-mono);background:var(--surface-raised);padding:1px 6px;border-radius:3px;font-size:.75rem">6</kbd> to switch. Every mode is a full-pane layout &mdash; no overlapping windows, no mouse.</p>
-    <div class="modes-list">
-      <div class="mode-item"><span class="mode-key">1</span><span class="mode-name">Overview</span><span class="mode-desc">Full monitoring grid — CPU per‑core (usage, temp, freq), memory &amp; swap, disk I/O with sparklines, network throughput, GPU utilization &amp; VRAM, clock with battery, MPRIS media player, calendar, music visualizer, system info, live process table.</span></div>
-      <div class="mode-item"><span class="mode-key">2</span><span class="mode-name">Monitor</span><span class="mode-desc">Focused system metrics — CPU, memory, disk, network, GPU, and machine info in a compact layout. Ideal for glance‑and‑go health checks.</span></div>
-      <div class="mode-item"><span class="mode-key">3</span><span class="mode-name">Processes</span><span class="mode-desc">Full‑width live process table with sort, search, tree view, scroll, kill, and detail view. Every action has a key.</span></div>
-      <div class="mode-item"><span class="mode-key">4</span><span class="mode-name">Media</span><span class="mode-desc">Large music visualizer, MPRIS player controls, and a prominent clock in one immersive pane. <kbd style="font-family:var(--font-mono);background:var(--surface-raised);padding:1px 5px;border-radius:3px;font-size:.6875rem">Space</kbd> play/pause, <kbd style="font-family:var(--font-mono);background:var(--surface-raised);padding:1px 5px;border-radius:3px;font-size:.6875rem">n</kbd> next.</span></div>
-      <div class="mode-item"><span class="mode-key">5</span><span class="mode-name">Aesthetic</span><span class="mode-desc">Clock, calendar, music visualizer, and matrix‑rain animation. Pure terminal eye candy.</span></div>
-      <div class="mode-item"><span class="mode-key">6</span><span class="mode-name">Settings</span><span class="mode-desc">Current theme display, mode switching help, config file path, and full keyboard reference. Theme changes persist to <code>~/.config/vanta/config.toml</code>.</span></div>
-    </div>
-  </div>
-</section>
-
-<!-- ─── feature: monitoring ─── -->
-<section>
-  <div class="wrap">
-    <div class="feature-row">
-      <div class="feature-text">
-        <p class="section-label" style="margin-bottom:calc(var(--g)*1.5)">Real‑time monitoring</p>
-        <h3 style="font-size:1.75rem;font-weight:700;letter-spacing:-.02em;line-height:1.2;margin-bottom:calc(var(--g)*2);color:var(--ink)">Every metric,<br>live in your terminal</h3>
-        <p>CPU per‑core utilisation with temperature and frequency, memory and swap, disk usage and I/O, network throughput with sparklines, GPU utilisation and VRAM &mdash; all updated at your configured refresh rate.</p>
-        <ul>
-          <li>sysinfo backend — no external dependencies beyond Rust</li>
-          <li>NVIDIA GPU support via nvml (optional)</li>
-          <li>Configurable refresh rate in <code>~/.config/vanta/config.toml</code></li>
-        </ul>
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="hero-content">
+      <div class="badge fade-in">v0.1.0 — Built in Rust</div>
+      <h1 class="hero-title split-text">Your machine,<br><span class="accent-text">one pane.</span></h1>
+      <p class="hero-subtitle fade-in">Six keyboard-driven modes that turn your terminal into a live cockpit. Zero tabs. Zero mouse. Total control.</p>
+      <div class="hero-actions fade-in">
+        <a href="#install" class="btn btn-primary magnetic">Install Vanta</a>
+        <a href="https://github.com/ziuus/vanta" target="_blank" class="btn btn-secondary magnetic">View Source</a>
       </div>
-      <div class="feature-visual">
-        <div class="term-box">
-<span class="d"># cpu meltdown trace</span>
-<span class="g">┌─ CPU</span><span class="d"> ───────────────────</span>
-<span class="g">│</span> <span class="b">core 0</span>  ████████░░  78%  75°C
-<span class="g">│</span> <span class="b">core 1</span>  ████░░░░░░  42%  62°C
-<span class="g">│</span> <span class="b">core 2</span>  ██████░░░░  56%  68°C
-<span class="g">│</span> <span class="b">core 3</span>  █████████░  91%  81°C
-<span class="g">│</span> <span class="d">freq 2.8‑4.6 GHz</span>
-<span class="d">└────────────────────</span>
+    </div>
+
+    <!-- 3D Perspective Terminal Mockup -->
+    <div class="hero-visual perspective-3d">
+      <div class="terminal-mockup liquid-glass floating">
+        <div class="terminal-bar">
+          <div class="dots">
+            <span></span><span></span><span></span>
+          </div>
+          <div class="title">vanta --demo</div>
+        </div>
+        <div class="terminal-body">
+          <div class="code-line"><span class="prompt">zius@machine:~$</span> cargo run --release</div>
+          <div class="code-line dim">Compiling vanta v0.1.0...</div>
+          <div class="code-line"><span class="accent">┌─ OVERVIEW ──────────────────────────┐</span></div>
+          <div class="code-line">│ CPU  <span class="highlight">23%</span> ████░░░  | MEM  <span class="highlight">6.2/16GB</span> │</div>
+          <div class="code-line">│ DISK <span class="highlight">34%</span> ██████░  | NET  <span class="highlight">↑1.2 ↓0.4</span>│</div>
+          <div class="code-line">│ GPU  <span class="highlight">45%</span> ███████  | UPT  <span class="highlight">2d 4h</span>    │</div>
+          <div class="code-line"><span class="accent">└─────────────────────────────────────┘</span><span class="cursor"></span></div>
         </div>
       </div>
     </div>
-  </div>
-</section>
+  </section>
 
-<!-- ─── feature: process table ─── -->
-<section>
-  <div class="wrap" data-reverse="true">
-    <div class="feature-row">
-      <div class="feature-text">
-        <p class="section-label" style="margin-bottom:calc(var(--g)*1.5)">Process explorer</p>
-        <h3 style="font-size:1.75rem;font-weight:700;letter-spacing:-.02em;line-height:1.2;margin-bottom:calc(var(--g)*2);color:var(--ink)">Find, sort, kill<br>without leaving the TUI</h3>
-        <p>A full‑width live process table with keyboard‑driven controls. Search by name, sort by any column, toggle tree view, inspect details, and kill processes — all without a mouse.</p>
-        <ul>
-          <li><kbd style="font-family:var(--font-mono);background:var(--surface-raised);padding:1px 5px;border-radius:3px;font-size:.6875rem">/</kbd> search, <kbd style="font-family:var(--font-mono);background:var(--surface-raised);padding:1px 5px;border-radius:3px;font-size:.6875rem">s</kbd> cycle sort, <kbd style="font-family:var(--font-mono);background:var(--surface-raised);padding:1px 5px;border-radius:3px;font-size:.6875rem">t</kbd> tree view</li>
-          <li><kbd style="font-family:var(--font-mono);background:var(--surface-raised);padding:1px 5px;border-radius:3px;font-size:.6875rem">k</kbd> kill selected process, <kbd style="font-family:var(--font-mono);background:var(--surface-raised);padding:1px 5px;border-radius:3px;font-size:.6875rem">i</kbd> detail pane</li>
-          <li>PID, user, CPU%, mem%, RSS, state, command — sortable</li>
-        </ul>
+  <!-- Features Section -->
+  <section id="features" class="section bento-section">
+    <div class="section-header">
+      <h2 class="section-title gs-reveal">Zero dependencies.<br>Infinite monitoring.</h2>
+    </div>
+    
+    <div class="bento-grid">
+      <!-- Large Cell -->
+      <div class="bento-cell cell-large liquid-glass gs-reveal">
+        <div class="cell-content">
+          <div class="cell-icon">⚡</div>
+          <h3>Real-time Metrics</h3>
+          <p>CPU per-core utilisation, temperature, frequency, memory, swap, disk I/O, network throughput with sparklines, and GPU utilisation updated instantly.</p>
+        </div>
+        <div class="cell-visual">
+          <div class="mini-chart">
+            <div class="bar" style="height: 40%"></div>
+            <div class="bar" style="height: 60%"></div>
+            <div class="bar" style="height: 30%"></div>
+            <div class="bar" style="height: 80%"></div>
+            <div class="bar" style="height: 50%"></div>
+            <div class="bar" style="height: 90%"></div>
+            <div class="bar" style="height: 20%"></div>
+          </div>
+        </div>
       </div>
-      <div class="feature-visual">
-        <div class="term-box">
-<span class="d"># process table (tree view)</span>
-<span class="g"> PID</span>  <span class="g">CPU%</span>  <span class="g">MEM</span>   <span class="g">CMD</span>
-<span class="d"> 1234   2.3   42M</span>  &#x2514;&#x2500; nginx
-<span class="b"> 5678  12.1  128M</span>     &#x2514;&#x2500; nginx worker
-<span class="b"> 9012  45.0  1.2G</span>  &#x2514;&#x2500; firefox
- 3456   0.8   64M     &#x2514;&#x2500; firefox sandbox
-<span class="highlight" style="background:var(--accent);color:#fff;padding:0 2px;border-radius:2px"> 7890  99.9  256M</span>  &#x2514;&#x2500; rustc
+      
+      <!-- Small Cell 1 -->
+      <div class="bento-cell cell-small liquid-glass gs-reveal">
+        <div class="cell-content">
+          <div class="cell-icon">🔍</div>
+          <h3>Process Explorer</h3>
+          <p>Find, sort, kill, and inspect processes natively. Full tree view included.</p>
+        </div>
+      </div>
+
+      <!-- Small Cell 2 -->
+      <div class="bento-cell cell-small liquid-glass gs-reveal">
+        <div class="cell-content">
+          <div class="cell-icon">🎵</div>
+          <h3>Media & MPRIS</h3>
+          <p>Control your music, view live visualizers, and check playback status.</p>
+        </div>
+      </div>
+      
+      <!-- Medium Cell -->
+      <div class="bento-cell cell-medium liquid-glass gs-reveal">
+        <div class="cell-content">
+          <div class="cell-icon">🎨</div>
+          <h3>Themable</h3>
+          <p>Four built-in themes (Dark, Light, Dracula, Solarized) with hot-swapping.</p>
         </div>
       </div>
     </div>
-  </div>
-</section>
+  </section>
 
-<!-- ─── themes ─── -->
-<section>
-  <div class="wrap">
-    <p class="section-label">Themes</p>
-    <h2 class="section-title">Four themes, persisted</h2>
-    <p class="section-desc">Cycle with <kbd style="font-family:var(--font-mono);background:var(--surface-raised);padding:1px 6px;border-radius:3px;font-size:.75rem">T</kbd>. The active theme saves to <code>~/.config/vanta/config.toml</code> and restores on next launch.</p>
-    <div class="themes-showcase">
-      <div class="theme-swatch active"><span class="dot" style="background:#0b0c0e;border-color:var(--accent)"></span>dark <span style="color:var(--ink-muted)">· default</span></div>
-      <div class="theme-swatch"><span class="dot" style="background:#f0ece4"></span>light</div>
-      <div class="theme-swatch"><span class="dot" style="background:#1e1f29"></span>dracula</div>
-      <div class="theme-swatch"><span class="dot" style="background:#eee8d5"></span>solarized·light</div>
+  <!-- Split Diagonal Section -->
+  <section class="section diagonal-split">
+    <div class="split-content gs-reveal-left">
+      <h2>Keyboard-Driven Perfection</h2>
+      <p>No mouse required. Navigate the entire interface, switch modes, explore processes, and control media entirely through intuitive keybindings.</p>
+      <ul class="feature-list">
+        <li><code>1-6</code> Switch Modes</li>
+        <li><code>T</code> Cycle Themes</li>
+        <li><code>/</code> Search Processes</li>
+        <li><code>Space</code> Play/Pause Media</li>
+      </ul>
     </div>
-  </div>
-</section>
-
-<!-- ─── keyboard reference ─── -->
-<section>
-  <div class="wrap">
-    <p class="section-label">Keyboard</p>
-    <h2 class="section-title">Every action has a key</h2>
-    <p class="section-desc">No mouse. No touch. Just keys.</p>
-    <div class="kb-grid">
-      <div class="kb-card"><h3>Global</h3><p><kbd>1</kbd>&ndash;<kbd>6</kbd> switch &middot; <kbd>T</kbd> theme &middot; <kbd>q</kbd> quit &middot; <kbd>Tab</kbd> focus</p></div>
-      <div class="kb-card"><h3>Navigation</h3><p><kbd>&uarr;</kbd><kbd>&darr;</kbd><kbd>&larr;</kbd><kbd>&rarr;</kbd> navigate panel &middot; <kbd>Esc</kbd> clear focus</p></div>
-      <div class="kb-card"><h3>Processes</h3><p><kbd>s</kbd> sort &middot; <kbd>/</kbd> search &middot; <kbd>t</kbd> tree &middot; <kbd>k</kbd> kill &middot; <kbd>i</kbd> info &middot; <kbd>c</kbd> compact &middot; <kbd>Space</kbd> collapse</p></div>
-      <div class="kb-card"><h3>Media</h3><p><kbd>Space</kbd> play/pause &middot; <kbd>n</kbd> next &middot; <kbd>p</kbd> prev &middot; <kbd>+</kbd> vol up &middot; <kbd>-</kbd> vol down</p></div>
-    </div>
-  </div>
-</section>
-
-<!-- ─── install ─── -->
-<section id="install">
-  <div class="wrap">
-    <p class="section-label">Get started</p>
-    <h2 class="section-title">Install in two commands</h2>
-    <p class="section-desc">Rust nightly required. Clone, build, and run.</p>
-    <div class="install-grid">
-      <div class="install-block">
-        <h3>Quick install</h3>
-        <pre>cargo install --git https://github.com/ziuus/vanta</pre>
-      </div>
-      <div class="install-block">
-        <h3>From source</h3>
-        <pre>git clone https://github.com/ziuus/vanta
-cd vanta
-cargo run --release</pre>
-      </div>
-      <div class="install-block" style="grid-column:1/-1">
-        <h3>Demo mode (no hardware needed)</h3>
-        <pre>cargo run -- --demo</pre>
-        <p style="margin-top:calc(var(--g)*2);font-size:.8125rem;color:var(--ink-dim)">Generates fake data so you can explore every mode and widget without live hardware. Perfect for screenshots and evaluation.</p>
+    <div class="split-visual gs-reveal-right">
+      <div class="floating-keys">
+        <div class="key liquid-glass magnetic">1</div>
+        <div class="key liquid-glass magnetic">T</div>
+        <div class="key liquid-glass magnetic">Space</div>
+        <div class="key liquid-glass magnetic">Esc</div>
       </div>
     </div>
-  </div>
-</section>
+  </section>
 
-<!-- ─── config ─── -->
-<section>
-  <div class="wrap">
-    <p class="section-label">Configuration</p>
-    <h2 class="section-title"><code style="font-size:1.5rem">~/.config/vanta/config.toml</code></h2>
-    <p class="section-desc">Enable or disable individual widgets, set the refresh rate, and choose your default theme. Changes take effect on next launch.</p>
-    <pre style="max-width:520px">[ui]
-refresh_rate = 0.5
-theme = "dark"
+  <!-- Install Section -->
+  <section id="install" class="section install-section">
+    <div class="install-container liquid-glass gs-reveal">
+      <h2 class="section-title">Ready to take control?</h2>
+      <p>Requires Rust toolchain.</p>
+      
+      <div class="code-block">
+        <div class="code-header">
+          <span class="dot" style="background:#ff5f57"></span>
+          <span class="dot" style="background:#febc2e"></span>
+          <span class="dot" style="background:#28c840"></span>
+        </div>
+        <pre><code>cargo install --git https://github.com/ziuus/vanta</code></pre>
+      </div>
+    </div>
+  </section>
 
-[widgets]
-cpu = true
-memory = true
-disk = true
-network = true
-gpu = true
-clock = true
-calendar = true
-music_viz = true
-processes = true
-media = true</pre>
-  </div>
-</section>
+  <!-- Footer -->
+  <footer class="footer liquid-glass">
+    <p>&copy; 2026 zius. Built with Rust & Ratatui.</p>
+    <a href="https://github.com/ziuus/vanta" target="_blank">GitHub</a>
+  </footer>
 
-<!-- ─── footer ─── -->
-<footer>
-  <div class="wrap">
-    <p>&copy; 2026 <a href="https://github.com/ziuus" target="_blank">zius</a> &middot; <a href="https://github.com/ziuus/vanta" target="_blank">GitHub</a> &middot; MIT</p>
-  </div>
-</footer>
-
-<script>
-// ─── subtle terminal character flicker on hero ───
-(function(){
-  const el=document.querySelector('.terminal-body');
-  if(!el) return;
-  const chars=el.querySelectorAll('.dim,.highlight,.prompt');
-  setInterval(()=>{
-    const idx=Math.floor(Math.random()*chars.length);
-    chars[idx].style.opacity=0.4+Math.random()*0.2;
-    setTimeout(()=>{chars[idx].style.opacity=''},150);
-  },3000);
-})();
-
-// ─── reduced motion ───
-(function(){
-  const mq=window.matchMedia('(prefers-reduced-motion: reduce)');
-  if(mq.matches){
-    document.querySelectorAll('.hero-terminal,.feature-row,.mode-item,.install-block').forEach(el=>{
-      el.style.transition='none';
-      el.style.animation='none';
-    });
-  }
-})();
-</script>
+  <script src="main.js"></script>
 </body>
 </html>
