@@ -81,30 +81,58 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
         .and_then(|s| s.rsplit('/').next().map(|s| s.to_string()))
         .unwrap_or_default();
 
+    let uptime = std::fs::read_to_string("/proc/uptime")
+        .ok()
+        .and_then(|c| {
+            let secs: f64 = c.split_whitespace().next()?.parse().ok()?;
+            let days = (secs / 86400.0) as u64;
+            let hours = ((secs % 86400.0) / 3600.0) as u64;
+            let mins = ((secs % 3600.0) / 60.0) as u64;
+            let mut s = String::new();
+            if days > 0 { s.push_str(&format!("{}d ", days)); }
+            if hours > 0 { s.push_str(&format!("{}h ", hours)); }
+            s.push_str(&format!("{}m", mins));
+            Some(s)
+        })
+        .unwrap_or_else(|| "?".to_string());
+
+    let battery = std::fs::read_to_string("/sys/class/power_supply/BAT0/capacity")
+        .ok()
+        .map(|s| format!("{}%", s.trim()))
+        .unwrap_or_else(|| "AC".to_string());
+
     let key_style = Style::default().fg(theme.accent);
     let val_style = Style::default().fg(theme.text);
 
     let mut lines = Vec::new();
     lines.push(Line::from(vec![
-        Span::styled(format!("{:>5} ", "OS"), key_style),
+        Span::styled(format!("{:>7} ", "OS"), key_style),
         Span::styled(os_short, val_style),
     ]));
     lines.push(Line::from(vec![
-        Span::styled(format!("{:>5} ", "Host"), key_style),
+        Span::styled(format!("{:>7} ", "Host"), key_style),
         Span::styled(hostname, val_style),
     ]));
     lines.push(Line::from(vec![
-        Span::styled(format!("{:>5} ", "CPU"), key_style),
+        Span::styled(format!("{:>7} ", "CPU"), key_style),
         Span::styled(cpu_short, val_style),
     ]));
     if !gpu.is_empty() {
         lines.push(Line::from(vec![
-            Span::styled(format!("{:>5} ", "GPU"), key_style),
+            Span::styled(format!("{:>7} ", "GPU"), key_style),
             Span::styled(gpu, val_style),
         ]));
     }
     lines.push(Line::from(vec![
-        Span::styled(format!("{:>5} ", "Shell"), key_style),
+        Span::styled(format!("{:>7} ", "Uptime"), key_style),
+        Span::styled(uptime, val_style),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled(format!("{:>7} ", "Battery"), key_style),
+        Span::styled(battery, val_style),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled(format!("{:>7} ", "Shell"), key_style),
         Span::styled(shell, val_style),
     ]));
 

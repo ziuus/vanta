@@ -6,7 +6,7 @@ use ratatui::Frame;
 use crate::app::{self, PanelId, PanelStates};
 use crate::config::Config;
 use crate::monitors::{cpu, disk, gpu, memory, network, processes, system_info};
-use crate::widgets::{calendar, clock, media, music_viz};
+use crate::widgets::{calendar, clock, cmatrix, media, music_viz};
 
 /// Render a btop-style colored section label as the first line of a panel.
 /// Returns the remaining area below the label for the widget content.
@@ -49,53 +49,46 @@ pub fn render(
 
     // ── Top section: 3-column grid ──
     let cols = Layout::horizontal([
-        Constraint::Ratio(4, 10),  // Primary: CPU, Memory, Disk, Network
-        Constraint::Ratio(3, 10),  // Secondary: Clock, Calendar, Media
-        Constraint::Ratio(3, 10),  // Peripheral: GPU, Visualizer, System
+        Constraint::Ratio(35, 100),  // Left: CPU, Memory, Network
+        Constraint::Ratio(35, 100),  // Center: Disk, GPU, System, Viz
+        Constraint::Ratio(30, 100),  // Right: Clock, Media, Calendar
     ])
     .spacing(1)
     .split(chunks[0]);
 
-    // ── Column 1: Primary monitoring (4 stacked panels) ──
+    // ── Column 1: Hardware metrics ──
     let col1 = Layout::vertical([
         Constraint::Min(8),       // CPU
         Constraint::Length(5),    // Memory
-        Constraint::Length(4),    // Disk
-        Constraint::Length(4),    // Network
+        Constraint::Length(5),    // Network
     ])
     .spacing(0)
     .split(cols[0]);
 
-    // ── Column 2: Secondary widgets ──
-    let col2 = if config.widgets.media {
-        Layout::vertical([
-            Constraint::Length(7),    // Clock (Big)
-            Constraint::Length(3),    // Media (compact)
-            Constraint::Length(10),   // Calendar
-            Constraint::Min(0),       // Spacer
-        ])
-        .spacing(1)
-        .split(cols[1])
-    } else {
-        Layout::vertical([
-            Constraint::Length(7),    // Clock (Big)
-            Constraint::Length(10),   // Calendar
-            Constraint::Min(0),       // Spacer
-        ])
-        .spacing(1)
-        .split(cols[1])
-    };
+    // ── Column 2: System / GPU / Disk / Viz ──
+    let mut c2_constraints = vec![];
+    if config.widgets.disk { c2_constraints.push(Constraint::Length(4)); }
+    if config.widgets.gpu { c2_constraints.push(Constraint::Length(4)); }
+    c2_constraints.push(Constraint::Length(9)); // System (always on)
+    if config.widgets.music_viz { c2_constraints.push(Constraint::Min(0)); }
 
-    // ── Column 3: Peripheral ──
-    let col3 = Layout::vertical([
-        Constraint::Length(4),       // GPU
-        Constraint::Length(7),       // System
-        Constraint::Min(0),          // Visualizer (expands)
-    ])
-    .spacing(1)
-    .split(cols[2]);
+    let col2 = Layout::vertical(c2_constraints)
+        .spacing(0)
+        .split(cols[1]);
 
-    // ── Column 1: Primary Monitoring ──
+    // ── Column 3: Secondary widgets ──
+    let mut c3_constraints = vec![];
+    if config.widgets.clock { c3_constraints.push(Constraint::Length(7)); }
+    if config.widgets.media { c3_constraints.push(Constraint::Length(3)); }
+    if config.widgets.calendar { c3_constraints.push(Constraint::Length(10)); }
+    if config.widgets.cmatrix { c3_constraints.push(Constraint::Min(0)); }
+    c3_constraints.push(Constraint::Min(0)); // Spacer
+
+    let col3 = Layout::vertical(c3_constraints)
+        .spacing(1)
+        .split(cols[2]);
+
+    // ── Column 1: Hardware ──
     if config.widgets.cpu {
         let inner = section_header(f, col1[0], " CPU", theme, focused == Some(PanelId::Cpu));
         cpu::render(f, inner, theme);
@@ -104,57 +97,58 @@ pub fn render(
         let inner = section_header(f, col1[1], "󰍛 Memory", theme, focused == Some(PanelId::Memory));
         memory::render(f, inner, theme);
     }
-    if config.widgets.disk {
-        let inner = section_header(f, col1[2], "󰋊 Disk", theme, focused == Some(PanelId::Disk));
-        disk::render(f, inner, theme);
-    }
     if config.widgets.network {
-        let inner = section_header(f, col1[3], "󰤨 Network", theme, focused == Some(PanelId::Network));
+        let inner = section_header(f, col1[2], "󰤨 Network", theme, focused == Some(PanelId::Network));
         network::render(f, inner, theme);
     }
 
-    // ── Column 2: Secondary ──
-
-    let mut ci = 0_usize;
-
-    // Clock
-    if config.widgets.clock {
-        let inner = section_header(f, col2[ci], "Clock", theme, focused == Some(PanelId::Clock));
-        clock::render(f, inner, theme);
-        ci += 1;
+    // ── Column 2: System / Disk / GPU / Viz ──
+    let mut ci2 = 0_usize;
+    if config.widgets.disk {
+        let inner = section_header(f, col2[ci2], "󰋊 Disk", theme, focused == Some(PanelId::Disk));
+        disk::render(f, inner, theme);
+        ci2 += 1;
     }
-
-    // Media
-    if config.widgets.media {
-        let inner = section_header(f, col2[ci], "Media", theme, focused == Some(PanelId::Media));
-        media::render(f, inner, theme);
-        ci += 1;
-    }
-
-    // Calendar
-    if config.widgets.calendar {
-        let inner = section_header(f, col2[ci], "Calendar", theme, focused == Some(PanelId::Calendar));
-        calendar::render(f, inner, theme, states.calendar_month_offset);
-    }
-
-    // ── Column 3: Peripheral ──
-
-    // GPU
     if config.widgets.gpu {
-        let inner = section_header(f, col3[0], "GPU", theme, focused == Some(PanelId::Gpu));
+        let inner = section_header(f, col2[ci2], "GPU", theme, focused == Some(PanelId::Gpu));
         gpu::render(f, inner, theme);
+        ci2 += 1;
     }
-
-    // System Info
     {
-        let inner = section_header(f, col3[1], "System", theme, focused == Some(PanelId::System));
+        let inner = section_header(f, col2[ci2], "System", theme, focused == Some(PanelId::System));
         system_info::render(f, inner, theme);
+        ci2 += 1;
+    }
+    if config.widgets.music_viz {
+        let inner = section_header(f, col2[ci2], "Visualizer", theme, focused == Some(PanelId::Visualizer));
+        music_viz::render(f, inner, theme, tick);
     }
 
-    // Visualizer
-    if config.widgets.music_viz {
-        let inner = section_header(f, col3[2], "Visualizer", theme, focused == Some(PanelId::Visualizer));
-        music_viz::render(f, inner, theme, tick);
+    // ── Column 3: Secondary (Clock/Media/Calendar) ──
+
+    let mut ci3 = 0_usize;
+
+    if config.widgets.clock {
+        let inner = section_header(f, col3[ci3], "Clock", theme, focused == Some(PanelId::Clock));
+        clock::render(f, inner, theme);
+        ci3 += 1;
+    }
+
+    if config.widgets.media {
+        let inner = section_header(f, col3[ci3], "Media", theme, focused == Some(PanelId::Media));
+        media::render(f, inner, theme);
+        ci3 += 1;
+    }
+
+    if config.widgets.calendar {
+        let inner = section_header(f, col3[ci3], "Calendar", theme, focused == Some(PanelId::Calendar));
+        calendar::render(f, inner, theme, states.calendar_month_offset);
+        ci3 += 1;
+    }
+
+    if config.widgets.cmatrix {
+        let inner = section_header(f, col3[ci3], "Matrix", theme, false);
+        cmatrix::render(f, inner, tick);
     }
 
     // ── Bottom section: Processes (full width) ──

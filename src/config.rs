@@ -30,6 +30,7 @@ pub struct WidgetConfig {
     pub music_viz: bool,
     pub processes: bool,
     pub media: bool,
+    pub cmatrix: bool,
 }
 
 impl Default for WidgetConfig {
@@ -45,6 +46,7 @@ impl Default for WidgetConfig {
             music_viz: true,
             processes: true,
             media: true,
+            cmatrix: true,
         }
     }
 }
