@@ -91,7 +91,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
     let core_rows = core_count.div_ceil(2);
     let mut constraints: Vec<ratatui::layout::Constraint> = Vec::with_capacity(3 + core_rows);
     constraints.push(Constraint::Length(1)); // header line
-    constraints.push(Constraint::Length(2)); // sparkline
+    constraints.push(Constraint::Min(2));    // sparkline (expands to fill vertical space)
     constraints.push(Constraint::Length(1)); // blank spacer
     for _ in 0..core_rows {
         constraints.push(Constraint::Length(1)); // per-core row
