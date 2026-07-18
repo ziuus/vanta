@@ -135,13 +135,15 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
         .x_bounds([0.0, max_w.saturating_sub(1) as f64])
         .y_bounds([0.0, 100.0])
         .paint(|ctx| {
-            if hist.len() > 1 {
-                for i in 0..hist.len() - 1 {
+            for (i, &val) in hist.iter().enumerate() {
+                if val > 0 {
+                    // Draw a vertical line from bottom to the value.
+                    // Canvas with Marker::Braille will render this as filled braille blocks!
                     ctx.draw(&CanvasLine {
                         x1: i as f64,
-                        y1: hist[i] as f64,
-                        x2: (i + 1) as f64,
-                        y2: hist[i + 1] as f64,
+                        y1: 0.0,
+                        x2: i as f64,
+                        y2: val as f64,
                         color: header_color,
                     });
                 }

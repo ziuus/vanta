@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use dbus::arg::Variant;
+use dbus::arg::{Variant, PropMap, RefArg};
 use dbus::blocking::{BlockingSender, Connection};
 use dbus::Message;
 use ratatui::layout::Rect;
@@ -36,55 +36,43 @@ fn read_metadata(conn: &Connection, player: &str, timeout: Duration) -> TrackInf
     };
 
     let mut info = TrackInfo::default();
-    let mut outer = reply.iter_init();
-
-    // Skip the outer Variant to reach the dict (a{sv})
-    if let Some(mut dict) = outer.recurse(dbus::arg::ArgType::Variant) {
-        // Iterate dictionary entries
-        while let Some(mut entry) = dict.recurse(dbus::arg::ArgType::DictEntry) {
-            let key: String = match entry.read() {
-                Ok(k) => k,
-                Err(_) => continue,
-            };
-
-            // Value is wrapped in Variant
-            if let Some(mut val) = entry.recurse(dbus::arg::ArgType::Variant) {
-                match key.as_str() {
-                    "xesam:title" => {
-                        if let Ok(t) = val.read::<String>() {
-                            info.title = t;
-                        } else if let Some(mut arr) = val.recurse(dbus::arg::ArgType::Array) {
-                            if let Ok(t) = arr.read::<String>() {
-                                info.title = t;
-                            }
-                        }
+    
+    if let Some(variant) = reply.get1::<Variant<PropMap>>() {
+        let map = variant.0;
+        
+        if let Some(title) = map.get("xesam:title") {
+            if let Some(t) = title.0.as_str() {
+                info.title = t.to_string();
+            }
+        }
+        
+        if let Some(artist) = map.get("xesam:artist") {
+            if let Some(a) = artist.0.as_str() {
+                info.artist = a.to_string();
+            } else if let Some(arr) = artist.0.as_iter() {
+                let mut v = Vec::new();
+                for item in arr {
+                    if let Some(s) = item.as_str() {
+                        v.push(s.to_string());
                     }
-                    "xesam:artist" => {
-                        if let Ok(s) = val.read::<String>() {
-                            info.artist = s;
-                        } else if let Some(mut arr) = val.recurse(dbus::arg::ArgType::Array) {
-                            let mut v = Vec::new();
-                            while let Ok(s) = arr.read::<String>() {
-                                v.push(s);
-                            }
-                            if !v.is_empty() {
-                                info.artist = v.join(", ");
-                            }
-                        }
-                    }
-                    "mpris:length" => {
-                        if let Ok(len) = val.read::<i64>() {
-                            info.length_usec = len;
-                        }
-                    }
-                    _ => {}
                 }
+                if !v.is_empty() {
+                    info.artist = v.join(", ");
+                }
+            }
+        }
+        
+        if let Some(length) = map.get("mpris:length") {
+            if let Some(l) = length.0.as_i64() {
+                info.length_usec = l;
             }
         }
     }
 
     info
 }
+
+
 
 /// Get a string property via org.freedesktop.DBus.Properties.Get.
 fn get_prop(conn: &Connection, player: &str, prop: &str, timeout: Duration) -> Option<String> {
@@ -152,12 +140,11 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
             (),
         );
         let list_reply = conn.send_with_reply_and_block(list_msg, timeout).ok();
-        let player_name = list_reply.and_then(|r| {
+        let player_name: Option<String> = list_reply.and_then(|r| {
             let (names,): (Vec<String>,) = r.read_all().ok()?;
             names
-                .iter()
+                .into_iter()
                 .find(|n| n.starts_with("org.mpris.MediaPlayer2."))
-                .cloned()
         });
 
         if let Some(ref player) = player_name {
