@@ -1,5 +1,7 @@
 mod app;
 mod config;
+mod layout;
+mod mode;
 mod monitors;
 mod screens;
 mod widgets;
@@ -23,11 +25,7 @@ pub fn run() -> io::Result<()> {
         std::process::exit(1);
     }
 
-    let mut config = Config::load();
-    let args: Vec<String> = std::env::args().collect();
-    if args.contains(&"--demo".to_string()) {
-        config.demo = true;
-    }
+    let config = Config::load();
 
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -53,20 +51,39 @@ fn run_app<B: ratatui::backend::Backend>(
     terminal: &mut Terminal<B>,
     app: &mut App,
 ) -> io::Result<()> {
-    let tick_rate = std::time::Duration::from_secs_f64(app.config.ui.refresh_rate);
+    let mut tick_rate = std::time::Duration::from_secs_f64(app.config.ui.refresh_rate);
+    let render_rate = std::time::Duration::from_millis(8); // ~120 FPS for buttery smooth visualizer
     let mut last_tick = std::time::Instant::now();
+    let mut last_render = std::time::Instant::now();
 
     while app.running {
-        terminal.draw(|f| app.render(f))?;
+        let now = std::time::Instant::now();
+        if now.duration_since(last_render) >= render_rate {
+            terminal.draw(|f| app.render(f))?;
+            last_render = std::time::Instant::now();
+        }
 
-        let timeout = tick_rate.saturating_sub(last_tick.elapsed());
+        let time_to_tick = tick_rate.saturating_sub(last_tick.elapsed());
+        let time_to_render = render_rate.saturating_sub(last_render.elapsed());
+        let timeout = time_to_tick.min(time_to_render);
+
         if event::poll(timeout)? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
                     match key.code {
                         // Global keys
                         KeyCode::Char('q') | KeyCode::Char('Q') => app.running = false,
-                        KeyCode::Char('t') | KeyCode::Char('T') => app.toggle_theme(),
+                        KeyCode::Char('T') => app.toggle_theme(),
+                        // Mode switches (must be BEFORE panel-focused handler to avoid capture)
+                        KeyCode::Char('1') => {
+                            app.set_mode(mode::DashboardMode::Overview);
+                        }
+                        KeyCode::Char('2') => {
+                            app.set_mode(mode::DashboardMode::Monitor);
+                        }
+                        KeyCode::Char('3') => {
+                            app.set_mode(mode::DashboardMode::Aesthetic);
+                        }
                         KeyCode::Esc => {
                             if app.panel_states.process_search_active {
                                 app.panel_states.process_search_active = false;
@@ -104,6 +121,7 @@ fn run_app<B: ratatui::backend::Backend>(
         }
 
         if last_tick.elapsed() >= tick_rate {
+            tick_rate = std::time::Duration::from_secs_f64(app.config.ui.refresh_rate);
             app.tick();
             last_tick = std::time::Instant::now();
         }

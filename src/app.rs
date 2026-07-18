@@ -1,16 +1,27 @@
+use std::sync::{LazyLock, Mutex};
+
 use ratatui::layout::{Constraint, Layout};
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
+pub static SYS: LazyLock<Mutex<sysinfo::System>> = LazyLock::new(|| {
+    let mut s = sysinfo::System::new_all();
+    s.refresh_all();
+    Mutex::new(s)
+});
+
 use std::collections::HashSet;
 use std::fs;
 use std::process;
 
 use crate::config::Config;
+use crate::layout;
+use crate::mode::DashboardMode;
 use crate::monitors::processes;
 use crate::screens::overview;
+use crate::widgets::widget;
 
 /// Summary metrics collected once per render for the top bar
 struct Summary {
@@ -26,15 +37,14 @@ struct Summary {
 }
 
 fn collect_summary() -> Summary {
-    // CPU
-    let mut system = sysinfo::System::new_all();
-    system.refresh_cpu_all();
-    let cpu_pct = system.global_cpu_usage();
+    let mut sys = SYS.lock().unwrap();
+    sys.refresh_cpu_all();
+    let cpu_pct = sys.global_cpu_usage();
 
     // Memory
-    system.refresh_memory();
-    let mem_pct = if system.total_memory() > 0 {
-        (system.used_memory() as f64 / system.total_memory() as f64) * 100.0
+    sys.refresh_memory();
+    let mem_pct = if sys.total_memory() > 0 {
+        (sys.used_memory() as f64 / sys.total_memory() as f64) * 100.0
     } else {
         0.0
     };
@@ -209,6 +219,9 @@ pub struct PanelStates {
     pub process_search: String,
     pub process_search_active: bool,
     pub process_tree_mode: bool,
+    pub process_compact_cmd: bool,
+    pub process_selected_pid: Option<u32>,
+    pub process_show_detail: bool,
     pub process_collapsed: HashSet<u32>,
 }
 
@@ -223,6 +236,9 @@ impl PanelStates {
             process_search_active: false,
             process_tree_mode: false,
             process_collapsed: HashSet::new(),
+            process_compact_cmd: true,
+            process_selected_pid: None,
+            process_show_detail: false,
         }
     }
 }
@@ -243,6 +259,46 @@ pub struct Theme {
 }
 
 impl Theme {
+    pub fn from_name(name: &str) -> Self {
+        match name {
+            "dark" => Self::dark(),
+            "light" => Self::light(),
+            "dracula" => Self::dracula(),
+            "solarized-light" => Self::solarized_light(),
+            _ => Self::dark(),
+        }
+    }
+
+    pub fn dracula() -> Self {
+        Self {
+            bg: Color::Rgb(40, 42, 54),
+            accent: Color::Rgb(255, 85, 85), // red accent
+            secondary: Color::Rgb(98, 114, 164),
+            surface: Color::Rgb(68, 71, 90),
+            text: Color::Rgb(248, 248, 242),
+            dim: Color::Rgb(98, 114, 164),
+            green: Color::Rgb(80, 250, 123),
+            yellow: Color::Rgb(255, 203, 107),
+            red: Color::Rgb(255, 121, 198),
+            focus: Color::Rgb(80, 250, 123),
+        }
+    }
+
+    pub fn solarized_light() -> Self {
+        Self {
+            bg: Color::Rgb(253, 246, 227),
+            accent: Color::Rgb(38, 139, 210),
+            secondary: Color::Rgb(108, 113, 196),
+            surface: Color::Rgb(238, 232, 213),
+            text: Color::Rgb(101, 123, 131),
+            dim: Color::Rgb(147, 161, 161),
+            green: Color::Rgb(133, 153, 0),
+            yellow: Color::Rgb(181, 137, 0),
+            red: Color::Rgb(220, 50, 47),
+            focus: Color::Rgb(38, 139, 210),
+        }
+    }
+
     pub fn dark() -> Self {
         Self {
             bg: Color::Rgb(10, 10, 15),
@@ -278,6 +334,7 @@ pub struct App {
     pub running: bool,
     pub config: Config,
     pub theme: Theme,
+    pub mode: DashboardMode,
     pub tick_count: u64,
     pub focused_panel: Option<PanelId>,
     pub panel_states: PanelStates,
@@ -285,22 +342,60 @@ pub struct App {
 
 impl App {
     pub fn new(config: Config) -> Self {
-        Self {
+        // Initialize theme based on saved config theme name
+        let init_theme = Theme::from_name(&config.ui.theme);
+        // Initialize mode from saved startup mode, fall back to Overview
+        let init_mode = DashboardMode::from_str(&config.ui.startup_mode);
+        let mut app = Self {
             running: true,
-            theme: Theme::dark(),
+            theme: init_theme,
             config,
+            mode: init_mode,
             tick_count: 0,
             focused_panel: None,
             panel_states: PanelStates::new(),
-        }
+        };
+        // Ensure mode is persisted on first run
+        app.persist_mode();
+        app
     }
 
+    /// Persist the current mode to config and save.
+    pub fn persist_mode(&mut self) {
+        self.config.ui.startup_mode = self.mode.as_str().to_string();
+        self.config.save();
+    }
+
+    /// Switch mode and persist to config.
+    pub fn set_mode(&mut self, mode: DashboardMode) {
+        self.mode = mode;
+        self.focused_panel = None;
+        self.persist_mode();
+    }
+
+    /// Cycle through available themes (used by UI hotkey).
     pub fn toggle_theme(&mut self) {
-        self.theme = if matches!(self.theme.bg, Color::Rgb(10, 10, 15)) {
-            Theme::light()
+        const THEME_ORDER: [&str; 4] = ["dark", "light", "dracula", "solarized-light"];
+        let current = &self.config.ui.theme;
+        let idx = THEME_ORDER.iter().position(|&n| n == current).unwrap_or(0);
+        let next_idx = (idx + 1) % THEME_ORDER.len();
+        let next_name = THEME_ORDER[next_idx];
+        self.set_theme(next_name);
+    }
+
+    /// Set theme by name (validates and persists).
+    pub fn set_theme(&mut self, name: &str) {
+        const THEME_ORDER: [&str; 4] = ["dark", "light", "dracula", "solarized-light"];
+        if !THEME_ORDER.contains(&name) {
+            // fallback to dark if unknown
+            self.config.ui.theme = "dark".to_string();
+            self.theme = Theme::dark();
         } else {
-            Theme::dark()
-        };
+            self.config.ui.theme = name.to_string();
+            self.theme = Theme::from_name(name);
+        }
+        // Persist the chosen theme
+        self.config.save();
     }
 
     /// Cycle focus to the next/previous panel in Tab order
@@ -347,10 +442,19 @@ impl App {
                 // Tree mode toggle
                 KeyCode::Char('t') | KeyCode::Char('T') => {
                     if !self.panel_states.process_search_active {
-                        self.panel_states.process_tree_mode =
-                            !self.panel_states.process_tree_mode;
+                        self.panel_states.process_tree_mode = !self.panel_states.process_tree_mode;
                         self.panel_states.process_scroll_offset = 0;
                     }
+                }
+                // Compact/full command toggle
+                KeyCode::Char('c') | KeyCode::Char('C') => {
+                    self.panel_states.process_compact_cmd =
+                        !self.panel_states.process_compact_cmd;
+                }
+                // Info/detail toggle
+                KeyCode::Char('i') | KeyCode::Char('I') => {
+                    self.panel_states.process_show_detail =
+                        !self.panel_states.process_show_detail;
                 }
                 // Collapse/expand in tree mode
                 KeyCode::Right if self.panel_states.process_tree_mode => {
@@ -468,6 +572,7 @@ impl App {
     /// Called on every refresh tick — advances animations, refreshes system data
     pub fn tick(&mut self) {
         self.tick_count = self.tick_count.wrapping_add(1);
+        SYS.lock().unwrap().refresh_all();
     }
 
     pub fn render(&mut self, f: &mut Frame) {
@@ -484,19 +589,13 @@ impl App {
         let sum = collect_summary();
 
         // ── Title bar: health summary bar with semantic colors ──
-        let theme_icon = if matches!(self.theme.bg, Color::Rgb(10, 10, 15)) {
-            "🌙"
-        } else {
-            "☀"
-        };
-
         let dim = self.theme.dim;
         let bg = self.theme.bg;
         let green = self.theme.green;
         let yellow = self.theme.yellow;
         let red = self.theme.red;
         let secondary = self.theme.secondary;
-        let accent = self.theme.accent;
+        let _accent = self.theme.accent;
 
         // Semantic coloring helpers
         let cpu_col = if sum.cpu_pct > 80.0 { red } else if sum.cpu_pct > 50.0 { yellow } else { green };
@@ -511,33 +610,50 @@ impl App {
 
         let os_name = sum.os.split_whitespace().next().unwrap_or("Linux");
 
+        let sep = Span::styled(" │", Style::default().fg(dim).bg(bg));
+
         let mut bar = Vec::with_capacity(12);
 
-        // Static info (dim)
-        bar.push(Span::styled(format!(" vanta {} ", theme_icon), Style::default().fg(accent).bg(bg)));
-        bar.push(Span::styled(format!("{} {} ", os_name, sum.uptime), Style::default().fg(dim).bg(bg)));
+        // Group 1: OS + uptime
+        bar.push(Span::styled(format!(" {} {} ", os_name, sum.uptime), Style::default().fg(dim).bg(bg)));
+        bar.push(sep.clone());
 
-        // Health stats (colored)
-        bar.push(Span::styled(format!(" CPU {:.0}% ", sum.cpu_pct), Style::default().fg(cpu_col).bg(bg)));
-        bar.push(Span::styled(format!(" MEM {:.0}% ", sum.mem_pct), Style::default().fg(mem_col).bg(bg)));
-        bar.push(Span::styled(format!(" GPU {}% ", sum.gpu_pct), Style::default().fg(gpu_col).bg(bg)));
-        bar.push(Span::styled(format!(" DISK {:.0}% ", sum.disk_pct), Style::default().fg(disk_col).bg(bg)));
+        // Group 2: Health stats (semantic colours)
+        bar.push(Span::styled(format!("CPU {:.0}%", sum.cpu_pct), Style::default().fg(cpu_col).bg(bg)));
+        bar.push(Span::styled(format!(" MEM {:.0}%", sum.mem_pct), Style::default().fg(mem_col).bg(bg)));
+        bar.push(Span::styled(format!(" DISK {:.0}%", sum.disk_pct), Style::default().fg(disk_col).bg(bg)));
+        bar.push(Span::styled(format!(" GPU {}%", sum.gpu_pct), Style::default().fg(gpu_col).bg(bg)));
+        bar.push(sep.clone());
 
-        // Network (blue)
-        bar.push(Span::styled(format!(" ↓{} ", sum.net_dl), Style::default().fg(secondary).bg(bg)));
-        bar.push(Span::styled(format!(" ↑{} ", sum.net_ul), Style::default().fg(secondary).bg(bg)));
+        // Group 3: Network
+        bar.push(Span::styled(format!(" ↓{}", sum.net_dl), Style::default().fg(secondary).bg(bg)));
+        bar.push(Span::styled(format!(" ↑{}", sum.net_ul), Style::default().fg(secondary).bg(bg)));
 
-        // Battery (semantic)
+        // Group 4: Battery
         if let Some(p) = sum.bat_pct {
-            bar.push(Span::styled(format!(" 🔋{}% ", p), Style::default().fg(bat_col).bg(bg)));
+            bar.push(Span::styled(format!(" {}%", p), Style::default().fg(bat_col).bg(bg)));
         }
+        bar.push(sep.clone());
 
-        // Push controls to the right
-        bar.push(Span::styled("    [T]heme [q]uit", Style::default().fg(dim).bg(bg)));
+        // Nav
+        let nav_entries = ["1O", "2M", "3P", "4D", "5A", "6S", "T\u{2191}", "Q\u{2190}"];
+        let nav_str = nav_entries.join(" ");
+        let nav_display = format!(" {}", nav_str);
+        let nav_len = nav_display.len();
 
-        // Fill remaining space
-        let used: usize = bar.iter().map(|s| s.content.len()).sum();
+        // Push stats to the left, nav to the right
+        let stats_len: usize = bar.iter().map(|s| s.content.len()).sum();
         let avail = title_bar.width as usize;
+        let gap = if stats_len + nav_len + 2 < avail {
+            avail.saturating_sub(stats_len + nav_len)
+        } else {
+            2
+        };
+
+        bar.push(Span::styled(" ".repeat(gap), Style::default().bg(bg)));
+        bar.push(Span::styled(nav_display, Style::default().fg(dim).bg(bg)));
+        // Fill remainder
+        let used: usize = bar.iter().map(|s| s.content.len()).sum();
         if used < avail {
             bar.push(Span::styled(" ".repeat(avail - used), Style::default().bg(bg)));
         }
@@ -548,16 +664,44 @@ impl App {
             title_bar,
         );
 
-        // Main content — unified single pane
-        overview::render(
-            f,
-            main_area,
-            &self.theme,
-            &self.config,
-            self.tick_count,
-            self.focused_panel,
-            &self.panel_states,
-        );
+        // Main content — dispatch by mode
+        match self.mode {
+            DashboardMode::Overview => {
+                overview::render(
+                    f,
+                    main_area,
+                    &self.theme,
+                    &self.config,
+                    self.tick_count,
+                    self.focused_panel,
+                    &self.panel_states,
+                );
+            }
+            DashboardMode::Monitor
+            | DashboardMode::Aesthetic => {
+                // Black background
+                f.render_widget(
+                    Paragraph::new("").style(Style::default().bg(Color::Rgb(0, 0, 0))),
+                    main_area,
+                );
+
+                let placements = layout::layout_for_mode(self.mode, main_area, &self.config);
+                let widgets = widget::widgets_for_mode(self.mode);
+
+                for placement in placements {
+                    if let Some(w) = widgets.iter().find(|w| w.id() == placement.id) {
+                        w.render(
+                            f,
+                            placement.area,
+                            &self.theme,
+                            &self.config,
+                            &self.panel_states,
+                            self.tick_count,
+                        );
+                    }
+                }
+            }
+        }
 
         // ── Status bar ──
         let focus_status = match self.focused_panel {
@@ -583,7 +727,8 @@ impl App {
         f.render_widget(
             Paragraph::new(Line::from(Span::styled(
                 format!(
-                    " vanta v0.1.0{}{}",
+                    " vanta v0.1.0 [{}]{}{}",
+                    self.mode.label(),
                     focus_status, process_status,
                 ),
                 status_style,

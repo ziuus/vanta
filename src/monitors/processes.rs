@@ -18,6 +18,15 @@ struct IoPrev {
     time: Instant,
 }
 
+struct CpuPrev {
+    jiffies: u64,
+    total_jiffies: f64,
+}
+
+static PREV_CPU: LazyLock<Mutex<HashMap<u32, CpuPrev>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+
 static PREV_IO: LazyLock<Mutex<HashMap<u32, IoPrev>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
@@ -104,9 +113,22 @@ fn read_proc_cpu(pid: u32, total_jiffies: f64) -> f64 {
         let parts: Vec<&str> = content.split_whitespace().collect();
         if parts.len() > 21 {
             if let (Ok(utime), Ok(stime)) = (parts[13].parse::<u64>(), parts[14].parse::<u64>()) {
-                if total_jiffies > 0.0 {
-                    return ((utime + stime) as f64 / total_jiffies) * 100.0;
-                }
+                let proc_jiffies = utime + stime;
+                let mut prev_map = PREV_CPU.lock().unwrap();
+                let pct = if let Some(prev) = prev_map.get(&pid) {
+                    let d_proc = proc_jiffies.saturating_sub(prev.jiffies) as f64;
+                    let d_total = total_jiffies - prev.total_jiffies;
+                    if d_total > 0.0 {
+                        let num_cores = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1) as f64;
+                        (d_proc / d_total) * 100.0 * num_cores
+                    } else {
+                        0.0
+                    }
+                } else {
+                    0.0
+                };
+                prev_map.insert(pid, CpuPrev { jiffies: proc_jiffies, total_jiffies });
+                return pct;
             }
         }
     }
@@ -234,6 +256,13 @@ fn collect_processes(
                 }
             }
         }
+    }
+
+    {
+        let mut prev_io = PREV_IO.lock().unwrap();
+        prev_io.retain(|&pid, _| procs.iter().any(|p| p.pid == pid));
+        let mut prev_cpu = PREV_CPU.lock().unwrap();
+        prev_cpu.retain(|&pid, _| procs.iter().any(|p| p.pid == pid));
     }
 
     if !search.is_empty() {
@@ -525,66 +554,13 @@ fn tree_prefix(depth: usize, has_children: bool, expanded: bool, tree_mode: bool
     String::new()
 }
 
-/// Stable fake process list for demo/screenshot mode.
-fn generate_demo_procs() -> Vec<ProcInfo> {
-    // Tuple: (name, cmdline, pid, ppid, mem_kb, cpu_pct, state, threads, uid, read_bps, write_bps)
-    let demos: [(&str, &str, u32, u32, u64, f64, &str, u64, u32, f64, f64); 35] = [
-        ("systemd", "/usr/lib/systemd/systemd --system", 1, 0, 4096, 0.3, "S", 62, 0, 200.0, 50.0),
-        ("init", "init", 2, 0, 128, 0.0, "S", 1, 0, 0.0, 0.0),
-        ("kthreadd", "kthreadd", 3, 0, 0, 0.0, "S", 1, 0, 0.0, 0.0),
-        ("ksoftirqd/0", "ksoftirqd/0", 6, 2, 0, 0.1, "S", 1, 0, 0.0, 0.0),
-        ("migration/0", "migration/0", 7, 2, 0, 0.0, "S", 1, 0, 0.0, 0.0),
-        ("rcu_sched", "rcu_sched", 9, 2, 0, 0.2, "S", 1, 0, 0.0, 0.0),
-        ("shell", "/sbin/shell", 512, 1, 2048, 0.5, "S", 2, 0, 0.0, 0.0),
-        ("sshd", "/usr/sbin/sshd -D", 768, 1, 4096, 0.1, "S", 1, 0, 0.0, 0.0),
-        ("bash", "/usr/bin/bash", 1024, 512, 3072, 0.2, "S", 1, 1000, 0.0, 0.0),
-        ("login", "/bin/login", 1536, 1, 4096, 0.0, "S", 1, 0, 0.0, 0.0),
-        ("vim", "/usr/bin/vim ~/.config/nvim/init.lua", 2048, 1024, 8192, 1.2, "S", 1, 1000, 0.0, 8000.0),
-        ("kitty", "/usr/bin/kitty 0", 2304, 1024, 16384, 0.8, "S", 4, 1000, 0.0, 0.0),
-        ("firefox", "/usr/lib/firefox/firefox -contentproc", 3072, 1024, 245760, 4.5, "S", 18, 1000, 5000.0, 15000.0),
-        ("Web Content", "/usr/lib/firefox/firefox -contentproc -childID 1", 3073, 3072, 81920, 3.1, "S", 8, 1000, 12000.0, 4500.0),
-        ("Web Content", "/usr/lib/firefox/firefox -contentproc -childID 2", 3074, 3072, 65536, 2.8, "S", 6, 1000, 8000.0, 3000.0),
-        ("GPU Process", "/usr/lib/firefox/firefox -gpu-process", 3075, 3072, 49152, 1.5, "S", 4, 1000, 2000.0, 500.0),
-        ("chrome", "/opt/google/chrome/chrome", 4096, 1024, 196608, 3.2, "S", 14, 1000, 18000.0, 22000.0),
-        ("Chrome_child", "/opt/google/chrome/chrome --type=renderer", 4097, 4096, 65536, 2.1, "S", 5, 1000, 9000.0, 4000.0),
-        ("Chrome_child", "/opt/google/chrome/chrome --type=renderer --lang=en", 4098, 4096, 49152, 1.8, "S", 4, 1000, 6000.0, 2000.0),
-        ("code", "/usr/share/code/code --enable-crashpad", 5120, 1024, 184320, 6.7, "S", 12, 1000, 25000.0, 35000.0),
-        ("code_helper", "/usr/share/code/code --type=zygote", 5121, 5120, 32768, 0.5, "S", 3, 1000, 0.0, 0.0),
-        ("node", "/usr/bin/node /home/user/projects/vanta/node_modules/.bin/rollup -c", 5184, 5120, 45056, 2.3, "S", 8, 1000, 45000.0, 12000.0),
-        ("nvim", "/usr/bin/nvim --headless -c q", 5632, 1024, 16384, 0.9, "S", 2, 1000, 3000.0, 1000.0),
-        ("spotify", "/usr/bin/spotify --force-device-scale-factor=1", 6144, 1024, 81920, 1.4, "S", 6, 1000, 8000.0, 500.0),
-        ("discord", "/usr/bin/discord --type=renderer", 6656, 1024, 131072, 2.2, "S", 10, 1000, 4000.0, 2000.0),
-        ("kitty", "/usr/bin/kitty 1", 7168, 1024, 16384, 0.6, "S", 4, 1000, 0.0, 0.0),
-        ("zsh", "/usr/bin/zsh --login", 7169, 7168, 4096, 0.1, "S", 1, 1000, 0.0, 0.0),
-        ("cargo", "/usr/bin/cargo build --release", 7720, 7169, 14336, 8.5, "R", 4, 1000, 45000.0, 12000.0),
-        ("rustc", "/usr/bin/rustc --edition 2021 src/main.rs", 7721, 7720, 98304, 15.2, "R", 8, 1000, 120000.0, 80000.0),
-        ("sway", "/usr/bin/sway --unsupported-gpu", 8192, 1, 24576, 0.4, "S", 3, 1000, 0.0, 0.0),
-        ("pipewire", "/usr/bin/pipewire", 8448, 1, 16384, 0.3, "S", 3, 1000, 500.0, 200.0),
-        ("wireplumber", "/usr/bin/wireplumber", 8704, 1, 8192, 0.2, "S", 2, 1000, 100.0, 50.0),
-        ("gnome-shell", "/usr/bin/gnome-shell", 9216, 1, 65536, 1.1, "S", 8, 1000, 0.0, 0.0),
-        ("dockerd", "/usr/bin/dockerd -H fd://", 9984, 1, 49152, 0.6, "S", 8, 0, 3000.0, 10000.0),
-        ("vanta", "/home/user/.cargo/bin/vanta", 10001, 1024, 12288, 0.8, "S", 3, 1000, 0.0, 0.0),
-    ];
-    demos
-        .iter()
-        .map(|&(name, cmdline, pid, ppid, mem_kb, cpu_pct, state, threads, uid, rb, wb)| {
-            ProcInfo {
-                name: name.to_string(),
-                cmdline: cmdline.to_string(),
-                pid,
-                ppid,
-                mem_kb,
-                cpu_pct,
-                state: state.to_string(),
-                threads,
-                uid,
-                read_bps: rb,
-                write_bps: wb,
-            }
-        })
-        .collect()
+/// Extract basename from a full command path (last component after '/').
+fn cmd_basename(cmd: &str) -> &str {
+    let first = cmd.split_whitespace().next().unwrap_or(cmd);
+    first.rsplit('/').next().unwrap_or(first)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn render(
     f: &mut Frame,
     area: Rect,
@@ -595,13 +571,11 @@ pub fn render(
     search: &str,
     tree_mode: bool,
     collapsed: &HashSet<u32>,
-    demo: bool,
+    _selected_pid: Option<u32>,
+    compact_cmd: bool,
+    _show_detail: bool,
 ) {
-    let procs = if demo {
-        generate_demo_procs()
-    } else {
-        collect_processes(sort_field, sort_asc, search)
-    };
+    let procs = collect_processes(sort_field, sort_asc, search);
 
     let (display_rows, total_items) = if tree_mode {
         let mut roots = build_tree(&procs);
@@ -631,6 +605,15 @@ pub fn render(
             .collect();
         (rows, total)
     };
+
+    // ── Layout split: reserve bottom for spacing + detail + command + footer ──
+    let reserve_h = 4u16; // 1 blank + 1 detail + 1 command + 1 footer
+    let table_h = area.height.saturating_sub(reserve_h);
+    let table_rect = Rect { height: table_h, ..area };
+    let blank_rect = Rect { x: area.x, y: area.y + table_h, height: 1, width: area.width };
+    let detail_rect = Rect { x: area.x, y: area.y + table_h + 1, height: 1, width: area.width };
+    let cmdline_rect = Rect { x: area.x, y: area.y + table_h + 2, height: 1, width: area.width };
+    let footer_rect = Rect { x: area.x, y: area.y + table_h + 3, height: 1, width: area.width };
 
     // ── Column width calculation ──
     let w = area.width as usize;
@@ -663,7 +646,7 @@ pub fn render(
     let col_cmd = remaining.saturating_sub(col_name).max(4);
 
     // Dynamic page size
-    let page_size = area.height.saturating_sub(1) as usize;
+    let page_size = table_h.saturating_sub(1) as usize;
     let max_scroll = total_items.saturating_sub(page_size);
     let scroll = scroll_offset.min(max_scroll);
 
@@ -677,19 +660,23 @@ pub fn render(
     };
 
     let mode_tag = if tree_mode { " [T]" } else { " [F]" };
-    let hdr_style = Style::default().fg(theme.dim).bg(theme.bg);
+    let cmd_tag = if compact_cmd { "" } else { " [C]" };
+    let hdr_style = Style::default()
+        .fg(theme.text)
+        .bg(theme.surface)
+        .add_modifier(ratatui::style::Modifier::BOLD);
 
-    // Helper: produce a fixed-width cell string
+    // Helper: produce a fixed-width cell string (exactly `width` chars, leading space)
     let hdr_cell = |label: &str, arrow: &str, width: usize| -> String {
-        let inner = if arrow.is_empty() {
-            label.to_string()
+        let inner = format!("{}{}", arrow, label);
+        let chars_count = inner.chars().count();
+        if chars_count + 1 >= width {
+            let truncated: String = inner.chars().take(width.saturating_sub(1)).collect();
+            format!(" {}", truncated)
         } else {
-            format!("{}{}", arrow, label)
-        };
-        if inner.len() + 1 >= width {
-            format!(" {}", &inner[..width.saturating_sub(2)])
-        } else {
-            format!(" {:1$}", inner, width.saturating_sub(2) - inner.len())
+            // Right-align headers to match the right-aligned data
+            let pad = width - 1 - chars_count;
+            format!(" {}{}", " ".repeat(pad), inner)
         }
     };
     let hdr_arrow = |field: SortField| -> &'static str {
@@ -706,7 +693,7 @@ pub fn render(
         hdr_style,
     ));
     hdr_spans.push(Span::styled(
-        format!(" {:1$}", format!("{}{}", "NAME", mode_tag), col_name.saturating_sub(1)),
+        format!(" {:1$}", format!("{}{}{}", "NAME", mode_tag, cmd_tag), col_name.saturating_sub(1)),
         hdr_style,
     ));
     hdr_spans.push(Span::styled(
@@ -722,7 +709,7 @@ pub fn render(
         hdr_style,
     ));
     hdr_spans.push(Span::styled(
-        format!(" {:<1$}", "S", col_state.saturating_sub(2)),
+        format!(" {:>1$}", "S", col_state.saturating_sub(1)),
         hdr_style,
     ));
     hdr_spans.push(Span::styled(
@@ -856,18 +843,21 @@ pub fn render(
 
         // COMMAND (flex column — use remaining space)
         if col_cmd > 4 {
-            let cmd = if demo {
-                // Demo mode uses the hardcoded cmdline
-                row.cmdline.clone()
-            } else if !row.cmdline.is_empty() && row.cmdline != "?" {
+            let raw_cmd = if !row.cmdline.is_empty() && row.cmdline != "?" {
                 row.cmdline.clone()
             } else {
                 row.name.clone()
             };
+            // Show full command on selected row, otherwise compact if flag is set
+            let cmd = if compact_cmd && !is_selected {
+                cmd_basename(&raw_cmd).to_string()
+            } else {
+                raw_cmd
+            };
             let cmd_trim = trunc_name(&cmd, col_cmd.saturating_sub(1));
             spans.push(Span::styled(
                 format!(" {}", cmd_trim),
-                Style::default().fg(theme.dim).bg(row_bg),
+                Style::default().fg(if is_selected { theme.secondary } else { theme.dim }).bg(row_bg),
             ));
         }
 
@@ -889,8 +879,69 @@ pub fn render(
         }
     }
 
+    // ── Render table ──
     f.render_widget(
         Paragraph::new(lines).style(Style::default().bg(theme.bg)),
-        area,
+        table_rect,
+    );
+
+    // ── Blank row between table and detail ──
+    f.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            " ".repeat(area.width as usize),
+            Style::default().bg(theme.surface),
+        )))
+        .style(Style::default().bg(theme.surface)),
+        blank_rect,
+    );
+
+    // ── Detail summary line for selected process ──
+    let selected_row = display_rows.get(scroll);
+    if let Some(row) = selected_row {
+        let _detail_mem_pct = (row.mem_kb as f64 / 15_000_000.0 * 100.0).clamp(0.0, 100.0);
+        let detail = format!(
+            " PID {} | RSS {} | CPU {} | THR {}",
+            row.pid,
+            fmt_rss(row.mem_kb),
+            fmt_cpu(row.cpu_pct),
+            row.threads,
+        );
+        f.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                detail,
+                Style::default().fg(theme.dim).bg(theme.surface),
+            )))
+            .style(Style::default().bg(theme.surface)),
+            detail_rect,
+        );
+    }
+
+    // ── Command line (full path for selected process) ──
+    if let Some(row) = selected_row {
+        let raw_cmd = if !row.cmdline.is_empty() && row.cmdline != "?" {
+            row.cmdline.clone()
+        } else {
+            row.name.clone()
+        };
+        let cmd_trim = trunc_name(&raw_cmd, cmdline_rect.width.saturating_sub(2) as usize);
+        f.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                format!(" {}", cmd_trim),
+                Style::default().fg(theme.secondary).bg(theme.surface),
+            )))
+            .style(Style::default().bg(theme.surface)),
+            cmdline_rect,
+        );
+    }
+
+    // ── Footer action bar ──
+    let footer = " ↑↓ select  │  / search  │  t tree  │  c cmd  │  s sort  │  k kill";
+    f.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            footer,
+            Style::default().fg(theme.dim).bg(theme.surface),
+        )))
+        .style(Style::default().bg(theme.surface)),
+        footer_rect,
     );
 }

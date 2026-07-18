@@ -3,18 +3,27 @@ use std::fs;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Gauge, Paragraph};
+use ratatui::widgets::{Paragraph, Sparkline};
 use ratatui::Frame;
+
+const HIST_LEN: usize = 120;
+static mut CPU_HISTORY: [u64; HIST_LEN] = [0; HIST_LEN];
+static mut CPU_IDX: usize = 0;
 
 use crate::app;
 
-fn usage_color(usage: f32, theme: &app::Theme) -> Color {
-    if usage < 30.0 {
-        theme.green
+fn usage_color(usage: f32) -> Color {
+    // btop-inspired gradient: green → yellow → orange → deep orange → red
+    if usage < 40.0 {
+        Color::Rgb(80, 200, 100)  // green
     } else if usage < 60.0 {
-        theme.yellow
+        Color::Rgb(200, 180, 50)  // yellow
+    } else if usage < 75.0 {
+        Color::Rgb(220, 140, 40)  // orange
+    } else if usage < 90.0 {
+        Color::Rgb(220, 100, 50)  // deep orange
     } else {
-        theme.red
+        Color::Rgb(220, 70, 60)   // soft red (only for critical)
     }
 }
 
@@ -25,7 +34,7 @@ fn read_core_temps() -> Vec<f64> {
             if let Ok(name) = fs::read_to_string(&hwmon_path) {
                 if name.trim() == "coretemp" {
                     let mut temps: Vec<(usize, f64)> = Vec::new();
-                    if let Ok(temp_dir) = fs::read_dir(&entry.path()) {
+                    if let Ok(temp_dir) = fs::read_dir(entry.path()) {
                         for te in temp_dir.flatten() {
                             let fname = te.file_name().to_string_lossy().to_string();
                             if fname.starts_with("temp") && fname.ends_with("_input") {
@@ -51,156 +60,104 @@ fn read_core_temps() -> Vec<f64> {
     Vec::new()
 }
 
-fn read_core_freqs() -> Vec<u64> {
-    let mut freqs = Vec::new();
-    for i in 0..16 {
-        let path = format!("/sys/devices/system/cpu/cpu{}/cpufreq/scaling_cur_freq", i);
-        if let Ok(s) = fs::read_to_string(&path) {
-            if let Ok(khz) = s.trim().parse::<u64>() {
-                freqs.push(khz / 1000);
-            } else {
-                break;
-            }
-        } else {
-            break;
-        }
+pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
+    // ── Collect data ──
+    let sys = crate::app::SYS.lock().unwrap();
+    // sys.refresh_cpu_all();
+    let cores: Vec<_> = sys.cpus().iter().map(|c| c.cpu_usage()).collect();
+    let la = sysinfo::System::load_average();
+    let cpu_usage = sys.global_cpu_usage();
+    unsafe {
+        CPU_HISTORY[CPU_IDX] = cpu_usage as u64;
+        CPU_IDX = (CPU_IDX + 1) % HIST_LEN;
     }
-    freqs
-}
+    let (load_vals, core_count, freq_mhz) = (
+        (la.one, la.five, la.fifteen),
+        sys.cpus().len(),
+        sys.cpus().first().map(|c| c.frequency()).unwrap_or(0),
+    );
 
-fn read_package_temp() -> Option<f64> {
-    for i in 0..16 {
-        let path = format!("/sys/class/thermal/thermal_zone{}/temp", i);
-        if let Ok(s) = fs::read_to_string(&path) {
-            let type_path = format!("/sys/class/thermal/thermal_zone{}/type", i);
-            let is_cpu = fs::read_to_string(&type_path)
-                .ok()
-                .map(|t| t.trim().to_lowercase())
-                .is_some_and(|t| t.contains("cpu") || t.contains("x86") || t.contains("acpi"));
-            if is_cpu {
-                if let Ok(millideg) = s.trim().parse::<f64>() {
-                    return Some(millideg / 1000.0);
-                }
-            }
-        }
-    }
     let core_temps = read_core_temps();
-    core_temps.first().copied()
-}
+    let max_core_temp = core_temps
+        .iter()
+        .skip(1)
+        .copied()
+        .fold(f64::NEG_INFINITY, f64::max);
+    let has_temp = max_core_temp.is_finite();
 
-pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme, demo: bool) {
-    // ── Collect data (real or demo) ──
-    let (cpu_usage, load_vals, core_count, freq_mhz, temp_c, core_temps, core_freqs, core_usage) =
-        if demo {
-            // Stable beautiful fake data for screenshots
-            (
-                42.5_f32,
-                (1.2_f64, 0.8_f64, 0.5_f64),
-                8_usize,
-                2800_u64,
-                Some(58.0_f64),
-                vec![0.0, 48.0, 52.0, 56.0, 61.0, 55.0, 49.0, 47.0, 44.0],
-                vec![2800, 3100, 2400, 2900, 1800, 2600, 3200, 2200],
-                vec![23.0, 45.0, 67.0, 12.0, 34.0, 56.0, 78.0, 5.0],
-            )
-        } else {
-            let mut system = sysinfo::System::new_all();
-            system.refresh_cpu_all();
-            let cores: Vec<_> = system.cpus().iter().map(|c| c.cpu_usage()).collect();
-            let la = sysinfo::System::load_average();
-            (
-                system.global_cpu_usage(),
-                (la.one, la.five, la.fifteen),
-                system.cpus().len(),
-                system.cpus().first().map(|c| c.frequency()).unwrap_or(0),
-                read_package_temp(),
-                read_core_temps(),
-                read_core_freqs(),
-                cores,
-            )
-        };
-
-    // Layout: compact header | per-core rows
-    let rows = (core_count + 1) / 2;
-    let mut constraints = vec![Constraint::Length(1)]; // header
-    for _ in 0..rows {
-        constraints.push(Constraint::Length(1)); // per-core pairs
+    // ── Layout ──
+    let core_rows = core_count.div_ceil(2);
+    let mut constraints: Vec<ratatui::layout::Constraint> = Vec::with_capacity(3 + core_rows);
+    constraints.push(Constraint::Length(1)); // header line
+    constraints.push(Constraint::Length(2)); // sparkline
+    constraints.push(Constraint::Length(1)); // blank spacer
+    for _ in 0..core_rows {
+        constraints.push(Constraint::Length(1)); // per-core row
     }
     let chunks = Layout::vertical(constraints).split(area);
 
-    // ── Temperature warning check ──
-    let max_core_temp = core_temps
-        .iter()
-        .skip(1) // skip package placeholder (index 0)
-        .copied()
-        .fold(f64::NEG_INFINITY, f64::max);
-    let temp_warning = max_core_temp.is_finite() && max_core_temp > 70.0;
-    let temp_critical = max_core_temp.is_finite() && max_core_temp > 85.0;
-
-    // ── Compact header ──
-    let mut info = String::new();
-    let mut color = usage_color(cpu_usage, theme);
-    if temp_critical {
-        color = theme.red;
-    } else if temp_warning {
-        color = theme.yellow;
-    }
-    info.push_str(&format!(" CPU  {}  {:.1}%", '█', cpu_usage));
-    info.push_str(&format!(
-        "  load {:.2} {:.2} {:.2}",
-        load_vals.0, load_vals.1, load_vals.2
-    ));
-    info.push_str(&format!("  |  {}c", core_count));
-    if let Some(t) = temp_c {
-        info.push_str(&format!("  ·  {}°C", t as u16));
-    }
-    if temp_critical {
-        info.push_str("  CRITICAL");
-    } else if temp_warning {
-        info.push_str("  HOT");
-    }
+    // ── Header: CPU % · load · freq · temp ──
+    let header_color = usage_color(cpu_usage);
+    let mut parts = vec![
+        format!("{:.0}%", cpu_usage),
+        format!("{:.2}/{:.2}/{:.2}", load_vals.0, load_vals.1, load_vals.2),
+    ];
     if freq_mhz > 0 {
-        info.push_str(&format!("  ·  {} MHz", freq_mhz));
+        parts.push(format!("{:.1}GHz", freq_mhz as f64 / 1000.0));
     }
+    if has_temp {
+        parts.push(format!("{}°C", max_core_temp as u64));
+    }
+    parts.push(format!("{}c", core_count));
+    let header = parts.join(" · ");
+
     f.render_widget(
-        Paragraph::new(Line::from(Span::styled(&info, Style::default().fg(color)))),
+        Paragraph::new(Line::from(Span::styled(&header, Style::default().fg(header_color)))),
         chunks[0],
     );
 
-    // ── Per-core rows (2 per line, Gauge widgets) ──
-    for (i, row_area) in chunks[1..].iter().enumerate() {
+    // ── Sparkline ──
+    let hist: Vec<u64> = unsafe {
+        let max_w = chunks[1].width.min(HIST_LEN as u16) as usize;
+        (0..max_w)
+            .map(|i| {
+                let idx = (CPU_IDX + HIST_LEN - 1 - i) % HIST_LEN;
+                CPU_HISTORY[idx]
+            })
+            .rev()
+            .collect()
+    };
+    f.render_widget(
+        Sparkline::default()
+            .data(&hist)
+            .max(100)
+            .style(Style::default().fg(header_color)),
+        chunks[1],
+    );
+
+    // ── Per-core rows (2 per line, compact gauges) ──
+    for (i, row_area) in chunks[3..].iter().enumerate() {
         let col_chunks =
             Layout::horizontal([Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)]).split(*row_area);
 
         for &(col_idx, gauge_area) in &[(0, col_chunks[0]), (1, col_chunks[1])] {
             let idx = i * 2 + col_idx;
-            if idx >= core_usage.len() {
-                // Fill remaining slot with empty space
-                f.render_widget(Paragraph::new(Line::from(Span::styled("", Style::default()))), gauge_area);
+            if idx >= cores.len() {
                 continue;
             }
 
-            let usage = core_usage[idx];
-            let c = usage_color(usage, theme);
-
-            // Compact label: cN  XX.X%  ·  XX°C  ·  XXXXMHz
-            let mut label = format!("c{:>2} {:>5.1}%", idx, usage);
-            if idx < core_temps.len().saturating_sub(1) {
-                let t = core_temps[idx + 1];
-                label.push_str(&format!(" · {}°C", t as u16));
-            }
-            if idx < core_freqs.len() {
-                let f = core_freqs[idx];
-                label.push_str(&format!(" · {}MHz", f));
-            }
-
-            f.render_widget(
-                Gauge::default()
-                    .gauge_style(Style::default().fg(c).bg(theme.surface))
-                    .percent(usage as u16)
-                    .label(label),
-                gauge_area,
+            let usage = cores[idx];
+            let c = usage_color(usage);
+            let label = format!("c{}", idx);
+            let bar_line = crate::widgets::bar::draw_premium_bar(
+                &label, 3,
+                "", 0, // No extra stats
+                (usage as f64 / 100.0).clamp(0.0, 1.0),
+                c, theme.surface,
+                gauge_area.width,
             );
+
+            f.render_widget(Paragraph::new(bar_line), gauge_area);
         }
     }
 }

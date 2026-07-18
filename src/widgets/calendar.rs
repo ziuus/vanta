@@ -1,7 +1,7 @@
 use chrono::{Datelike, Local, NaiveDate};
 
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
@@ -14,7 +14,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme, month_offset: i32) 
     let now = Local::now();
 
     // Compute the target month/year based on offset
-    let total_months = now.year() as i32 * 12 + now.month() as i32 - 1 + month_offset;
+    let total_months = now.year() * 12 + now.month() as i32 - 1 + month_offset;
     let year = total_months.div_euclid(12);
     let month = (total_months.rem_euclid(12) + 1) as u32;
 
@@ -59,12 +59,24 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme, month_offset: i32) 
     let mut lines: Vec<Line> = Vec::new();
 
     // Month/year header with offset indicator
+    let header = format!("{} {}", month_name(month), year);
+    let nav_display = format!(" {}", nav);
+    
+    // We want the header to be centered within the 20-char calendar width
+    let total_header_len = header.len() + nav_display.len();
+    let header_pad = if total_header_len < 20 {
+        " ".repeat((20 - total_header_len) / 2)
+    } else {
+        String::new()
+    };
+
     lines.push(Line::from(vec![
+        Span::styled(header_pad, Style::default().bg(theme.surface)),
         Span::styled(
-            format!("{} {}", month_name(month), year),
+            header,
             Style::default().fg(if month_offset == 0 { theme.accent } else { theme.secondary }),
         ),
-        Span::styled(&nav, Style::default().fg(theme.dim)),
+        Span::styled(nav_display, Style::default().fg(theme.dim)),
     ]));
 
     lines.push(Line::from(Span::styled(
@@ -81,20 +93,34 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme, month_offset: i32) 
             if *is_today && month_offset == 0 {
                 spans.push(Span::styled(
                     format!("{:>2}", text),
-                    Style::default()
-                        .fg(Color::Rgb(255, 220, 80))
-                        .bg(Color::Rgb(40, 40, 50)),
+                    Style::default().fg(theme.accent).bg(theme.surface),
                 ));
             } else if text.is_empty() {
-                spans.push(Span::styled("  ", Style::default().fg(theme.text)));
+                spans.push(Span::styled("  ", Style::default().fg(theme.dim)));
             } else {
                 spans.push(Span::styled(
                     format!("{:>2}", text),
-                    Style::default().fg(theme.text),
+                    Style::default().fg(theme.dim),
                 ));
             }
         }
         lines.push(Line::from(spans));
+    }
+
+    // Center the calendar
+    let cal_width = 20; // "Mo Tu We Th Fr Sa Su" is 20 chars
+    let padding = if area.width > cal_width {
+        ((area.width - cal_width) / 2) as usize
+    } else {
+        0
+    };
+    let pad_str = " ".repeat(padding);
+
+    // Apply padding to all lines
+    for line in &mut lines {
+        if !pad_str.is_empty() {
+            line.spans.insert(0, Span::raw(pad_str.clone()));
+        }
     }
 
     f.render_widget(

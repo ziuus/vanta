@@ -4,14 +4,18 @@ use serde::{Deserialize, Serialize};
 pub struct Config {
     pub ui: UiConfig,
     pub widgets: WidgetConfig,
-    #[serde(default)]
-    pub demo: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UiConfig {
     pub refresh_rate: f64,
     pub theme: String,
+    #[serde(default = "default_startup_mode")]
+    pub startup_mode: String,
+}
+
+fn default_startup_mode() -> String {
+    "overview".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,11 +53,11 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             ui: UiConfig {
-                refresh_rate: 0.5,
+                refresh_rate: 0.25,
                 theme: "dark".to_string(),
+                startup_mode: "overview".to_string(),
             },
             widgets: WidgetConfig::default(),
-            demo: false,
         }
     }
 }
@@ -63,6 +67,17 @@ impl Config {
         let config_path = dirs_or_default();
         let content = std::fs::read_to_string(&config_path).unwrap_or_default();
         toml::from_str(&content).unwrap_or_default()
+    }
+
+    pub fn save(&self) {
+        let config_path = dirs_or_default();
+        // Ensure parent directory exists before writing
+        if let Some(parent) = std::path::Path::new(&config_path).parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if let Ok(toml_str) = toml::to_string(self) {
+            let _ = std::fs::write(&config_path, toml_str);
+        }
     }
 }
 
