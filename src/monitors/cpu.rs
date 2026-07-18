@@ -3,7 +3,9 @@ use std::fs;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Paragraph, Sparkline};
+use ratatui::widgets::Paragraph;
+use ratatui::widgets::canvas::{Canvas, Line as CanvasLine};
+use ratatui::symbols;
 use ratatui::Frame;
 
 const HIST_LEN: usize = 120;
@@ -116,9 +118,9 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
         chunks[0],
     );
 
-    // ── Sparkline ──
+    // ── Sparkline (Braille Canvas) ──
+    let max_w = chunks[1].width.min(HIST_LEN as u16) as usize;
     let hist: Vec<u64> = unsafe {
-        let max_w = chunks[1].width.min(HIST_LEN as u16) as usize;
         (0..max_w)
             .map(|i| {
                 let idx = (CPU_IDX + HIST_LEN - 1 - i) % HIST_LEN;
@@ -127,13 +129,26 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
             .rev()
             .collect()
     };
-    f.render_widget(
-        Sparkline::default()
-            .data(&hist)
-            .max(100)
-            .style(Style::default().fg(header_color)),
-        chunks[1],
-    );
+    
+    let canvas = Canvas::default()
+        .marker(symbols::Marker::Braille)
+        .x_bounds([0.0, max_w.saturating_sub(1) as f64])
+        .y_bounds([0.0, 100.0])
+        .paint(|ctx| {
+            if hist.len() > 1 {
+                for i in 0..hist.len() - 1 {
+                    ctx.draw(&CanvasLine {
+                        x1: i as f64,
+                        y1: hist[i] as f64,
+                        x2: (i + 1) as f64,
+                        y2: hist[i + 1] as f64,
+                        color: header_color,
+                    });
+                }
+            }
+        });
+
+    f.render_widget(canvas, chunks[1]);
 
     // ── Per-core rows (2 per line, compact gauges) ──
     for (i, row_area) in chunks[3..].iter().enumerate() {

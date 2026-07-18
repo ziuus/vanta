@@ -53,20 +53,22 @@ fn read_metadata(conn: &Connection, player: &str, timeout: Duration) -> TrackInf
                     "xesam:title" => {
                         if let Ok(t) = val.read::<String>() {
                             info.title = t;
+                        } else if let Some(mut arr) = val.recurse(dbus::arg::ArgType::Array) {
+                            if let Ok(t) = arr.read::<String>() {
+                                info.title = t;
+                            }
                         }
                     }
                     "xesam:artist" => {
-                        // Artist is Array of String
-                        if let Some(mut arr) = val.recurse(dbus::arg::ArgType::Array) {
-                            let artists: Vec<String> = {
-                                let mut v = Vec::new();
-                                while let Ok(s) = arr.read::<String>() {
-                                    v.push(s);
-                                }
-                                v
-                            };
-                            if !artists.is_empty() {
-                                info.artist = artists.join(", ");
+                        if let Ok(s) = val.read::<String>() {
+                            info.artist = s;
+                        } else if let Some(mut arr) = val.recurse(dbus::arg::ArgType::Array) {
+                            let mut v = Vec::new();
+                            while let Ok(s) = arr.read::<String>() {
+                                v.push(s);
+                            }
+                            if !v.is_empty() {
+                                info.artist = v.join(", ");
                             }
                         }
                     }
