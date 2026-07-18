@@ -99,8 +99,8 @@ pub fn render(
     if config.widgets.clock { c3_constraints.push(Constraint::Length(8)); } 
     if config.widgets.calendar { c3_constraints.push(Constraint::Length(9)); } 
     if config.widgets.media { c3_constraints.push(Constraint::Length(3)); } 
-    if config.widgets.music_viz { c3_constraints.push(Constraint::Min(0)); }
-    if config.widgets.video { c3_constraints.push(Constraint::Min(0)); } // Splits extra space with visualizer
+    if config.widgets.music_viz { c3_constraints.push(Constraint::Fill(1)); }
+    if config.widgets.video { c3_constraints.push(Constraint::Fill(1)); } // Splits extra space with visualizer
 
     let mut col3 = Layout::vertical(c3_constraints).spacing(0).split(cols[2]).to_vec();
     overlap_vertical(&mut col3);

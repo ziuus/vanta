@@ -45,7 +45,7 @@ pub fn render(f: &mut Frame, area: Rect, _tick: u64) {
 
         // Draw multiple drops per column to allow density
         for drop_idx in 0..2 {
-            let offset_time = tick_local.wrapping_add(drop_idx * (interval / 2));
+            let offset_time = tick_local.wrapping_add(drop_idx * (interval / 2)).wrapping_add(col_seed % interval);
             let cycle = offset_time / interval;
             let cycle_seed = col_seed.wrapping_add(cycle.wrapping_mul(997));
             
