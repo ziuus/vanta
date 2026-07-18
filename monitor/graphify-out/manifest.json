@@ -1,0 +1,192 @@
+{
+  "/home/zius/Projects/vanta/monitor/config.json": {
+    "mtime": 1781968761.4420393,
+    "ast_hash": "130bd0962ed53ce1a1869f493a6e533c",
+    "semantic_hash": ""
+  },
+  "/home/zius/Projects/vanta/monitor/src/monitor/__main__.py": {
+    "mtime": 1781967300.6496785,
+    "ast_hash": "abef1a028006d840a66423b282dbf0ff",
+    "semantic_hash": ""
+  },
+  "/home/zius/Projects/vanta/monitor/src/monitor/server.py": {
+    "mtime": 1781968729.7201936,
+    "ast_hash": "676ad50075175cc280276ecfa61c3dd7",
+    "semantic_hash": ""
+  },
+  "/home/zius/Projects/vanta/monitor/src/monitor/config.json": {
+    "mtime": 1781940343.8782232,
+    "ast_hash": "5d3703afc8999eafef5b0b1827e00b06",
+    "semantic_hash": ""
+  },
+  "/home/zius/Projects/vanta/monitor/src/monitor/app.py": {
+    "mtime": 1781967503.6300764,
+    "ast_hash": "5ecdf1c792cc07a09cd377282cbaf463",
+    "semantic_hash": ""
+  },
+  "/home/zius/Projects/vanta/monitor/src/monitor/__init__.py": {
+    "mtime": 1779862001.823466,
+    "ast_hash": "db55dfa4cd2a823b898392799a714e8d",
+    "semantic_hash": ""
+  },
+  "/home/zius/Projects/vanta/monitor/src/monitor/components/process_table.py": {
+    "mtime": 1781942345.781835,
+    "ast_hash": "76f80be7e1a2b02a7ef2032203942d54",
+    "semantic_hash": ""
+  },
+  "/home/zius/Projects/vanta/monitor/src/monitor/components/__init__.py": {
+    "mtime": 1781709964.6017778,
+    "ast_hash": "5083a492c91d17fdc89d37b9981a5175",
+    "semantic_hash": ""
+  },
+  "/home/zius/Projects/vanta/monitor/src/monitor/core/graph_presenter.py": {
+    "mtime": 1781846531.423958,
+    "ast_hash": "8bfc6e83cf979dc9218994133557dc5a",
+    "semantic_hash": ""
+  },
+  "/home/zius/Projects/vanta/monitor/src/monitor/core/dashboard_config.py": {
+    "mtime": 1781968747.5148273,
+    "ast_hash": "4c759839ef337a5bbc85ae5dbbf466b9",
+    "semantic_hash": ""
+  },
+  "/home/zius/Projects/vanta/monitor/src/monitor/core/dashboard_widgets.py": {
+    "mtime": 1781943316.6690705,
+    "ast_hash": "2478baed52d636479922ff5e15355db2",
+    "semantic_hash": ""
+  },
+  "/home/zius/Projects/vanta/monitor/src/monitor/core/overview_presenter.py": {
+    "mtime": 1781951019.7879496,
+    "ast_hash": "7137723103247a1d24d02aa7f13bce3b",
+    "semantic_hash": ""
+  },
+  "/home/zius/Projects/vanta/monitor/src/monitor/core/media.py": {
+    "mtime": 1781944121.4591486,
+    "ast_hash": "204fce6f1cb5cee06a801ea1eeed9a2f",
+    "semantic_hash": ""
+  },
+  "/home/zius/Projects/vanta/monitor/src/monitor/core/process_presenter.py": {
+    "mtime": 1781959975.4884481,
+    "ast_hash": "a16271d809260472fc69c84e0957f78d",
+    "semantic_hash": ""
+  },
+  "/home/zius/Projects/vanta/monitor/src/monitor/core/collectors.py": {
+    "mtime": 1781949451.265809,
+    "ast_hash": "6eeab9f7cb25b866d0e797ab7ed98467",
+    "semantic_hash": ""
+  },
+  "/home/zius/Projects/vanta/monitor/src/monitor/core/models.py": {
+    "mtime": 1781949160.102426,
+    "ast_hash": "56703895694618f9aa8566c4ffed6f73",
+    "semantic_hash": ""
+  },
+  "/home/zius/Projects/vanta/monitor/src/monitor/core/theme.py": {
+    "mtime": 1781966847.184213,
+    "ast_hash": "bceb65bc37b12a17d4435f2183857b73",
+    "semantic_hash": ""
+  },
+  "/home/zius/Projects/vanta/monitor/src/monitor/core/__init__.py": {
+    "mtime": 1781709730.0730982,
+    "ast_hash": "c6ff8f40504ccd8150023544c544d01b",
+    "semantic_hash": ""
+  },
+  "/home/zius/Projects/vanta/monitor/src/monitor/core/history.py": {
+    "mtime": 1781709737.197685,
+    "ast_hash": "a30fe5031b0a2d6045281cd6685543fe",
+    "semantic_hash": ""
+  },
+  "/home/zius/Projects/vanta/monitor/src/monitor/core/process_service.py": {
+    "mtime": 1781969109.8747718,
+    "ast_hash": "b62989a52bc48ac7c3d427311bba8fd1",
+    "semantic_hash": ""
+  },
+  "/home/zius/Projects/vanta/monitor/src/monitor/screens/overview.py": {
+    "mtime": 1781967606.5150893,
+    "ast_hash": "4f8877debe7d733b20fcf71bad29fb58",
+    "semantic_hash": ""
+  },
+  "/home/zius/Projects/vanta/monitor/src/monitor/screens/filemanager.py": {
+    "mtime": 1781967203.6213963,
+    "ast_hash": "7b17c089fae884350bfb34ad4c12e8ea",
+    "semantic_hash": ""
+  },
+  "/home/zius/Projects/vanta/monitor/src/monitor/screens/graphs.py": {
+    "mtime": 1781967518.2731571,
+    "ast_hash": "def4ed0fab068f7aa54895014406a0ab",
+    "semantic_hash": ""
+  },
+  "/home/zius/Projects/vanta/monitor/src/monitor/screens/help_screen.py": {
+    "mtime": 1781967086.0551507,
+    "ast_hash": "12a97c8b70a8dfa4fb271f2ea54e61dc",
+    "semantic_hash": ""
+  },
+  "/home/zius/Projects/vanta/monitor/src/monitor/screens/__init__.py": {
+    "mtime": 1781709963.349371,
+    "ast_hash": "567ca95fa5f06b3274280a79c199203c",
+    "semantic_hash": ""
+  },
+  "/home/zius/Projects/vanta/monitor/tests/test_cli_main.py": {
+    "mtime": 1781885585.0686076,
+    "ast_hash": "8788fe8ff5cefd8c07e64422aced5cd0",
+    "semantic_hash": ""
+  },
+  "/home/zius/Projects/vanta/monitor/tests/test_collectors.py": {
+    "mtime": 1781709851.5217657,
+    "ast_hash": "a27280f48ec71c94d96e48edb9bac0bc",
+    "semantic_hash": ""
+  },
+  "/home/zius/Projects/vanta/monitor/tests/test_graph_presenter.py": {
+    "mtime": 1781846491.2971964,
+    "ast_hash": "fad98fc968fb68697537b91f336cc060",
+    "semantic_hash": ""
+  },
+  "/home/zius/Projects/vanta/monitor/tests/test_process_service.py": {
+    "mtime": 1781969137.0130506,
+    "ast_hash": "d87909598fe8583b075084458a5b105d",
+    "semantic_hash": ""
+  },
+  "/home/zius/Projects/vanta/monitor/tests/test_process_presenter.py": {
+    "mtime": 1781941361.7114837,
+    "ast_hash": "0e85a80836842cab7a89cff6aec2dce8",
+    "semantic_hash": ""
+  },
+  "/home/zius/Projects/vanta/monitor/tests/test_screens.py": {
+    "mtime": 1781967685.8523793,
+    "ast_hash": "3264ca84440ed09e7461213b94d2a7d3",
+    "semantic_hash": ""
+  },
+  "/home/zius/Projects/vanta/monitor/tests/test_overview_presenter.py": {
+    "mtime": 1781951092.8400068,
+    "ast_hash": "b96544c482d41ce138af76f39f12b16a",
+    "semantic_hash": ""
+  },
+  "/home/zius/Projects/vanta/monitor/tests/test_dashboard_config.py": {
+    "mtime": 1781968795.739879,
+    "ast_hash": "9b0f6d43f11a31b3a12f5227deee4c6a",
+    "semantic_hash": ""
+  },
+  "/home/zius/Projects/vanta/monitor/tests/test_history.py": {
+    "mtime": 1781709751.4013083,
+    "ast_hash": "546db0e49e91d9b4bf51ab95aca8f4fd",
+    "semantic_hash": ""
+  },
+  "/home/zius/Projects/vanta/monitor/ARCHITECTURE.md": {
+    "mtime": 1781968899.1383324,
+    "ast_hash": "987946bd6d47a023960a13eb604ab216",
+    "semantic_hash": ""
+  },
+  "/home/zius/Projects/vanta/monitor/README.md": {
+    "mtime": 1781968891.2666204,
+    "ast_hash": "b4d670ec68fb008b29b59237644ae7ca",
+    "semantic_hash": ""
+  },
+  "/home/zius/Projects/vanta/monitor/src/monitor/dashboard.html": {
+    "mtime": 1779862064.474196,
+    "ast_hash": "19fcec9bf850343154d3a8a9add6da69",
+    "semantic_hash": ""
+  },
+  "/home/zius/Projects/vanta/monitor/tests/test_server.py": {
+    "mtime": 1781968783.636899,
+    "ast_hash": "88ba9daff0b3bd67267ef5cc849ce260",
+    "semantic_hash": ""
+  }
+}
