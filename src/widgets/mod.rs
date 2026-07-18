@@ -4,4 +4,6 @@ pub mod cmatrix;
 pub mod media;
 pub mod music_viz;
 pub mod widget;
+pub mod profile;
+pub mod video;
 pub mod bar;

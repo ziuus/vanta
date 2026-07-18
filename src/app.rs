@@ -188,12 +188,14 @@ pub enum PanelId {
     Processes,
     Media,
     System,
+    Profile,
+    Video,
 }
 
 impl PanelId {
     /// Ordered list for Tab-cycle, excluding disabled widgets
     pub fn all(config: &Config) -> Vec<PanelId> {
-        let mut v = Vec::with_capacity(10);
+        let mut v = Vec::with_capacity(12);
         if config.widgets.cpu { v.push(PanelId::Cpu); }
         if config.widgets.clock { v.push(PanelId::Clock); }
         if config.widgets.memory { v.push(PanelId::Memory); }
@@ -204,6 +206,8 @@ impl PanelId {
         if config.widgets.disk { v.push(PanelId::Disk); }
         if config.widgets.processes { v.push(PanelId::Processes); }
         if config.widgets.media { v.push(PanelId::Media); }
+        if config.widgets.profile { v.push(PanelId::Profile); }
+        if config.widgets.video { v.push(PanelId::Video); }
         v.push(PanelId::System);
         v
     }

@@ -6,7 +6,7 @@ use ratatui::Frame;
 use crate::app::{self, PanelId, PanelStates};
 use crate::config::Config;
 use crate::monitors::{cpu, disk, gpu, memory, network, processes, system_info};
-use crate::widgets::{calendar, clock, cmatrix, media, music_viz};
+use crate::widgets::{calendar, clock, cmatrix, media, music_viz, profile, video};
 
 use ratatui::widgets::{Block, Borders, BorderType};
 
@@ -55,8 +55,8 @@ pub fn render(
 ) {
     // ── Main Layout Split ──
     let mut chunks = Layout::vertical([
-        Constraint::Ratio(5, 9),  // Top (more space for widgets)
-        Constraint::Ratio(4, 9),  // Bottom: processes
+        Constraint::Ratio(6, 10),  // Top (more space for widgets, profile needs room)
+        Constraint::Ratio(4, 10),  // Bottom: processes
     ])
     .spacing(0)
     .split(area)
@@ -76,35 +76,42 @@ pub fn render(
 
     // ── Column 1: Hardware metrics ──
     let mut c1_constraints = vec![];
+    if config.widgets.profile { c1_constraints.push(Constraint::Length(9)); } // Vanta Logo
     if config.widgets.cpu { c1_constraints.push(Constraint::Min(8)); } // Expands
-    if config.widgets.memory { c1_constraints.push(Constraint::Length(4)); } // h=4 -> expanded to 5 -> inner 3
-    if config.widgets.disk { c1_constraints.push(Constraint::Length(4)); }   // h=4 -> inner 2 (since it's last, it doesn't expand, wait, if disk is last, we want inner 2 so length 4 is correct!)
+    if config.widgets.memory { c1_constraints.push(Constraint::Length(4)); } 
+    if config.widgets.disk { c1_constraints.push(Constraint::Length(4)); }   
 
     let mut col1 = Layout::vertical(c1_constraints).spacing(0).split(cols[0]).to_vec();
     overlap_vertical(&mut col1);
 
     // ── Column 2: System / Network / GPU / Matrix ──
     let mut c2_constraints = vec![];
-    c2_constraints.push(Constraint::Length(8)); // System (h=8 -> expanded to 9 -> inner 7)
-    if config.widgets.network { c2_constraints.push(Constraint::Length(4)); } // h=4 -> expanded to 5 -> inner 3
-    if config.widgets.gpu { c2_constraints.push(Constraint::Length(4)); } // h=4 -> expanded to 5 -> inner 3
+    c2_constraints.push(Constraint::Length(8)); 
+    if config.widgets.network { c2_constraints.push(Constraint::Length(4)); } 
+    if config.widgets.gpu { c2_constraints.push(Constraint::Length(4)); } 
     if config.widgets.cmatrix { c2_constraints.push(Constraint::Min(0)); } 
 
     let mut col2 = Layout::vertical(c2_constraints).spacing(0).split(cols[1]).to_vec();
     overlap_vertical(&mut col2);
 
-    // ── Column 3: Time / Media / Visualizer ──
+    // ── Column 3: Time / Media / Visualizer / Video ──
     let mut c3_constraints = vec![];
-    if config.widgets.clock { c3_constraints.push(Constraint::Length(6)); } // expanded to 7 -> inner 5
-    if config.widgets.calendar { c3_constraints.push(Constraint::Length(9)); } // expanded to 10 -> inner 8
-    if config.widgets.media { c3_constraints.push(Constraint::Length(3)); } // expanded to 4 -> inner 2
+    if config.widgets.clock { c3_constraints.push(Constraint::Length(6)); } 
+    if config.widgets.calendar { c3_constraints.push(Constraint::Length(9)); } 
+    if config.widgets.media { c3_constraints.push(Constraint::Length(3)); } 
     if config.widgets.music_viz { c3_constraints.push(Constraint::Min(0)); }
+    if config.widgets.video { c3_constraints.push(Constraint::Min(0)); } // Splits extra space with visualizer
 
     let mut col3 = Layout::vertical(c3_constraints).spacing(0).split(cols[2]).to_vec();
     overlap_vertical(&mut col3);
 
     // ── Column 1: Hardware ──
     let mut ci1 = 0_usize;
+    if config.widgets.profile {
+        let inner = section_header(f, col1[ci1], "Profile", theme, focused == Some(PanelId::Profile));
+        profile::render(f, inner, theme);
+        ci1 += 1;
+    }
     if config.widgets.cpu {
         let inner = section_header(f, col1[ci1], " CPU", theme, focused == Some(PanelId::Cpu));
         cpu::render(f, inner, theme);
@@ -142,7 +149,7 @@ pub fn render(
         cmatrix::render(f, inner, tick);
     }
 
-    // ── Column 3: Secondary (Clock/Calendar/Media/Visualizer) ──
+    // ── Column 3: Secondary (Clock/Calendar/Media/Visualizer/Video) ──
     let mut ci3 = 0_usize;
     if config.widgets.clock {
         let inner = section_header(f, col3[ci3], "Clock", theme, focused == Some(PanelId::Clock));
@@ -162,6 +169,11 @@ pub fn render(
     if config.widgets.music_viz {
         let inner = section_header(f, col3[ci3], "Visualizer", theme, focused == Some(PanelId::Visualizer));
         music_viz::render(f, inner, theme, tick);
+        ci3 += 1;
+    }
+    if config.widgets.video {
+        let inner = section_header(f, col3[ci3], "Video", theme, focused == Some(PanelId::Video));
+        video::render(f, inner, theme, tick);
     }
 
     // ── Bottom section: Processes (full width) ──

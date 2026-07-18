@@ -6,16 +6,23 @@ use ratatui::Frame;
 
 const CHARSET: &str = "ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜｦﾝ0123456789";
 
+use std::time::{SystemTime, UNIX_EPOCH};
+
 /// Render a Matrix-style falling-characters effect into the given area.
 ///
-/// Uses `tick` as a deterministic seed so the animation advances smoothly
-/// with no mutable state.
+/// Uses `SystemTime` as a deterministic seed so the animation advances smoothly
+/// at 60fps with no mutable state.
 #[allow(clippy::needless_range_loop)]
 #[allow(clippy::unnecessary_cast)]
-pub fn render(f: &mut Frame, area: Rect, tick: u64) {
+pub fn render(f: &mut Frame, area: Rect, _tick: u64) {
     if area.width == 0 || area.height == 0 {
         return;
     }
+
+    // 60 FPS tick derived from real time
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
+    let tick = now / 16; // ~60 ticks per second
+
 
     let width = area.width as usize;
     let height = area.height as usize;

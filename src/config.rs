@@ -31,6 +31,8 @@ pub struct WidgetConfig {
     pub processes: bool,
     pub media: bool,
     pub cmatrix: bool,
+    pub profile: bool,
+    pub video: bool,
 }
 
 impl Default for WidgetConfig {
@@ -47,6 +49,8 @@ impl Default for WidgetConfig {
             processes: true,
             media: true,
             cmatrix: true,
+            profile: true,
+            video: true,
         }
     }
 }
