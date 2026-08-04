@@ -97,10 +97,8 @@ fn collect_summary() -> Summary {
         }
     }
 
-    // Battery
-    let bat_pct = fs::read_to_string("/sys/class/power_supply/BAT0/capacity")
-        .ok()
-        .and_then(|s| s.trim().parse::<u8>().ok());
+    // Battery (scan for any BAT*, not just BAT0)
+    let bat_pct = crate::monitors::system_info::read_battery_pct();
 
     // Uptime
     let uptime_secs = sysinfo::System::uptime();

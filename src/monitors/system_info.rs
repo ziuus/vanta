@@ -99,9 +99,8 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
         })
         .unwrap_or_else(|| "?".to_string());
 
-    let battery = std::fs::read_to_string("/sys/class/power_supply/BAT0/capacity")
-        .ok()
-        .map(|s| format!("{}%", s.trim()))
+    let battery = read_battery_pct()
+        .map(|pct| format!("{}%", pct))
         .unwrap_or_else(|| "AC".to_string());
 
     let key_style = Style::default().fg(theme.dim);
@@ -266,4 +265,22 @@ pub(crate) fn collect_neofetch(sum: &app::Summary, w: usize, h: usize) -> NeoDat
         memory: format!("{} / {}", fmt_ram(used_b), fmt_ram(total_b)),
         bat,
     }
+}
+
+/// Scan /sys/class/power_supply/BAT* for the first available battery capacity.
+/// Returns None if no battery found (desktop/AC-only).
+pub fn read_battery_pct() -> Option<u8> {
+    use std::fs;
+    let power_supply = fs::read_dir("/sys/class/power_supply").ok()?;
+    for entry in power_supply.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with("BAT") {
+            if let Ok(content) = fs::read_to_string(entry.path().join("capacity")) {
+                if let Ok(pct) = content.trim().parse::<u8>() {
+                    return Some(pct);
+                }
+            }
+        }
+    }
+    None
 }

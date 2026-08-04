@@ -32,6 +32,10 @@ static GPU_CACHE: LazyLock<Mutex<CachedGpu>> = LazyLock::new(|| {
 });
 
 fn read_gpu_raw() -> Option<GpuData> {
+    read_nvidia().or_else(read_amd).or_else(read_intel)
+}
+
+fn read_nvidia() -> Option<GpuData> {
     let out = Command::new("nvidia-smi")
         .args([
             "--query-gpu=utilization.gpu,temperature.gpu,memory.used,memory.total",
@@ -51,6 +55,74 @@ fn read_gpu_raw() -> Option<GpuData> {
     } else {
         None
     }
+}
+
+fn read_amd() -> Option<GpuData> {
+    use std::fs;
+    // AMD exposes GPU busy % via sysfs
+    let drm = fs::read_dir("/sys/class/drm").ok()?;
+    for entry in drm.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if !name.starts_with("card") || name.contains('-') {
+            continue;
+        }
+        let dev = entry.path().join("device");
+        let util_path = dev.join("gpu_busy_percent");
+        let util_pct = fs::read_to_string(&util_path)
+            .ok()
+            .and_then(|s| s.trim().parse::<f64>().ok())?;
+
+        // Temp from hwmon
+        let temp_c = fs::read_dir(dev.join("hwmon"))
+            .ok()?
+            .flatten()
+            .find_map(|hwmon_entry| {
+                fs::read_to_string(hwmon_entry.path().join("temp1_input"))
+                    .ok()
+                    .and_then(|s| s.trim().parse::<f64>().ok())
+                    .map(|t| t / 1000.0) // millidegrees -> degrees
+            })
+            .unwrap_or(0.0);
+
+        // AMD doesn't expose VRAM via sysfs reliably, approximate or leave 0
+        return Some(GpuData {
+            util_pct,
+            temp_c,
+            mem_used_mb: 0.0,
+            mem_total_mb: 0.0,
+        });
+    }
+    None
+}
+
+fn read_intel() -> Option<GpuData> {
+    use std::fs;
+    // Intel integrated GPUs expose utilization via /sys/class/drm/card*/gt/gt0/rps_cur_freq_mhz
+    // and other metrics, but it's less standardized. Best-effort.
+    let drm = fs::read_dir("/sys/class/drm").ok()?;
+    for entry in drm.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if !name.starts_with("card") || name.contains('-') {
+            continue;
+        }
+        let dev = entry.path().join("device");
+        // Intel doesn't expose a direct busy_percent like AMD; skip or return minimal
+        // Just check if it's an Intel GPU and return 0s as fallback
+        if dev.join("vendor").exists() {
+            if let Ok(vendor) = fs::read_to_string(dev.join("vendor")) {
+                if vendor.trim() == "0x8086" {
+                    // It's Intel, but no easy util read
+                    return Some(GpuData {
+                        util_pct: 0.0,
+                        temp_c: 0.0,
+                        mem_used_mb: 0.0,
+                        mem_total_mb: 0.0,
+                    });
+                }
+            }
+        }
+    }
+    None
 }
 
 /// Cached GPU read. The render loop runs at ~125fps but `nvidia-smi` is a

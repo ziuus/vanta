@@ -23,13 +23,15 @@ fn usage_color(usage: f32, theme: &app::Theme) -> Color {
 }
 
 pub fn read_core_temps() -> Vec<f64> {
-    if let Ok(dir) = fs::read_dir("/sys/devices/platform/coretemp.0/hwmon/") {
-        for entry in dir.flatten() {
-            let hwmon_path = entry.path().join("name");
-            if let Ok(name) = fs::read_to_string(&hwmon_path) {
-                if name.trim() == "coretemp" {
+    // Scan /sys/class/hwmon/hwmon*/ for Intel (coretemp) or AMD (k10temp, zenpower)
+    if let Ok(hwmon_dir) = fs::read_dir("/sys/class/hwmon/") {
+        for hwmon_entry in hwmon_dir.flatten() {
+            let name_path = hwmon_entry.path().join("name");
+            if let Ok(name) = fs::read_to_string(&name_path) {
+                let name = name.trim();
+                if name == "coretemp" || name == "k10temp" || name == "zenpower" {
                     let mut temps: Vec<(usize, f64)> = Vec::new();
-                    if let Ok(temp_dir) = fs::read_dir(entry.path()) {
+                    if let Ok(temp_dir) = fs::read_dir(hwmon_entry.path()) {
                         for te in temp_dir.flatten() {
                             let fname = te.file_name().to_string_lossy().to_string();
                             if fname.starts_with("temp") && fname.ends_with("_input") {
