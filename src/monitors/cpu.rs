@@ -4,32 +4,25 @@ use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
-use ratatui::widgets::canvas::{Canvas, Line as CanvasLine};
-use ratatui::symbols;
 use ratatui::Frame;
 
-const HIST_LEN: usize = 120;
-static mut CPU_HISTORY: [u64; HIST_LEN] = [0; HIST_LEN];
+const HIST_LEN: usize = 240;
+static mut CPU_HISTORY: [f64; HIST_LEN] = [0.0; HIST_LEN];
 static mut CPU_IDX: usize = 0;
 
 use crate::app;
 
-fn usage_color(usage: f32) -> Color {
-    // btop-inspired gradient: green → yellow → orange → deep orange → red
-    if usage < 40.0 {
-        Color::Rgb(80, 200, 100)  // green
-    } else if usage < 60.0 {
-        Color::Rgb(200, 180, 50)  // yellow
-    } else if usage < 75.0 {
-        Color::Rgb(220, 140, 40)  // orange
-    } else if usage < 90.0 {
-        Color::Rgb(220, 100, 50)  // deep orange
+fn usage_color(usage: f32, theme: &app::Theme) -> Color {
+    if usage < 80.0 {
+        theme.accent
+    } else if usage < 95.0 {
+        theme.yellow
     } else {
-        Color::Rgb(220, 70, 60)   // soft red (only for critical)
+        theme.red
     }
 }
 
-fn read_core_temps() -> Vec<f64> {
+pub fn read_core_temps() -> Vec<f64> {
     if let Ok(dir) = fs::read_dir("/sys/devices/platform/coretemp.0/hwmon/") {
         for entry in dir.flatten() {
             let hwmon_path = entry.path().join("name");
@@ -70,7 +63,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
     let la = sysinfo::System::load_average();
     let cpu_usage = sys.global_cpu_usage();
     unsafe {
-        CPU_HISTORY[CPU_IDX] = cpu_usage as u64;
+        CPU_HISTORY[CPU_IDX] = cpu_usage as f64;
         CPU_IDX = (CPU_IDX + 1) % HIST_LEN;
     }
     let (load_vals, core_count, freq_mhz) = (
@@ -91,7 +84,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
     let core_rows = core_count.div_ceil(2);
     let mut constraints: Vec<ratatui::layout::Constraint> = Vec::with_capacity(3 + core_rows);
     constraints.push(Constraint::Length(1)); // header line
-    constraints.push(Constraint::Min(2));    // sparkline (expands to fill vertical space)
+    constraints.push(Constraint::Min(2)); // sparkline (expands to fill vertical space)
     constraints.push(Constraint::Length(1)); // blank spacer
     for _ in 0..core_rows {
         constraints.push(Constraint::Length(1)); // per-core row
@@ -99,7 +92,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
     let chunks = Layout::vertical(constraints).split(area);
 
     // ── Header: CPU % · load · freq · temp ──
-    let header_color = usage_color(cpu_usage);
+    let header_color = usage_color(cpu_usage, theme);
     let mut parts = vec![
         format!("{:.0}%", cpu_usage),
         format!("{:.2}/{:.2}/{:.2}", load_vals.0, load_vals.1, load_vals.2),
@@ -114,13 +107,16 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
     let header = parts.join(" · ");
 
     f.render_widget(
-        Paragraph::new(Line::from(Span::styled(&header, Style::default().fg(header_color)))),
+        Paragraph::new(Line::from(Span::styled(
+            &header,
+            Style::default().fg(header_color),
+        ))),
         chunks[0],
     );
 
-    // ── Sparkline (Braille Canvas) ──
-    let max_w = chunks[1].width.min(HIST_LEN as u16) as usize;
-    let hist: Vec<u64> = unsafe {
+    // ── Sparkline (Braille Graph) ──
+    let max_w = (chunks[1].width as usize * 2).min(HIST_LEN);
+    let hist: Vec<f64> = unsafe {
         (0..max_w)
             .map(|i| {
                 let idx = (CPU_IDX + HIST_LEN - 1 - i) % HIST_LEN;
@@ -129,28 +125,13 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
             .rev()
             .collect()
     };
-    
-    let canvas = Canvas::default()
-        .marker(symbols::Marker::Braille)
-        .x_bounds([0.0, max_w.saturating_sub(1) as f64])
-        .y_bounds([0.0, 100.0])
-        .paint(|ctx| {
-            for (i, &val) in hist.iter().enumerate() {
-                if val > 0 {
-                    // Draw a vertical line from bottom to the value.
-                    // Canvas with Marker::Braille will render this as filled braille blocks!
-                    ctx.draw(&CanvasLine {
-                        x1: i as f64,
-                        y1: 0.0,
-                        x2: i as f64,
-                        y2: val as f64,
-                        color: header_color,
-                    });
-                }
-            }
-        });
 
-    f.render_widget(canvas, chunks[1]);
+    let braille = crate::widgets::braille_graph::BrailleGraph::new(&hist)
+        .min(0.0)
+        .max(100.0)
+        .colors(theme.green, theme.yellow, theme.red);
+
+    f.render_widget(braille, chunks[1]);
 
     // ── Per-core rows (2 per line, compact gauges) ──
     for (i, row_area) in chunks[3..].iter().enumerate() {
@@ -164,24 +145,39 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
             }
 
             let usage = cores[idx];
-            let c = usage_color(usage);
-            
-            // Render as: c0 ....... 50%
-            let label_w = 3; // "c0 "
-            let pct_w = 4; // " 50%"
-            let dots_w = gauge_area.width.saturating_sub((label_w + pct_w) as u16) as usize;
-            
-            // Create the dotted line, dimmed
-            let dots = if dots_w > 0 {
-                "·".repeat(dots_w)
-            } else {
-                String::new()
-            };
+            let c = usage_color(usage, theme);
+
+            // Format exact strings first
+            let label = format!("c{:<2} ", idx);
+            let pct_str = format!("{:>4.0}%", usage);
+
+            // Create the block meter exactly fitting the remaining space
+            let bar_len = gauge_area
+                .width
+                .saturating_sub((label.len() + pct_str.len()) as u16)
+                as usize;
+            let mut bar = String::new();
+            if bar_len > 0 {
+                let blocks = [" ", "▏", "▎", "▍", "▌", "▋", "▊", "▉", "█"];
+                let total_levels = bar_len * 8;
+                let filled_levels =
+                    ((usage / 100.0).clamp(0.0, 1.0) * total_levels as f32).round() as usize;
+
+                for i in 0..bar_len {
+                    let cell_level = filled_levels.saturating_sub(i * 8).min(8);
+                    bar.push_str(blocks[cell_level]);
+                }
+            }
 
             let line = Line::from(vec![
-                Span::styled(format!("c{:<2}", idx), Style::default().fg(Color::White)),
-                Span::styled(dots, Style::default().fg(theme.dim)),
-                Span::styled(format!("{:>3.0}%", usage), Style::default().fg(c)),
+                Span::styled(label, Style::default().fg(theme.dim)),
+                Span::styled(bar, Style::default().fg(c)),
+                Span::styled(
+                    pct_str,
+                    Style::default()
+                        .fg(c)
+                        .add_modifier(ratatui::style::Modifier::BOLD),
+                ),
             ]);
 
             f.render_widget(Paragraph::new(line), gauge_area);

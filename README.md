@@ -56,13 +56,13 @@ No mouse. No touch. Just keys.
 ### Process Explorer (`Mode 3`)
 | Key | Action |
 |-----|--------|
-| `s` | Cycle sort fields (PID, CPU, Mem, User) |
+| `s` | Cycle sort fields (PID, CPU, Mem, Name, RSS) |
 | `/` | Enter search mode |
 | `t` | Toggle tree view |
-| `Space` | Collapse / Expand tree node |
+| `←` `→` | Collapse / Expand tree node |
 | `i` | View process details |
 | `c` | Toggle compact command view |
-| `k` | Send Kill signal |
+| `k` | Send Kill signal (SIGTERM) |
 
 ### Media Player (`Mode 4`)
 | Key | Action |
@@ -125,7 +125,6 @@ cargo install --git https://github.com/ziuus/vanta
 git clone https://github.com/ziuus/vanta.git
 cd vanta
 cargo run --release            # Live hardware monitoring
-cargo run --release -- --demo  # Demo mode with simulated data
 ```
 
 ---
@@ -136,9 +135,10 @@ cargo run --release -- --demo  # Demo mode with simulated data
 |-------|------------|
 | **Core Framework** | Rust + Ratatui `0.29` |
 | **Terminal IO** | Crossterm |
-| **Telemetry** | `sysinfo`, NVML |
-| **Media Sync** | MPRIS (`playerctl` interop) |
-| **Time & Rand** | `chrono`, `rand` |
+| **Telemetry** | `sysinfo`, `/proc`, `nvidia-smi` |
+| **Media Sync** | MPRIS (DBus / `playerctl`) |
+| **Audio Viz** | `cava` + PulseAudio |
+| **Time** | `chrono` |
 
 ---
 

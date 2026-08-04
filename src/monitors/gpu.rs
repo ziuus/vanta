@@ -2,9 +2,9 @@ use std::process::Command;
 
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::Style;
+use ratatui::symbols::line;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{LineGauge, Paragraph};
-use ratatui::symbols::line;
 use ratatui::Frame;
 
 use crate::app;
@@ -42,12 +42,12 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
     let gpu_data = read_gpu();
 
     if let Some(gpu) = gpu_data {
-        let util_color = if gpu.util_pct > 80.0 {
+        let util_color = if gpu.util_pct > 95.0 {
             theme.red
-        } else if gpu.util_pct > 40.0 {
+        } else if gpu.util_pct > 80.0 {
             theme.yellow
         } else {
-            theme.green
+            theme.accent
         };
         let _mem_pct = if gpu.mem_total_mb > 0.0 {
             (gpu.mem_used_mb / gpu.mem_total_mb * 100.0) as u16
@@ -76,10 +76,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
                 Style::default().fg(theme.text),
             ),
         ]);
-        f.render_widget(
-            Paragraph::new(text).style(Style::default().bg(theme.bg)),
-            chunks[0],
-        );
+        f.render_widget(Paragraph::new(text), chunks[0]);
 
         let gauge = LineGauge::default()
             .filled_style(Style::default().fg(util_color).bg(theme.surface))

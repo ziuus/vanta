@@ -1,197 +1,313 @@
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style};
-use ratatui::text::Span;
+use ratatui::text::{Line, Span};
+use ratatui::widgets::{Block, BorderType, Borders, Paragraph};
 use ratatui::Frame;
 
-use crate::app::{self, PanelId, PanelStates};
+use crate::app::{self, PanelId, PanelStates, Summary};
 use crate::config::Config;
-use crate::monitors::{cpu, disk, gpu, memory, network, processes, system_info};
-use crate::widgets::{calendar, clock, cmatrix, media, music_viz, profile, video};
+use crate::monitors::{analytics, processes, system_info};
+use crate::widgets::{calendar, clock, media, profile};
 
-use ratatui::widgets::{Block, Borders, BorderType};
+fn section_header(
+    f: &mut Frame,
+    area: Rect,
+    label: &str,
+    theme: &app::Theme,
+    focused: bool,
+) -> Rect {
+    if label.is_empty() {
+        return area;
+    }
+    let title_color = if focused { theme.accent } else { theme.dim };
+    let border_color = if focused { theme.accent } else { theme.dim };
 
-/// Render a btop-style colored section label with a full border.
-/// Returns the remaining area below the label for the widget content.
-fn section_header(f: &mut Frame, area: Rect, label: &str, theme: &app::Theme, focused: bool) -> Rect {
-    let title_color = if focused { theme.focus } else { theme.accent };
-    let border_color = if focused { theme.focus } else { theme.dim };
-    
+    let b_type = if focused {
+        BorderType::Thick
+    } else {
+        BorderType::Rounded
+    };
+
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
+        .border_type(b_type)
         .border_style(Style::default().fg(border_color))
         .title(Span::styled(
             format!(" {} ", label),
-            Style::default().fg(title_color).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(title_color)
+                .add_modifier(ratatui::style::Modifier::BOLD),
         ));
-        
+
     let inner = block.inner(area);
     f.render_widget(block, area);
     inner
 }
 
-/// Helper to merge borders horizontally by extending width of all but the last chunk.
-fn overlap_horizontal(chunks: &mut [Rect]) {
-    for i in 0..chunks.len().saturating_sub(1) {
-        chunks[i].width += 1;
-    }
+/// Vertically center a `height`-tall block inside `area`.
+fn vcenter(area: Rect, height: u16) -> Rect {
+    let h = height.min(area.height);
+    let y = area.y + (area.height.saturating_sub(h)) / 2;
+    Rect::new(area.x, y, area.width, h)
 }
 
-/// Helper to merge borders vertically by extending height of all but the last chunk.
-fn overlap_vertical(chunks: &mut [Rect]) {
-    for i in 0..chunks.len().saturating_sub(1) {
-        chunks[i].height += 1;
-    }
-}
-
+#[allow(clippy::too_many_arguments)]
 pub fn render(
     f: &mut Frame,
     area: Rect,
     theme: &app::Theme,
-    config: &Config,
-    tick: u64,
+    _config: &Config,
+    _tick: u64,
     focused: Option<PanelId>,
     states: &PanelStates,
+    sum: &Summary,
 ) {
-    // ── Main Layout Split ──
-    let mut chunks = Layout::vertical([
-        Constraint::Ratio(6, 10),  // Top (more space for widgets, profile needs room)
-        Constraint::Ratio(4, 10),  // Bottom: processes
+    let rows = Layout::vertical([
+        Constraint::Length(10), // SYSTEM neofetch hero
+        Constraint::Length(7),  // CLOCK | ANALYTICS | MEDIA
+        Constraint::Min(0),     // PROFILE | CALENDAR | PROCESSES
     ])
-    .spacing(0)
-    .split(area)
-    .to_vec();
-    overlap_vertical(&mut chunks); // Merge top and bottom sections
+    .spacing(1)
+    .split(area);
+    if rows.len() < 3 {
+        return;
+    }
 
-    // ── Top section: 3-column grid ──
-    let mut cols = Layout::horizontal([
-        Constraint::Ratio(35, 100),  // Left: Hardware
-        Constraint::Ratio(35, 100),  // Center: System
-        Constraint::Ratio(30, 100),  // Right: Widgets
+    // ── SYSTEM (neofetch) ──
+    let inner = section_header(
+        f,
+        rows[0],
+        "󰒋 SYSTEM",
+        theme,
+        focused == Some(PanelId::System),
+    );
+    let term = f.area();
+    render_neofetch(
+        f,
+        inner,
+        theme,
+        sum,
+        term.width as usize,
+        term.height as usize,
+    );
+
+    // ── Middle: CLOCK | ANALYTICS | MEDIA ──
+    let mid = Layout::horizontal([
+        Constraint::Length(36),
+        Constraint::Fill(1),
+        Constraint::Length(36),
     ])
-    .spacing(0)
-    .split(chunks[0])
-    .to_vec();
-    overlap_horizontal(&mut cols); // Merge columns horizontally
-
-    // ── Column 1: Hardware metrics ──
-    let mut c1_constraints = vec![];
-    if config.widgets.profile { c1_constraints.push(Constraint::Length(14)); } // Vanta Logo
-    if config.widgets.cpu { c1_constraints.push(Constraint::Min(8)); } // Expands
-    if config.widgets.memory { c1_constraints.push(Constraint::Length(4)); } 
-    if config.widgets.disk { c1_constraints.push(Constraint::Length(4)); }   
-
-    let mut col1 = Layout::vertical(c1_constraints).spacing(0).split(cols[0]).to_vec();
-    overlap_vertical(&mut col1);
-
-    // ── Column 2: System / Network / GPU / Matrix ──
-    let mut c2_constraints = vec![];
-    c2_constraints.push(Constraint::Length(8)); 
-    if config.widgets.network { c2_constraints.push(Constraint::Length(4)); } 
-    if config.widgets.gpu { c2_constraints.push(Constraint::Length(4)); } 
-    if config.widgets.cmatrix { c2_constraints.push(Constraint::Min(0)); } 
-
-    let mut col2 = Layout::vertical(c2_constraints).spacing(0).split(cols[1]).to_vec();
-    overlap_vertical(&mut col2);
-
-    // ── Column 3: Time / Media / Visualizer / Video ──
-    let mut c3_constraints = vec![];
-    if config.widgets.clock { c3_constraints.push(Constraint::Length(8)); } 
-    if config.widgets.calendar { c3_constraints.push(Constraint::Length(9)); } 
-    if config.widgets.media { c3_constraints.push(Constraint::Length(3)); } 
-    if config.widgets.music_viz { c3_constraints.push(Constraint::Fill(1)); }
-    if config.widgets.video { c3_constraints.push(Constraint::Fill(1)); } // Splits extra space with visualizer
-
-    let mut col3 = Layout::vertical(c3_constraints).spacing(0).split(cols[2]).to_vec();
-    overlap_vertical(&mut col3);
-
-    // ── Column 1: Hardware ──
-    let mut ci1 = 0_usize;
-    if config.widgets.profile {
-        let inner = section_header(f, col1[ci1], "Profile", theme, focused == Some(PanelId::Profile));
-        profile::render(f, inner, theme);
-        ci1 += 1;
-    }
-    if config.widgets.cpu {
-        let inner = section_header(f, col1[ci1], " CPU", theme, focused == Some(PanelId::Cpu));
-        cpu::render(f, inner, theme);
-        ci1 += 1;
-    }
-    if config.widgets.memory {
-        let inner = section_header(f, col1[ci1], "󰍛 Memory", theme, focused == Some(PanelId::Memory));
-        memory::render(f, inner, theme);
-        ci1 += 1;
-    }
-    if config.widgets.disk {
-        let inner = section_header(f, col1[ci1], "󰋊 Disk", theme, focused == Some(PanelId::Disk));
-        disk::render(f, inner, theme);
+    .spacing(1)
+    .split(rows[1]);
+    if mid.len() < 3 {
+        return;
     }
 
-    // ── Column 2: System / Network / GPU / Matrix ──
-    let mut ci2 = 0_usize;
-    {
-        let inner = section_header(f, col2[ci2], "System", theme, focused == Some(PanelId::System));
-        system_info::render(f, inner, theme);
-        ci2 += 1;
-    }
-    if config.widgets.network {
-        let inner = section_header(f, col2[ci2], "󰤨 Network", theme, focused == Some(PanelId::Network));
-        network::render(f, inner, theme);
-        ci2 += 1;
-    }
-    if config.widgets.gpu {
-        let inner = section_header(f, col2[ci2], "GPU", theme, focused == Some(PanelId::Gpu));
-        gpu::render(f, inner, theme);
-        ci2 += 1;
-    }
-    if config.widgets.cmatrix {
-        let inner = section_header(f, col2[ci2], "Matrix", theme, false);
-        cmatrix::render(f, inner, tick);
+    let inner = section_header(f, mid[0], "󰥔 CLOCK", theme, focused == Some(PanelId::Clock));
+    clock::render(f, vcenter(inner, 3), theme);
+
+    let inner = section_header(
+        f,
+        mid[1],
+        "󰋼 ANALYTICS",
+        theme,
+        focused == Some(PanelId::Cpu),
+    );
+    analytics::render(f, inner, theme, sum);
+
+    let inner = section_header(f, mid[2], "󰝚 MEDIA", theme, focused == Some(PanelId::Media));
+    media::render(f, inner, theme);
+
+    // ── Bottom: PROFILE | CALENDAR | PROCESSES ──
+    let bot = Layout::horizontal([
+        Constraint::Length(60),
+        Constraint::Length(26),
+        Constraint::Fill(1),
+    ])
+    .spacing(1)
+    .split(rows[2]);
+    if bot.len() < 3 {
+        return;
     }
 
-    // ── Column 3: Secondary (Clock/Calendar/Media/Visualizer/Video) ──
-    let mut ci3 = 0_usize;
-    if config.widgets.clock {
-        let inner = section_header(f, col3[ci3], "Clock", theme, focused == Some(PanelId::Clock));
-        clock::render(f, inner, theme);
-        ci3 += 1;
-    }
-    if config.widgets.calendar {
-        let inner = section_header(f, col3[ci3], "Calendar", theme, focused == Some(PanelId::Calendar));
-        calendar::render(f, inner, theme, states.calendar_month_offset);
-        ci3 += 1;
-    }
-    if config.widgets.media {
-        let inner = section_header(f, col3[ci3], "Media", theme, focused == Some(PanelId::Media));
-        media::render(f, inner, theme);
-        ci3 += 1;
-    }
-    if config.widgets.music_viz {
-        let inner = section_header(f, col3[ci3], "Visualizer", theme, focused == Some(PanelId::Visualizer));
-        music_viz::render(f, inner, theme, tick);
-        ci3 += 1;
-    }
-    if config.widgets.video {
-        let inner = section_header(f, col3[ci3], "Video", theme, focused == Some(PanelId::Video));
-        video::render(f, inner, theme, tick);
-    }
+    let inner = section_header(
+        f,
+        bot[0],
+        " PROFILE",
+        theme,
+        focused == Some(PanelId::Profile),
+    );
+    profile::render(f, inner, theme);
 
-    // ── Bottom section: Processes (full width) ──
-    if config.widgets.processes {
-        let inner = section_header(f, chunks[1], "Processes", theme, focused == Some(PanelId::Processes));
-        processes::render(
-            f,
-            inner,
-            theme,
-            states.process_scroll_offset,
-            states.process_sort_field,
-            states.process_sort_asc,
-            &states.process_search,
-            states.process_tree_mode,
-            &states.process_collapsed,
-            states.process_selected_pid,
-            states.process_compact_cmd,
-            states.process_show_detail,
+    let inner = section_header(
+        f,
+        bot[1],
+        "󰃭 CALENDAR",
+        theme,
+        focused == Some(PanelId::Calendar),
+    );
+    calendar::render(f, vcenter(inner, 9), theme, states.calendar_month_offset);
+
+    let inner = section_header(
+        f,
+        bot[2],
+        "󰒓 PROCESSES",
+        theme,
+        focused == Some(PanelId::Processes),
+    );
+    render_process_preview(f, inner, theme);
+}
+
+/// Neofetch-style hero: ASCII logo on the left, key/value rows on the right.
+fn render_neofetch(
+    f: &mut Frame,
+    area: Rect,
+    theme: &app::Theme,
+    sum: &Summary,
+    term_w: usize,
+    term_h: usize,
+) {
+    if area.width < 60 || area.height < 3 {
+        return;
+    }
+    let data = system_info::collect_neofetch(sum, term_w, term_h);
+
+    let logo_w = 30u16.min(area.width / 4);
+    let logo_area = Rect::new(area.x, area.y, logo_w, area.height);
+    let art = profile::ascii_art(logo_area.width, area.height);
+    let mut logo_lines: Vec<Line<'static>> = Vec::new();
+    for _ in 0..area.height.saturating_sub(art.len() as u16) / 2 {
+        logo_lines.push(Line::from(""));
+    }
+    logo_lines.extend(art);
+    f.render_widget(
+        Paragraph::new(logo_lines).alignment(ratatui::layout::Alignment::Left),
+        logo_area,
+    );
+
+    let val_area = Rect::new(area.x + logo_w, area.y, area.width - logo_w, area.height);
+    let halves = Layout::horizontal([Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)])
+        .spacing(2)
+        .split(val_area);
+
+    let left = [
+        kv_line("OS", &data.os, theme),
+        kv_line("HOST", &data.host, theme),
+        kv_line("KERNEL", &data.kernel, theme),
+        kv_line("UPTIME", &data.uptime, theme),
+        kv_line("SHELL", &data.shell, theme),
+        kv_line("RESOLUTION", &data.resolution, theme),
+    ];
+    let right = [
+        kv_line("CPU", &data.cpu, theme),
+        kv_line("GPU", &data.gpu, theme),
+        kv_line("MEMORY", &data.memory, theme),
+        kv_line("BATTERY", &data.bat, theme),
+        Line::from(""),
+        Line::from(""),
+    ];
+
+    let pad = area.height.saturating_sub(6) / 2;
+    let mut l: Vec<Line<'static>> = Vec::new();
+    let mut r: Vec<Line<'static>> = Vec::new();
+    for _ in 0..pad {
+        l.push(Line::from(""));
+        r.push(Line::from(""));
+    }
+    l.extend(left);
+    r.extend(right);
+
+    f.render_widget(
+        Paragraph::new(l).alignment(ratatui::layout::Alignment::Right),
+        halves[0],
+    );
+    f.render_widget(
+        Paragraph::new(r).alignment(ratatui::layout::Alignment::Left),
+        halves[1],
+    );
+}
+
+fn kv_line(key: &str, value: &str, theme: &app::Theme) -> Line<'static> {
+    Line::from(vec![
+        Span::styled(format!("{:>9}  ", key), Style::default().fg(theme.dim)),
+        Span::styled(
+            value.to_string(),
+            Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+        ),
+    ])
+}
+
+/// Compact top-by-memory process list for the Overview preview.
+fn render_process_preview(f: &mut Frame, area: Rect, theme: &app::Theme) {
+    if area.height < 2 {
+        return;
+    }
+    let rows = processes::top_by_mem(area.height.saturating_sub(1) as usize);
+    if rows.is_empty() {
+        f.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                " (no process data)",
+                Style::default().fg(theme.dim),
+            ))),
+            area,
         );
+        return;
     }
+
+    let w = area.width as usize;
+    let name_w = w.saturating_sub(25).max(8);
+
+    let mut lines: Vec<Line<'static>> = Vec::new();
+
+    let mut hdr: Vec<Span<'static>> = Vec::new();
+    hdr.push(Span::styled(" PID  ", Style::default().fg(theme.dim)));
+    hdr.push(Span::styled(
+        format!("{:<1$}", "NAME", name_w),
+        Style::default().fg(theme.dim),
+    ));
+    hdr.push(Span::styled(
+        format!("  {:>6}  {:>5}", "MEM", "CPU"),
+        Style::default().fg(theme.dim),
+    ));
+    lines.push(Line::from(hdr));
+
+    for (pid, name, mem_kb, cpu) in rows {
+        let mut name_disp = name.clone();
+        if name_disp.chars().count() > name_w {
+            let mut t: String = name_disp.chars().take(name_w.saturating_sub(1)).collect();
+            t.push('…');
+            name_disp = t;
+        }
+
+        let mem_s = if mem_kb >= 1024 * 1024 {
+            format!("{:.1}G", mem_kb as f64 / (1024.0 * 1024.0))
+        } else {
+            format!("{:.0}M", mem_kb as f64 / 1024.0)
+        };
+        let cpu_col = if cpu > 10.0 { theme.accent } else { theme.dim };
+
+        let mut spans: Vec<Span<'static>> = Vec::new();
+        spans.push(Span::styled(
+            format!(" {:>5} ", pid),
+            Style::default().fg(theme.dim),
+        ));
+        spans.push(Span::styled(
+            format!("{:<1$}", name_disp, name_w),
+            Style::default().fg(theme.text),
+        ));
+        spans.push(Span::styled(
+            format!("  {:>6}  ", mem_s),
+            Style::default().fg(theme.secondary),
+        ));
+        spans.push(Span::styled(
+            format!("{:>4.1}%", cpu),
+            Style::default().fg(cpu_col).add_modifier(Modifier::BOLD),
+        ));
+        lines.push(Line::from(spans));
+    }
+
+    f.render_widget(
+        Paragraph::new(lines).style(Style::default().bg(theme.bg)),
+        area,
+    );
 }

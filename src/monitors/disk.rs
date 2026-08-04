@@ -1,4 +1,4 @@
-use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
@@ -20,9 +20,13 @@ struct DiskIoState {
 }
 
 fn gauge_color(usage: f64, theme: &app::Theme) -> Color {
-    if usage < 50.0 { theme.green }
-    else if usage < 80.0 { theme.yellow }
-    else { theme.red }
+    if usage < 80.0 {
+        theme.accent
+    } else if usage < 95.0 {
+        theme.yellow
+    } else {
+        theme.red
+    }
 }
 
 fn read_disk_io() -> HashMap<String, (u64, u64)> {
@@ -32,17 +36,48 @@ fn read_disk_io() -> HashMap<String, (u64, u64)> {
         let parts: Vec<&str> = line.split_whitespace().collect();
         if parts.len() >= 14 {
             let name = parts[2].to_string();
-            if name.starts_with("loop") || name.starts_with("ram") || name.starts_with("sr")
-                || name.contains("dm-") || (name.len() > 1 && name.chars().any(|c| c.is_ascii_digit()))
+            if name.starts_with("loop")
+                || name.starts_with("ram")
+                || name.starts_with("sr")
+                || name.contains("dm-")
+                || name.starts_with("fd")
+                || name.starts_with("zram")
             {
                 continue;
             }
-            if let (Ok(sectors_read), Ok(sectors_written)) = (parts[5].parse::<u64>(), parts[9].parse::<u64>()) {
+            if let (Ok(sectors_read), Ok(sectors_written)) =
+                (parts[5].parse::<u64>(), parts[9].parse::<u64>())
+            {
                 result.insert(name, (sectors_read * 512, sectors_written * 512));
             }
         }
     }
     result
+}
+
+/// Map mountpoint → block device name (e.g. "/" → "nvme0n1p2") from /proc/mounts.
+fn read_mount_devices() -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    if let Ok(content) = std::fs::read_to_string("/proc/mounts") {
+        for line in content.lines() {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 2 {
+                let dev = parts[0];
+                let base = dev.rsplit('/').next().unwrap_or(dev);
+                if base.starts_with("sd")
+                    || base.starts_with("nvme")
+                    || base.starts_with("hd")
+                    || base.starts_with("vd")
+                    || base.starts_with("xvd")
+                    || base.starts_with("mmcblk")
+                    || base.contains("dm-")
+                {
+                    map.insert(parts[1].to_string(), base.to_string());
+                }
+            }
+        }
+    }
+    map
 }
 
 fn update_io_history() {
@@ -62,12 +97,18 @@ fn update_io_history() {
             for (dev, &(cur_read, cur_write)) in &current {
                 if let Some(&prev_read) = prev.reads.get(dev) {
                     if cur_read >= prev_read {
-                        read_kbps.insert(dev.clone(), (cur_read - prev_read) as f64 / 1024.0 / elapsed);
+                        read_kbps.insert(
+                            dev.clone(),
+                            (cur_read - prev_read) as f64 / 1024.0 / elapsed,
+                        );
                     }
                 }
                 if let Some(&prev_write) = prev.writes.get(dev) {
                     if cur_write >= prev_write {
-                        write_kbps.insert(dev.clone(), (cur_write - prev_write) as f64 / 1024.0 / elapsed);
+                        write_kbps.insert(
+                            dev.clone(),
+                            (cur_write - prev_write) as f64 / 1024.0 / elapsed,
+                        );
                     }
                 }
             }
@@ -101,17 +142,19 @@ fn fmt_rate(kbps: f64) -> String {
     }
 }
 
-fn get_current_rates(dev: &str) -> (f64, f64) {
+fn get_current_rates(mount: &str) -> Option<(f64, f64)> {
+    let devices = read_mount_devices();
+    let device = devices.get(mount)?;
     unsafe {
         if let Some(ref hist) = IO_HISTORY {
-            if let Some(entries) = hist.get(dev) {
+            if let Some(entries) = hist.get(device) {
                 if let Some(&(r, w)) = entries.last() {
-                    return (r, w);
+                    return Some((r, w));
                 }
             }
         }
     }
-    (0.0, 0.0)
+    None
 }
 
 pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
@@ -155,35 +198,48 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
                     0.0
                 };
                 let mount = disk.mount_point().to_str().unwrap_or("?").to_string();
-                let mount_name = mount.rsplit('/').next().unwrap_or("");
-                let (read_rate, write_rate) = if !mount_name.is_empty() {
-                    get_current_rates(mount_name)
-                } else {
-                    (0.0, 0.0)
-                };
-                (mount, pct, read_rate, write_rate)
+                let rates = get_current_rates(&mount);
+                (mount, pct, rates)
             })
             .collect()
     };
 
     // Compact: each disk = 1 gauge with detailed label
-    for (i, (mount, pct, read_rate, write_rate)) in entries.iter().enumerate() {
+    for (i, (mount, pct, rates)) in entries.iter().enumerate() {
         let y_offset = i as u16;
-        let chunk = Layout::vertical([Constraint::Length(1)])
-            .split(Rect::new(area.x, area.y + y_offset, area.width, 1));
+        if y_offset >= area.height {
+            break;
+        }
+        let chunk_area = Rect::new(area.x, area.y + y_offset, area.width, 1);
 
         let color = gauge_color(*pct, theme);
-        let stats = format!("↓ {:>9}  ↑ {:>9}", fmt_rate(*read_rate), fmt_rate(*write_rate));
-        let bar_line = crate::widgets::bar::draw_premium_bar(
-            &mount.chars().take(8).collect::<String>(),
-            8,
-            &stats,
-            24,
-            *pct / 100.0,
-            color,
-            theme.surface,
-            chunk[0].width,
-        );
-        f.render_widget(Paragraph::new(bar_line), chunk[0]);
+        let stats = match rates {
+            Some((r, w)) => format!("↓ {:>9}  ↑ {:>9}", fmt_rate(*r), fmt_rate(*w)),
+            None => format!("↓ {:>9}  ↑ {:>9}", "--", "--"),
+        };
+
+        let label = mount.chars().take(8).collect::<String>();
+        let label_fmt = format!("{:<5}", label);
+        let pct_str = format!("{:>3.0}%", pct);
+        let needed_w = label_fmt.len() + stats.len() + pct_str.len() + 3;
+        let dots_w = chunk_area.width.saturating_sub(needed_w as u16) as usize;
+        let dots = if dots_w > 0 {
+            "·".repeat(dots_w)
+        } else {
+            String::new()
+        };
+
+        let line = ratatui::text::Line::from(vec![
+            ratatui::text::Span::styled(format!("{} ", label_fmt), Style::default().fg(theme.dim)),
+            ratatui::text::Span::styled(format!("{} ", stats), Style::default().fg(theme.text)),
+            ratatui::text::Span::styled(dots, Style::default().fg(theme.dim)),
+            ratatui::text::Span::styled(
+                format!(" {}", pct_str),
+                Style::default()
+                    .fg(color)
+                    .add_modifier(ratatui::style::Modifier::BOLD),
+            ),
+        ]);
+        f.render_widget(Paragraph::new(line), chunk_area);
     }
 }

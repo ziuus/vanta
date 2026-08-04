@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
@@ -16,27 +16,23 @@ const CAVA_N_BARS: usize = 64;
 
 static CAVA_BARS: Mutex<Vec<f32>> = Mutex::new(Vec::new());
 static CAVA_RUNNING: AtomicBool = AtomicBool::new(false);
+static CAVA_CHILD: Mutex<Option<u32>> = Mutex::new(None);
 
 fn ensure_cava() {
     if CAVA_RUNNING.load(Ordering::Relaxed) {
         return;
     }
 
-    // Kill other cava processes (but not ourselves or our spawned child)
-    let my_pid = std::process::id().to_string();
-    if let Ok(output) = Command::new("pgrep").arg("cava").output() {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        for pid in stdout.lines() {
-            if pid.trim() == my_pid {
-                continue;
-            }
-            let _ = Command::new("kill").arg(pid.trim()).output();
+    // Reap our own previous cava child (if any) so we don't leak processes.
+    // Never touch cava instances we didn't spawn — the user may run their own.
+    if let Ok(mut child) = CAVA_CHILD.lock() {
+        if let Some(pid) = child.take() {
+            let _ = Command::new("kill").arg(pid.to_string()).status();
         }
     }
-    std::thread::sleep(std::time::Duration::from_millis(200));
+    std::thread::sleep(std::time::Duration::from_millis(100));
 
-    let source = detect_monitor_source()
-        .unwrap_or_else(|| String::from("auto"));
+    let source = detect_monitor_source().unwrap_or_else(|| String::from("auto"));
 
     // Use cava's built-in smoothing — same as what makes standalone cava look good
     let config = format!(
@@ -84,6 +80,10 @@ gravity = 30
         Err(_) => return,
     };
 
+    if let Ok(mut saved) = CAVA_CHILD.lock() {
+        *saved = Some(child.id());
+    }
+
     let mut stdout = match child.stdout.take() {
         Some(s) => s,
         None => return,
@@ -108,14 +108,30 @@ gravity = 30
                             val as f32 / 65535.0
                         })
                         .collect();
+                    let has_audio = values.iter().any(|&v| v > 0.005);
                     if let Ok(mut b) = CAVA_BARS.lock() {
                         *b = values;
+                    }
+                    // Track silence in the always-running reader thread so
+                    // is_active() stays correct even when the widget isn't
+                    // being rendered (e.g. overview collapsed it on silence).
+                    if let Ok(mut sf) = SILENCE_FRAMES.lock() {
+                        if has_audio {
+                            *sf = 0;
+                        } else {
+                            *sf = sf.saturating_add(1);
+                        }
                     }
                 }
                 Err(_) => break,
             }
         }
         CAVA_RUNNING.store(false, Ordering::Relaxed);
+        if let Ok(mut saved) = CAVA_CHILD.lock() {
+            if *saved == Some(child_proc.id()) {
+                *saved = None;
+            }
+        }
         let _ = child_proc.kill();
         let _ = child_proc.wait();
     });
@@ -134,7 +150,7 @@ fn detect_monitor_source() -> Option<String> {
         }
         let name = parts[1];
         let state = parts[3];
-        if name.ends_with(".monitor") && state == "RUNNING" {
+        if name.ends_with(".monitor") && (state == "RUNNING" || state == "IDLE") {
             return Some(name.to_string());
         }
     }
@@ -160,10 +176,7 @@ fn resample_max(src: &[f32], dst_len: usize) -> Vec<f32> {
             let end = ((i + 1) as f64 * src_len as f64 / dst_len as f64) as usize;
             let end = end.min(src_len);
             let end = end.max(start + 1);
-            src[start..end]
-                .iter()
-                .copied()
-                .fold(0.0f32, f32::max)
+            src[start..end].iter().copied().fold(0.0f32, f32::max)
         })
         .collect()
 }
@@ -205,31 +218,29 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme, _tick: u64) {
         return;
     };
 
-    // Detect silence from cava data itself — any bar above 0.005 means audio
-    let has_audio = raw.iter().any(|&v| v > 0.005);
-
-    let mut silence_frames = SILENCE_FRAMES.lock().unwrap_or_else(|e| e.into_inner());
-    if has_audio {
-        *silence_frames = 0;
-    } else {
-        *silence_frames += 1;
-    }
-    let is_silent = *silence_frames > 8; // ~1 second of silence
-    drop(silence_frames);
+    // Silence is tracked by the reader thread; here we only read the counter.
+    let is_silent = SILENCE_FRAMES.lock().map_or(true, |sf| *sf > 8);
 
     if is_silent {
         let bg = Style::default().bg(theme.surface);
         let mut lines: Vec<Line> = Vec::with_capacity(term_rows);
 
         let msg = "(waiting for audio signal)";
-        let pad = if term_cols > msg.len() { (term_cols - msg.len()) / 2 } else { 0 };
+        let pad = if term_cols > msg.len() {
+            (term_cols - msg.len()) / 2
+        } else {
+            0
+        };
         let msg_line = format!("{}{}", " ".repeat(pad), msg);
-        
+
         let center_row = term_rows / 2;
 
         for r in 0..term_rows {
             if r == center_row {
-                lines.push(Line::from(Span::styled(&msg_line, Style::default().fg(theme.dim).bg(theme.surface))));
+                lines.push(Line::from(Span::styled(
+                    &msg_line,
+                    Style::default().fg(theme.dim).bg(theme.surface),
+                )));
             } else {
                 lines.push(Line::from(Span::styled(" ".repeat(term_cols), bg)));
             }
@@ -282,20 +293,13 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme, _tick: u64) {
                 (BLOCKS[idx], idx)
             };
 
-            // Brightness increases with fill level and height
             let height_frac = display_row as f32 / display_rows;
-            let bright = 40 + (fill_level as f32 * 26.0) as i32
-                + (height_frac * 30.0) as i32;
-            let r = (74u32.saturating_add(bright as u32))
-                .min(255) as u8;
-            let g = (158u32.saturating_add(bright as u32))
-                .min(255) as u8;
-            let b = (146u32.saturating_add(bright as u32))
-                .min(255) as u8;
             let color = if fill_level == 0 {
                 theme.surface
+            } else if height_frac > 0.6 {
+                theme.secondary
             } else {
-                Color::Rgb(r, g, b)
+                theme.accent
             };
 
             spans.push(Span::styled(ch.to_string(), Style::default().fg(color)));

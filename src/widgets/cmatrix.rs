@@ -14,15 +14,17 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// at 60fps with no mutable state.
 #[allow(clippy::needless_range_loop)]
 #[allow(clippy::unnecessary_cast)]
-pub fn render(f: &mut Frame, area: Rect, _tick: u64) {
+pub fn render(f: &mut Frame, area: Rect, _tick: u64, theme: &crate::app::Theme) {
     if area.width == 0 || area.height == 0 {
         return;
     }
 
     // Derived tick for smooth ~15-20 units per second speed
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
     let tick = now / 60;
-
 
     let width = area.width as usize;
     let height = area.height as usize;
@@ -35,25 +37,28 @@ pub fn render(f: &mut Frame, area: Rect, _tick: u64) {
         if col % 2 != 0 {
             continue;
         }
-        
+
         let col_seed = col.wrapping_mul(713).wrapping_add(12345);
         // speed modifier
         let speed_div = 1 + (col_seed % 3);
         let tick_local = (tick / (speed_div as u64)) as usize;
-        
+
         let interval = 40 + (col_seed % 60); // 40-100 ticks per cycle
 
         // Draw multiple drops per column to allow density
-        for drop_idx in 0..2 {
-            let offset_time = tick_local.wrapping_add(drop_idx * (interval / 2)).wrapping_add(col_seed % interval);
+        for drop_idx in 0..1 {
+            // Reduced from 2 to 1 for half density
+            let offset_time = tick_local
+                .wrapping_add(drop_idx * (interval / 2))
+                .wrapping_add(col_seed % interval);
             let cycle = offset_time / interval;
             let cycle_seed = col_seed.wrapping_add(cycle.wrapping_mul(997));
-            
+
             let drop_head = offset_time % interval;
-            
+
             // Trail length 10-30
             let trail_len = 10 + (cycle_seed % 20);
-            
+
             for row in 0..trail_len {
                 let y = if drop_head >= row {
                     drop_head - row
@@ -77,7 +82,9 @@ pub fn render(f: &mut Frame, area: Rect, _tick: u64) {
 
                 // The character should change based on tick to give the "matrix" changing effect
                 let time_offset = (tick / 5) as usize; // change chars every 5 ticks
-                let ch_idx = cycle_seed.wrapping_add(row.wrapping_mul(31)).wrapping_add(time_offset)
+                let ch_idx = cycle_seed
+                    .wrapping_add(row.wrapping_mul(31))
+                    .wrapping_add(time_offset)
                     % matrix_chars.len();
                 let ch = matrix_chars[ch_idx];
 
@@ -97,19 +104,19 @@ pub fn render(f: &mut Frame, area: Rect, _tick: u64) {
             if brightness == 0 {
                 spans.push(Span::raw(" "));
             } else {
-                let (r, g, b) = match brightness {
-                    255 => (200, 255, 200), // white-ish green head
-                    200 => (40, 220, 40),
-                    b => (0, (b as u32 * 180 / 255).max(30) as u8, 0),
+                let color = match brightness {
+                    255 => Color::Rgb(200, 255, 200),
+                    200 => Color::Rgb(100, 200, 100),
+                    _ => theme.dim,
                 };
-                spans.push(Span::styled(
-                    ch.to_string(),
-                    Style::default().fg(Color::Rgb(r, g, b)),
-                ));
+                spans.push(Span::styled(ch.to_string(), Style::default().fg(color)));
             }
         }
         lines.push(Line::from(spans));
     }
 
-    f.render_widget(Paragraph::new(lines).style(Style::default().bg(Color::Rgb(0, 0, 0))), area);
+    f.render_widget(
+        Paragraph::new(lines).style(Style::default().bg(Color::Rgb(0, 0, 0))),
+        area,
+    );
 }

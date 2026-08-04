@@ -10,6 +10,7 @@ use crate::app;
 
 /// Render a 60fps rotating 3D Torus (Donut) as a terminal video.
 #[allow(non_snake_case)]
+#[allow(dead_code)]
 pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme, _tick: u64) {
     if area.width < 10 || area.height < 5 {
         return;
@@ -21,7 +22,10 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme, _tick: u64) {
     let mut z_buffer = vec![0.0f32; width * height];
     let mut b_buffer = vec![' '; width * height];
 
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as f32;
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as f32;
     let A = now * 0.0012; // X rotation speed
     let B = now * 0.0008; // Y rotation speed
 
@@ -57,17 +61,15 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme, _tick: u64) {
             let L = cosPhi * cosTheta * sinB - cosA * cosTheta * sinPhi - sinA * sinTheta
                 + cosB * (cosA * sinTheta - cosTheta * sinA * sinPhi);
 
-            if L > 0.0 {
-                if xp >= 0 && xp < width as i32 && yp >= 0 && yp < height as i32 {
-                    let idx = (yp * width as i32 + xp) as usize;
-                    if ooz > z_buffer[idx] {
-                        z_buffer[idx] = ooz;
-                        let lum_idx = (L * 8.0) as usize;
-                        b_buffer[idx] = ".,-~:;=!*#$@"
-                            .chars()
-                            .nth(lum_idx.clamp(0, 11))
-                            .unwrap_or('@');
-                    }
+            if L > 0.0 && xp >= 0 && xp < width as i32 && yp >= 0 && yp < height as i32 {
+                let idx = (yp * width as i32 + xp) as usize;
+                if ooz > z_buffer[idx] {
+                    z_buffer[idx] = ooz;
+                    let lum_idx = (L * 8.0) as usize;
+                    b_buffer[idx] = ".,-~:;=!*#$@"
+                        .chars()
+                        .nth(lum_idx.clamp(0, 11))
+                        .unwrap_or('@');
                 }
             }
         }

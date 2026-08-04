@@ -13,9 +13,7 @@ sysinfo = "0.33"
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 chrono = "0.4"
-rand = "0.8"
 dbus = "0.9"
-itertools = "0.15.0"
 image = "0.25.10"
 
 [dev-dependencies]

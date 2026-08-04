@@ -113,25 +113,29 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
         theme.secondary
     };
 
-    let dl_stats = format!("{}", fmt_kbps(rx_kbps));
+    let dl_stats = fmt_kbps(rx_kbps);
     let dl_line = crate::widgets::bar::draw_premium_bar(
-        "↓ RX", 6,
-        &dl_stats, 13,
+        "↓ RX",
+        6,
+        &dl_stats,
+        13,
         (dl_pct as f64) / 100.0,
         rx_color,
-        theme.surface,
+        theme,
         chunks[0].width,
     );
     f.render_widget(Paragraph::new(dl_line), chunks[0]);
 
     // Upload
-    let ul_stats = format!("{}", fmt_kbps(tx_kbps));
+    let ul_stats = fmt_kbps(tx_kbps);
     let ul_line = crate::widgets::bar::draw_premium_bar(
-        "↑ TX", 6,
-        &ul_stats, 13,
+        "↑ TX",
+        6,
+        &ul_stats,
+        13,
         (ul_pct as f64) / 100.0,
         tx_color,
-        theme.surface,
+        theme,
         chunks[1].width,
     );
     f.render_widget(Paragraph::new(ul_line), chunks[1]);

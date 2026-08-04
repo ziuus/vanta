@@ -26,7 +26,6 @@ struct CpuPrev {
 static PREV_CPU: LazyLock<Mutex<HashMap<u32, CpuPrev>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-
 static PREV_IO: LazyLock<Mutex<HashMap<u32, IoPrev>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
@@ -41,8 +40,8 @@ struct ProcInfo {
     state: String,
     threads: u64,
     uid: u32,
-    read_bps: f64,   // bytes/sec (delta from /proc/[pid]/io)
-    write_bps: f64,  // bytes/sec
+    read_bps: f64,  // bytes/sec (delta from /proc/[pid]/io)
+    write_bps: f64, // bytes/sec
 }
 
 fn read_proc_name(pid: u32) -> String {
@@ -119,7 +118,9 @@ fn read_proc_cpu(pid: u32, total_jiffies: f64) -> f64 {
                     let d_proc = proc_jiffies.saturating_sub(prev.jiffies) as f64;
                     let d_total = total_jiffies - prev.total_jiffies;
                     if d_total > 0.0 {
-                        let num_cores = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1) as f64;
+                        let num_cores = std::thread::available_parallelism()
+                            .map(|n| n.get())
+                            .unwrap_or(1) as f64;
                         (d_proc / d_total) * 100.0 * num_cores
                     } else {
                         0.0
@@ -127,7 +128,13 @@ fn read_proc_cpu(pid: u32, total_jiffies: f64) -> f64 {
                 } else {
                     0.0
                 };
-                prev_map.insert(pid, CpuPrev { jiffies: proc_jiffies, total_jiffies });
+                prev_map.insert(
+                    pid,
+                    CpuPrev {
+                        jiffies: proc_jiffies,
+                        total_jiffies,
+                    },
+                );
                 return pct;
             }
         }
@@ -218,17 +225,17 @@ fn read_proc_cmdline(pid: u32) -> String {
                 .trim_end_matches('\0')
                 .to_string();
             let s = s.replace('\0', " ");
-            if s.is_empty() { "?".to_string() } else { s }
+            if s.is_empty() {
+                "?".to_string()
+            } else {
+                s
+            }
         }
         Err(_) => "?".to_string(),
     }
 }
 
-fn collect_processes(
-    sort_field: SortField,
-    sort_asc: bool,
-    search: &str,
-) -> Vec<ProcInfo> {
+fn collect_processes(sort_field: SortField, sort_asc: bool, search: &str) -> Vec<ProcInfo> {
     let total_jiffies = read_total_jiffies();
     let mut procs: Vec<ProcInfo> = Vec::new();
 
@@ -392,17 +399,10 @@ struct TreeRow {
     write_bps: f64,
 }
 
-fn flatten_tree(
-    nodes: &[ProcNode],
-    collapsed: &HashSet<u32>,
-) -> Vec<TreeRow> {
+fn flatten_tree(nodes: &[ProcNode], collapsed: &HashSet<u32>) -> Vec<TreeRow> {
     let mut rows = Vec::new();
 
-    fn walk(
-        nodes: &[ProcNode],
-        collapsed: &HashSet<u32>,
-        rows: &mut Vec<TreeRow>,
-    ) {
+    fn walk(nodes: &[ProcNode], collapsed: &HashSet<u32>, rows: &mut Vec<TreeRow>) {
         for node in nodes {
             let is_collapsed = collapsed.contains(&node.info.pid);
             rows.push(TreeRow {
@@ -439,7 +439,11 @@ fn sort_tree(nodes: &mut [ProcNode], by: SortField, asc: bool) {
             SortField::Cpu => a.info.cpu_pct.total_cmp(&b.info.cpu_pct),
             SortField::Rss => a.info.mem_kb.cmp(&b.info.mem_kb),
         };
-        if asc { cmp } else { cmp.reverse() }
+        if asc {
+            cmp
+        } else {
+            cmp.reverse()
+        }
     });
     for child in nodes.iter_mut() {
         sort_tree(&mut child.children, by, asc);
@@ -447,6 +451,16 @@ fn sort_tree(nodes: &mut [ProcNode], by: SortField, asc: bool) {
 }
 
 // ── Public API ─────────────────────────────────────────────────
+
+/// Top-N processes by memory usage for the Overview preview list.
+/// Returns (pid, name, mem_kb, cpu_pct) sorted by RSS descending.
+pub(crate) fn top_by_mem(n: usize) -> Vec<(u32, String, u64, f64)> {
+    collect_processes(SortField::Mem, false, "")
+        .into_iter()
+        .take(n)
+        .map(|p| (p.pid, p.name, p.mem_kb, p.cpu_pct))
+        .collect()
+}
 
 pub fn get_pid_at(
     scroll_offset: usize,
@@ -545,7 +559,11 @@ fn tree_prefix(depth: usize, has_children: bool, expanded: bool, tree_mode: bool
         let indent_width = (depth.saturating_sub(1) * 2).min(8);
         let spaces = " ".repeat(indent_width);
         let branch = if has_children {
-            if expanded { "▾─" } else { "▸─" }
+            if expanded {
+                "▾─"
+            } else {
+                "▸─"
+            }
         } else {
             " ├─"
         };
@@ -560,6 +578,12 @@ fn cmd_basename(cmd: &str) -> &str {
     first.rsplit('/').next().unwrap_or(first)
 }
 
+fn read_total_mem_kb() -> f64 {
+    // sysinfo returns bytes; /proc VmRSS is in kB — convert so percentages line up.
+    let sys = crate::app::SYS.lock().unwrap();
+    sys.total_memory() as f64 / 1024.0
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn render(
     f: &mut Frame,
@@ -571,11 +595,12 @@ pub fn render(
     search: &str,
     tree_mode: bool,
     collapsed: &HashSet<u32>,
-    _selected_pid: Option<u32>,
+    selected_pid: Option<u32>,
     compact_cmd: bool,
-    _show_detail: bool,
+    show_detail: bool,
 ) {
     let procs = collect_processes(sort_field, sort_asc, search);
+    let total_mem_kb = read_total_mem_kb().max(1.0);
 
     let (display_rows, total_items) = if tree_mode {
         let mut roots = build_tree(&procs);
@@ -608,24 +633,50 @@ pub fn render(
 
     // ── Layout split: reserve bottom for spacing + detail + command + footer ──
     let reserve_h = 4u16; // 1 blank + 1 detail + 1 command + 1 footer
+    if area.height <= reserve_h {
+        return; // Not enough height to render table + reserve
+    }
     let table_h = area.height.saturating_sub(reserve_h);
-    let table_rect = Rect { height: table_h, ..area };
-    let blank_rect = Rect { x: area.x, y: area.y + table_h, height: 1, width: area.width };
-    let detail_rect = Rect { x: area.x, y: area.y + table_h + 1, height: 1, width: area.width };
-    let cmdline_rect = Rect { x: area.x, y: area.y + table_h + 2, height: 1, width: area.width };
-    let footer_rect = Rect { x: area.x, y: area.y + table_h + 3, height: 1, width: area.width };
+    let table_rect = Rect {
+        height: table_h,
+        ..area
+    };
+    let blank_rect = Rect {
+        x: area.x,
+        y: area.y + table_h,
+        height: 1,
+        width: area.width,
+    };
+    let detail_rect = Rect {
+        x: area.x,
+        y: area.y + table_h + 1,
+        height: 1,
+        width: area.width,
+    };
+    let cmdline_rect = Rect {
+        x: area.x,
+        y: area.y + table_h + 2,
+        height: 1,
+        width: area.width,
+    };
+    let footer_rect = Rect {
+        x: area.x,
+        y: area.y + table_h + 3,
+        height: 1,
+        width: area.width,
+    };
 
     // ── Column width calculation ──
     let w = area.width as usize;
 
     // Fixed-width mandatory columns
-    let col_pid = 6usize;    // " 12345"
-    let col_cpu = 6usize;    // " 12.3%"
-    let col_mem = 6usize;    // " 45.2%"
-    let col_rss = 9usize;    // "  240.0M"
-    let col_state = 3usize;  // "  S "
-    let col_user = 7usize;   // "  root"
-    let col_thr = 4usize;    // "  12"
+    let col_pid = 6usize; // " 12345"
+    let col_cpu = 6usize; // " 12.3%"
+    let col_mem = 6usize; // " 45.2%"
+    let col_rss = 9usize; // "  240.0M"
+    let col_state = 3usize; // "  S "
+    let col_user = 7usize; // "  root"
+    let col_thr = 4usize; // "  12"
 
     let fixed_w = col_pid + col_cpu + col_mem + col_rss + col_state + col_user + col_thr;
     let sep_count = 8usize; // spaces between fixed columns
@@ -661,10 +712,7 @@ pub fn render(
 
     let mode_tag = if tree_mode { " [T]" } else { " [F]" };
     let cmd_tag = if compact_cmd { "" } else { " [C]" };
-    let hdr_style = Style::default()
-        .fg(theme.text)
-        .bg(theme.surface)
-        .add_modifier(ratatui::style::Modifier::BOLD);
+    let hdr_style = Style::default().fg(theme.dim).bg(theme.surface);
 
     // Helper: produce a fixed-width cell string (exactly `width` chars, leading space)
     let hdr_cell = |label: &str, arrow: &str, width: usize| -> String {
@@ -681,7 +729,11 @@ pub fn render(
     };
     let hdr_arrow = |field: SortField| -> &'static str {
         if sort_field == field {
-            if sort_asc { "▴" } else { "▾" }
+            if sort_asc {
+                "▴"
+            } else {
+                "▾"
+            }
         } else {
             ""
         }
@@ -693,7 +745,11 @@ pub fn render(
         hdr_style,
     ));
     hdr_spans.push(Span::styled(
-        format!(" {:1$}", format!("{}{}{}", "NAME", mode_tag, cmd_tag), col_name.saturating_sub(1)),
+        format!(
+            " {:1$}",
+            format!("{}{}{}", "NAME", mode_tag, cmd_tag),
+            col_name.saturating_sub(1)
+        ),
         hdr_style,
     ));
     hdr_spans.push(Span::styled(
@@ -743,18 +799,16 @@ pub fn render(
 
     // ── Data rows ──
     for (i, row) in display_rows.iter().skip(scroll).take(page_size).enumerate() {
-        let is_selected = i == 0;
+        let is_selected = selected_pid == Some(row.pid) || (selected_pid.is_none() && i == 0);
 
         let name_avail = col_name.saturating_sub(6); // room for tree prefix
         let name_display = trunc_name(&row.name, name_avail);
         let cpu_display = fmt_cpu(row.cpu_pct);
         let rss_str = fmt_rss(row.mem_kb);
-        let mem_pct = (row.mem_kb as f64 / 15_000_000.0 * 100.0).clamp(0.0, 100.0) as u8;
+        let mem_pct = (row.mem_kb as f64 / total_mem_kb * 100.0).clamp(0.0, 100.0) as u8;
 
-        let cpu_color = if row.cpu_pct > 50.0 {
-            theme.red
-        } else if row.cpu_pct > 20.0 {
-            theme.yellow
+        let cpu_color = if row.cpu_pct > 10.0 {
+            theme.accent // Bright highlight
         } else {
             theme.dim
         };
@@ -770,6 +824,7 @@ pub fn render(
         let (row_bg, row_fg) = if is_selected {
             (theme.surface, theme.accent)
         } else {
+            // Very subtle alternate row shading (we don't have a distinct slight-bg, so we'll just stick to theme.bg to keep it clean)
             (theme.bg, theme.text)
         };
 
@@ -837,8 +892,14 @@ pub fn render(
         if show_io {
             let read_str = fmt_io_rate(row.read_bps);
             let write_str = fmt_io_rate(row.write_bps);
-            spans.push(Span::styled(read_str, Style::default().fg(theme.secondary).bg(row_bg)));
-            spans.push(Span::styled(write_str, Style::default().fg(theme.secondary).bg(row_bg)));
+            spans.push(Span::styled(
+                read_str,
+                Style::default().fg(theme.secondary).bg(row_bg),
+            ));
+            spans.push(Span::styled(
+                write_str,
+                Style::default().fg(theme.secondary).bg(row_bg),
+            ));
         }
 
         // COMMAND (flex column — use remaining space)
@@ -857,7 +918,13 @@ pub fn render(
             let cmd_trim = trunc_name(&cmd, col_cmd.saturating_sub(1));
             spans.push(Span::styled(
                 format!(" {}", cmd_trim),
-                Style::default().fg(if is_selected { theme.secondary } else { theme.dim }).bg(row_bg),
+                Style::default()
+                    .fg(if is_selected {
+                        theme.secondary
+                    } else {
+                        theme.dim
+                    })
+                    .bg(row_bg),
             ));
         }
 
@@ -896,16 +963,39 @@ pub fn render(
     );
 
     // ── Detail summary line for selected process ──
-    let selected_row = display_rows.get(scroll);
+    let selected_row = if let Some(pid) = selected_pid {
+        display_rows
+            .iter()
+            .skip(scroll)
+            .take(page_size)
+            .find(|r| r.pid == pid)
+    } else {
+        display_rows.get(scroll)
+    };
     if let Some(row) = selected_row {
-        let _detail_mem_pct = (row.mem_kb as f64 / 15_000_000.0 * 100.0).clamp(0.0, 100.0);
-        let detail = format!(
-            " PID {} | RSS {} | CPU {} | THR {}",
-            row.pid,
-            fmt_rss(row.mem_kb),
-            fmt_cpu(row.cpu_pct),
-            row.threads,
-        );
+        let mem_pct = (row.mem_kb as f64 / total_mem_kb * 100.0).clamp(0.0, 100.0);
+        let detail = if show_detail {
+            format!(
+                " PID {} | {} {}% | RSS {} | CPU {} | S {} | THR {} | R {}/s  W {}/s",
+                row.pid,
+                row.name,
+                mem_pct as u8,
+                fmt_rss(row.mem_kb),
+                fmt_cpu(row.cpu_pct),
+                row.state,
+                row.threads,
+                fmt_io_rate(row.read_bps).trim(),
+                fmt_io_rate(row.write_bps).trim(),
+            )
+        } else {
+            format!(
+                " PID {} | RSS {} | CPU {} | THR {}",
+                row.pid,
+                fmt_rss(row.mem_kb),
+                fmt_cpu(row.cpu_pct),
+                row.threads,
+            )
+        };
         f.render_widget(
             Paragraph::new(Line::from(Span::styled(
                 detail,

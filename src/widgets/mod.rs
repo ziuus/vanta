@@ -1,9 +1,10 @@
+pub mod bar;
+pub mod braille_graph;
 pub mod calendar;
 pub mod clock;
 pub mod cmatrix;
 pub mod media;
 pub mod music_viz;
-pub mod widget;
 pub mod profile;
 pub mod video;
-pub mod bar;
+pub mod widget;

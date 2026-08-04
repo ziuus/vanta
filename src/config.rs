@@ -45,12 +45,12 @@ impl Default for WidgetConfig {
             gpu: true,
             clock: true,
             calendar: true,
-            music_viz: true,
+            music_viz: false,
             processes: true,
-            media: true,
-            cmatrix: true,
-            profile: true,
-            video: true,
+            media: false,
+            cmatrix: false,
+            profile: false,
+            video: false,
         }
     }
 }

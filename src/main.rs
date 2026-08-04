@@ -82,7 +82,16 @@ fn run_app<B: ratatui::backend::Backend>(
                             app.set_mode(mode::DashboardMode::Monitor);
                         }
                         KeyCode::Char('3') => {
+                            app.set_mode(mode::DashboardMode::Processes);
+                        }
+                        KeyCode::Char('4') => {
+                            app.set_mode(mode::DashboardMode::Media);
+                        }
+                        KeyCode::Char('5') => {
                             app.set_mode(mode::DashboardMode::Aesthetic);
+                        }
+                        KeyCode::Char('6') => {
+                            app.set_mode(mode::DashboardMode::Settings);
                         }
                         KeyCode::Esc => {
                             if app.panel_states.process_search_active {
@@ -101,17 +110,20 @@ fn run_app<B: ratatui::backend::Backend>(
                         }
 
                         // No focus — arrow keys auto-focus first panel
-                        KeyCode::Up | KeyCode::Down | KeyCode::Left | KeyCode::Right
-                        | KeyCode::Home | KeyCode::PageUp | KeyCode::PageDown => {
+                        KeyCode::Up
+                        | KeyCode::Down
+                        | KeyCode::Left
+                        | KeyCode::Right
+                        | KeyCode::Home
+                        | KeyCode::PageUp
+                        | KeyCode::PageDown => {
                             app.focused_panel = app::PanelId::all(&app.config).first().copied();
                             app.handle_panel_nav(key.code);
                         }
 
                         // Enter on any focused panel
-                        KeyCode::Enter => {
-                            if app.focused_panel == Some(app::PanelId::Calendar) {
-                                app.panel_states.calendar_month_offset = 0;
-                            }
+                        KeyCode::Enter if app.focused_panel == Some(app::PanelId::Calendar) => {
+                            app.panel_states.calendar_month_offset = 0;
                         }
 
                         _ => {}

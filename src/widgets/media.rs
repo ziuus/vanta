@@ -1,13 +1,13 @@
 use std::time::Duration;
 
-use dbus::arg::{Variant, PropMap, RefArg};
+use dbus::arg::{PropMap, RefArg, Variant};
 use dbus::blocking::{BlockingSender, Connection};
 use dbus::Message;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
+use ratatui::symbols::line;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{LineGauge, Paragraph};
-use ratatui::symbols::line;
 use ratatui::Frame;
 
 use crate::app;
@@ -36,16 +36,16 @@ fn read_metadata(conn: &Connection, player: &str, timeout: Duration) -> TrackInf
     };
 
     let mut info = TrackInfo::default();
-    
+
     if let Some(variant) = reply.get1::<Variant<PropMap>>() {
         let map = variant.0;
-        
+
         if let Some(title) = map.get("xesam:title") {
             if let Some(t) = title.0.as_str() {
                 info.title = t.to_string();
             }
         }
-        
+
         if let Some(artist) = map.get("xesam:artist") {
             if let Some(a) = artist.0.as_str() {
                 info.artist = a.to_string();
@@ -61,7 +61,7 @@ fn read_metadata(conn: &Connection, player: &str, timeout: Duration) -> TrackInf
                 }
             }
         }
-        
+
         if let Some(length) = map.get("mpris:length") {
             if let Some(l) = length.0.as_i64() {
                 info.length_usec = l;
@@ -71,8 +71,6 @@ fn read_metadata(conn: &Connection, player: &str, timeout: Duration) -> TrackInf
 
     info
 }
-
-
 
 /// Get a string property via org.freedesktop.DBus.Properties.Get.
 fn get_prop(conn: &Connection, player: &str, prop: &str, timeout: Duration) -> Option<String> {
@@ -128,7 +126,7 @@ fn fmt_dur(usec: i64) -> String {
 
 pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
     let conn = Connection::new_session().ok();
-    let timeout = Duration::from_secs(5);
+    let timeout = Duration::from_millis(50);
 
     if let Some(conn) = conn {
         // List MPRIS players on the session bus
@@ -180,12 +178,14 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
                     0
                 };
 
-                // 2 lines: info + progress gauge
+                // 2 lines: info + progress gauge (vertically centered)
+                let top = area.height.saturating_sub(2) / 2;
+                let content = Rect::new(area.x, area.y + top, area.width, 2);
                 let chunks = ratatui::layout::Layout::vertical([
                     ratatui::layout::Constraint::Length(1),
                     ratatui::layout::Constraint::Length(1),
                 ])
-                .split(area);
+                .split(content);
 
                 f.render_widget(
                     Paragraph::new(Line::from(Span::styled(
@@ -207,13 +207,14 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
         }
     }
 
-    // No player active
+    // No player active — vertically centered placeholder
+    let top = area.height.saturating_sub(1) / 2;
     f.render_widget(
         Paragraph::new(Line::from(Span::styled(
             " (no media)",
             Style::default().fg(theme.dim),
         )))
         .style(Style::default().bg(theme.bg)),
-        area,
+        Rect::new(area.x, area.y + top, area.width, 1),
     );
 }

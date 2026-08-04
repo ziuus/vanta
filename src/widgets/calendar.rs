@@ -52,7 +52,11 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme, month_offset: i32) 
     let nav = if month_offset == 0 {
         " Today".to_string()
     } else {
-        format!(" {} {:02}", if month_offset < 0 { '◀' } else { '▶' }, month_offset.abs())
+        format!(
+            " {} {:02}",
+            if month_offset < 0 { '◀' } else { '▶' },
+            month_offset.abs()
+        )
     };
 
     // Build styled lines
@@ -61,7 +65,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme, month_offset: i32) 
     // Month/year header with offset indicator
     let header = format!("{} {}", month_name(month), year);
     let nav_display = format!(" {}", nav);
-    
+
     // We want the header to be centered within the 20-char calendar width
     let total_header_len = header.len() + nav_display.len();
     let header_pad = if total_header_len < 20 {
@@ -74,7 +78,11 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme, month_offset: i32) 
         Span::styled(header_pad, Style::default().bg(theme.surface)),
         Span::styled(
             header,
-            Style::default().fg(if month_offset == 0 { theme.accent } else { theme.secondary }),
+            Style::default().fg(if month_offset == 0 {
+                theme.accent
+            } else {
+                theme.secondary
+            }),
         ),
         Span::styled(nav_display, Style::default().fg(theme.dim)),
     ]));

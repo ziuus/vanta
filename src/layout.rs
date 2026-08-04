@@ -17,7 +17,9 @@ pub fn layout_for_mode(mode: DashboardMode, area: Rect, config: &Config) -> Vec<
     match mode {
         DashboardMode::Overview => overview_layout(area, config),
         DashboardMode::Monitor => monitor_layout(area),
+        DashboardMode::Media => media_layout(area),
         DashboardMode::Aesthetic => aesthetic_layout(area),
+        DashboardMode::Processes | DashboardMode::Settings => Vec::new(),
     }
 }
 
@@ -60,13 +62,34 @@ fn monitor_layout(area: Rect) -> Vec<WidgetPlacement> {
     .split(cols[2]);
 
     vec![
-        WidgetPlacement { id: "cpu", area: cpu_area },
-        WidgetPlacement { id: "memory", area: col1[0] },
-        WidgetPlacement { id: "disk", area: col1[1] },
-        WidgetPlacement { id: "network", area: col2[0] },
-        WidgetPlacement { id: "gpu", area: col2[1] },
-        WidgetPlacement { id: "system", area: col2[2] },
-        WidgetPlacement { id: "processes", area: chunks[1] },
+        WidgetPlacement {
+            id: "cpu",
+            area: cpu_area,
+        },
+        WidgetPlacement {
+            id: "memory",
+            area: col1[0],
+        },
+        WidgetPlacement {
+            id: "disk",
+            area: col1[1],
+        },
+        WidgetPlacement {
+            id: "network",
+            area: col2[0],
+        },
+        WidgetPlacement {
+            id: "gpu",
+            area: col2[1],
+        },
+        WidgetPlacement {
+            id: "system",
+            area: col2[2],
+        },
+        WidgetPlacement {
+            id: "processes",
+            area: chunks[1],
+        },
     ]
 }
 
@@ -75,11 +98,7 @@ fn monitor_layout(area: Rect) -> Vec<WidgetPlacement> {
 fn overview_layout(area: Rect, config: &Config) -> Vec<WidgetPlacement> {
     let mut placements = Vec::with_capacity(11);
 
-    let chunks = Layout::vertical([
-        Constraint::Ratio(4, 9),
-        Constraint::Ratio(5, 9),
-    ])
-    .split(area);
+    let chunks = Layout::vertical([Constraint::Ratio(4, 9), Constraint::Ratio(5, 9)]).split(area);
 
     let cols = Layout::horizontal([
         Constraint::Ratio(4, 10),
@@ -105,16 +124,16 @@ fn overview_layout(area: Rect, config: &Config) -> Vec<WidgetPlacement> {
     // Column 2: Secondary widgets
     let col2 = if config.widgets.media {
         Layout::vertical([
-            Constraint::Length(5),    // Clock
-            Constraint::Length(3),    // Media
-            Constraint::Length(10),   // Calendar
+            Constraint::Length(5),  // Clock
+            Constraint::Length(3),  // Media
+            Constraint::Length(10), // Calendar
             Constraint::Min(0),
         ])
         .split(cols[1])
     } else {
         Layout::vertical([
-            Constraint::Length(5),    // Clock
-            Constraint::Length(10),   // Calendar
+            Constraint::Length(5),  // Clock
+            Constraint::Length(10), // Calendar
             Constraint::Min(0),
         ])
         .split(cols[1])
@@ -122,15 +141,24 @@ fn overview_layout(area: Rect, config: &Config) -> Vec<WidgetPlacement> {
 
     let mut ci = 0_usize;
     if config.widgets.clock {
-        placements.push(WidgetPlacement { id: "clock", area: col2[ci] });
+        placements.push(WidgetPlacement {
+            id: "clock",
+            area: col2[ci],
+        });
         ci += 1;
     }
     if config.widgets.media {
-        placements.push(WidgetPlacement { id: "media", area: col2[ci] });
+        placements.push(WidgetPlacement {
+            id: "media",
+            area: col2[ci],
+        });
         ci += 1;
     }
     if config.widgets.calendar {
-        placements.push(WidgetPlacement { id: "calendar", area: col2[ci] });
+        placements.push(WidgetPlacement {
+            id: "calendar",
+            area: col2[ci],
+        });
     }
 
     // Column 3: Peripheral
@@ -143,19 +171,49 @@ fn overview_layout(area: Rect, config: &Config) -> Vec<WidgetPlacement> {
 
     push_if(&mut placements, "gpu", col3[0], config.widgets.gpu);
     push_if(&mut placements, "system", col3[1], true);
-    push_if(&mut placements, "music_viz", col3[2], config.widgets.music_viz);
+    push_if(
+        &mut placements,
+        "music_viz",
+        col3[2],
+        config.widgets.music_viz,
+    );
 
     // Bottom: processes
     if config.widgets.processes {
-        placements.push(WidgetPlacement { id: "processes", area: chunks[1] });
+        placements.push(WidgetPlacement {
+            id: "processes",
+            area: chunks[1],
+        });
     }
 
     placements
 }
 
+// ── Media: visualizer + player + clock ──
 
+fn media_layout(area: Rect) -> Vec<WidgetPlacement> {
+    let rows = Layout::vertical([
+        Constraint::Length(5),   // Clock
+        Constraint::Ratio(2, 3), // Visualizer
+        Constraint::Ratio(1, 3), // Media player
+    ])
+    .split(area);
 
-
+    vec![
+        WidgetPlacement {
+            id: "clock",
+            area: rows[0],
+        },
+        WidgetPlacement {
+            id: "music_viz",
+            area: rows[1],
+        },
+        WidgetPlacement {
+            id: "media",
+            area: rows[2],
+        },
+    ]
+}
 
 // ── Aesthetic: clock + calendar + visualizer + cmatrix ──
 
@@ -166,23 +224,28 @@ fn aesthetic_layout(area: Rect) -> Vec<WidgetPlacement> {
     ])
     .split(area);
 
-    let top = Layout::horizontal([
-        Constraint::Ratio(1, 2),
-        Constraint::Ratio(1, 2),
-    ])
-    .split(rows[0]);
+    let top = Layout::horizontal([Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)]).split(rows[0]);
 
-    let bottom = Layout::horizontal([
-        Constraint::Ratio(1, 2),
-        Constraint::Ratio(1, 2),
-    ])
-    .split(rows[1]);
+    let bottom =
+        Layout::horizontal([Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)]).split(rows[1]);
 
     vec![
-        WidgetPlacement { id: "clock", area: top[0] },
-        WidgetPlacement { id: "calendar", area: top[1] },
-        WidgetPlacement { id: "music_viz", area: bottom[0] },
-        WidgetPlacement { id: "cmatrix", area: bottom[1] },
+        WidgetPlacement {
+            id: "clock",
+            area: top[0],
+        },
+        WidgetPlacement {
+            id: "calendar",
+            area: top[1],
+        },
+        WidgetPlacement {
+            id: "music_viz",
+            area: bottom[0],
+        },
+        WidgetPlacement {
+            id: "cmatrix",
+            area: bottom[1],
+        },
     ]
 }
 
