@@ -1,4 +1,6 @@
 use std::process::Command;
+use std::sync::{LazyLock, Mutex};
+use std::time::{Duration, Instant};
 
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::Style;
@@ -9,6 +11,7 @@ use ratatui::Frame;
 
 use crate::app;
 
+#[derive(Clone, Copy)]
 struct GpuData {
     util_pct: f64,
     temp_c: f64,
@@ -16,7 +19,19 @@ struct GpuData {
     mem_total_mb: f64,
 }
 
-fn read_gpu() -> Option<GpuData> {
+struct CachedGpu {
+    data: Option<GpuData>,
+    timestamp: Instant,
+}
+
+static GPU_CACHE: LazyLock<Mutex<CachedGpu>> = LazyLock::new(|| {
+    Mutex::new(CachedGpu {
+        data: None,
+        timestamp: Instant::now() - Duration::from_secs(2), // start expired
+    })
+});
+
+fn read_gpu_raw() -> Option<GpuData> {
     let out = Command::new("nvidia-smi")
         .args([
             "--query-gpu=utilization.gpu,temperature.gpu,memory.used,memory.total",
@@ -36,6 +51,29 @@ fn read_gpu() -> Option<GpuData> {
     } else {
         None
     }
+}
+
+/// Cached GPU read. The render loop runs at ~125fps but `nvidia-smi` is a
+/// subprocess spawn — without this cache it forks 125×/sec. Refresh at most
+/// once per second; every other caller gets the cached value.
+fn read_gpu() -> Option<GpuData> {
+    let mut cache = GPU_CACHE.lock().unwrap();
+    if cache_is_stale(cache.timestamp, Duration::from_secs(1)) {
+        cache.data = read_gpu_raw();
+        cache.timestamp = Instant::now();
+    }
+    cache.data
+}
+
+/// True when a cached value older than `ttl` should be refreshed.
+fn cache_is_stale(timestamp: Instant, ttl: Duration) -> bool {
+    timestamp.elapsed() >= ttl
+}
+
+/// GPU utilization % for the top-bar Summary — reuses the same 1s cache as the
+/// GPU widget, so there's only ever one `nvidia-smi` spawn per second total.
+pub fn util_pct() -> u64 {
+    read_gpu().map(|g| g.util_pct as u64).unwrap_or(0)
 }
 
 pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
@@ -95,3 +133,4 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
         );
     }
 }
+

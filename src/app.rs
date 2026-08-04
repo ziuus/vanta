@@ -49,35 +49,25 @@ fn collect_summary() -> Summary {
         0.0
     };
 
-    // GPU via nvidia-smi
-    let gpu_pct = std::process::Command::new("nvidia-smi")
-        .args([
-            "--query-gpu=utilization.gpu",
-            "--format=csv,noheader,nounits",
-        ])
-        .output()
-        .ok()
-        .and_then(|o| {
-            let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
-            s.parse::<u64>().ok()
-        })
-        .unwrap_or(0);
+    // GPU via shared 1s cache (single nvidia-smi spawn/sec across the whole app)
+    let gpu_pct = crate::monitors::gpu::util_pct();
 
-    // Disk usage (root filesystem via df)
-    let disk_pct = std::process::Command::new("df")
-        .args(["-h", "--output=pcent", "/"])
-        .output()
-        .ok()
-        .and_then(|o| {
-            let s = String::from_utf8_lossy(&o.stdout);
-            s.lines()
-                .nth(1)?
-                .trim()
-                .trim_end_matches('%')
-                .parse::<f64>()
-                .ok()
-        })
-        .unwrap_or(0.0);
+    // Disk usage: root filesystem via sysinfo (no subprocess)
+    let disk_pct = {
+        let disks = sysinfo::Disks::new_with_refreshed_list();
+        disks
+            .iter()
+            .find(|d| d.mount_point() == std::path::Path::new("/"))
+            .and_then(|d| {
+                let total = d.total_space();
+                if total > 0 {
+                    Some(((total - d.available_space()) as f64 / total as f64) * 100.0)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(0.0)
+    };
 
     // Network (aggregate dl/ul from /sys/class/net)
     let (mut rx_total, mut tx_total) = (0u64, 0u64);
@@ -625,7 +615,8 @@ impl App {
     pub fn tick(&mut self) {
         self.tick_count = self.tick_count.wrapping_add(1);
         SYS.lock().unwrap().refresh_all();
-        // Refresh the summary (spawns nvidia-smi/df) only on tick, not every frame
+        // Refresh the summary only on tick, not every frame. GPU/disk reads are
+        // cheap here — GPU is served from a 1s cache, disk from sysinfo (no forks).
         self.summary = collect_summary();
     }
 
