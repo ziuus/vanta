@@ -23,7 +23,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme, _tick: u64) {
 
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .unwrap()
+        .unwrap_or_default()
         .as_millis() as f32;
     let A = now * 0.0012; // X rotation speed
     let B = now * 0.0008; // Y rotation speed

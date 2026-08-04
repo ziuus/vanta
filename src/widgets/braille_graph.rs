@@ -87,7 +87,7 @@ fn mask_for_col(dots_here: usize, is_right: bool) -> u8 {
         (2, true) => 0xA0,
         (3, true) => 0xB0,
         (4, true) => 0xB8,
-        _ => unreachable!(),
+        _ => 0x00, // dots is clamped to 0..=4, so this is unreachable in practice
     }
 }
 
@@ -119,7 +119,9 @@ impl<'a> Widget for BrailleGraph<'a> {
         // Clear the area first to prevent ghosting from old data
         for y in area.top()..area.bottom() {
             for x in area.left()..area.right() {
-                buf.cell_mut((x, y)).unwrap().set_char(' ');
+                if let Some(cell) = buf.cell_mut((x, y)) {
+                    cell.set_char(' ');
+                }
             }
         }
 
@@ -152,7 +154,9 @@ impl<'a> Widget for BrailleGraph<'a> {
                 let y = area.y + (area.height as usize - 1 - row) as u16;
                 let x = area.x + col as u16;
 
-                buf.cell_mut((x, y)).unwrap().set_char(ch).set_fg(color);
+                if let Some(cell) = buf.cell_mut((x, y)) {
+                    cell.set_char(ch).set_fg(color);
+                }
             }
         }
     }

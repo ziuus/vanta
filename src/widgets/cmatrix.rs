@@ -22,7 +22,7 @@ pub fn render(f: &mut Frame, area: Rect, _tick: u64, theme: &crate::app::Theme) 
     // Derived tick for smooth ~15-20 units per second speed
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .unwrap()
+        .unwrap_or_default()
         .as_millis() as u64;
     let tick = now / 60;
 

@@ -24,7 +24,10 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme, month_offset: i32) 
         0 // not in current month, no "today"
     };
 
-    let first = NaiveDate::from_ymd_opt(year, month, 1).unwrap();
+    let first = match NaiveDate::from_ymd_opt(year, month, 1) {
+        Some(d) => d,
+        None => return, // out-of-range date (extreme month_offset) — render nothing
+    };
     let first_weekday = first.weekday().num_days_from_monday(); // 0=Mon
     let days_in_month = days_in_month(year, month);
 
