@@ -12,6 +12,10 @@ pub struct UiConfig {
     pub theme: String,
     #[serde(default = "default_startup_mode")]
     pub startup_mode: String,
+    /// Optional path to an image rendered as ASCII in the profile widget.
+    /// When unset, the embedded vanta logo is used.
+    #[serde(default)]
+    pub image_path: String,
 }
 
 fn default_startup_mode() -> String {
@@ -62,6 +66,7 @@ impl Default for Config {
                 refresh_rate: 0.25,
                 theme: "dark".to_string(),
                 startup_mode: "overview".to_string(),
+                image_path: String::new(),
             },
             widgets: WidgetConfig::default(),
         }

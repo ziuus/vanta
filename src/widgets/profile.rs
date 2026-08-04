@@ -15,6 +15,18 @@ use crate::app;
 type AsciiCache = HashMap<(u16, u16), Vec<Line<'static>>>;
 static ASCII_CACHE: OnceLock<Mutex<AsciiCache>> = OnceLock::new();
 
+/// User-configured image path, set once at startup from config. Empty = embedded logo.
+static IMAGE_PATH: OnceLock<String> = OnceLock::new();
+
+/// Set the profile image path from config. Call once at startup.
+pub fn set_image_path(path: String) {
+    let _ = IMAGE_PATH.set(path);
+}
+
+fn image_path() -> &'static str {
+    IMAGE_PATH.get().map(|s| s.as_str()).unwrap_or("")
+}
+
 const ASCII_CHARS: &[u8] = b" .:-=+*#%@";
 
 fn get_char_for_luma(luma: u8) -> char {
@@ -35,11 +47,29 @@ fn fallback_art() -> Vec<Line<'static>> {
         .collect()
 }
 
-fn generate_ascii_art(width: u16, height: u16) -> Vec<Line<'static>> {
-    let img_bytes = include_bytes!("../../assets/logo.png");
-    let img = match image::load_from_memory(img_bytes) {
-        Ok(img) => img,
-        Err(_) => return fallback_art(),
+fn expand_tilde(path: &str) -> String {
+    match path.strip_prefix("~/") {
+        Some(rest) => match std::env::var("HOME") {
+            Ok(home) => format!("{home}/{rest}"),
+            Err(_) => path.to_string(),
+        },
+        None => path.to_string(),
+    }
+}
+
+fn generate_ascii_art(width: u16, height: u16, image_path: &str) -> Vec<Line<'static>> {
+    // Load from a user-configured image path if set, else the embedded logo.
+    let img = if !image_path.is_empty() {
+        match image::open(expand_tilde(image_path)) {
+            Ok(img) => img,
+            Err(_) => return fallback_art(),
+        }
+    } else {
+        let img_bytes = include_bytes!("../../assets/logo.png");
+        match image::load_from_memory(img_bytes) {
+            Ok(img) => img,
+            Err(_) => return fallback_art(),
+        }
     };
 
     let target_w = width.max(1) as u32;
@@ -89,7 +119,7 @@ fn generate_ascii_art(width: u16, height: u16) -> Vec<Line<'static>> {
 
 /// Render the logo into the exact given area (used by Overview neofetch).
 pub(crate) fn ascii_art(width: u16, height: u16) -> Vec<Line<'static>> {
-    generate_ascii_art(width, height)
+    generate_ascii_art(width, height, image_path())
 }
 
 pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
@@ -108,7 +138,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
     let logo_max_h = area.height.saturating_sub(card_rows).max(2);
     let art_lines = map
         .entry(dims)
-        .or_insert_with(|| generate_ascii_art(area.width, logo_max_h));
+        .or_insert_with(|| generate_ascii_art(area.width, logo_max_h, image_path()));
 
     let username = std::env::var("USER").unwrap_or_else(|_| "vanta".to_string());
     let hostname =

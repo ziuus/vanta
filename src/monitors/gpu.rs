@@ -197,7 +197,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
     } else {
         f.render_widget(
             Paragraph::new(Line::from(Span::styled(
-                " N/A (no NVIDIA GPU detected)",
+                " N/A (no GPU metrics available)",
                 Style::default().fg(theme.dim),
             )))
             .style(Style::default().bg(theme.bg)),

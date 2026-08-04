@@ -8,9 +8,8 @@ use ratatui::Frame;
 
 use crate::app;
 
-/// Render a 60fps rotating 3D Torus (Donut) as a terminal video.
+/// Render a rotating 3D torus (donut) as an ASCII "video" demo.
 #[allow(non_snake_case)]
-#[allow(dead_code)]
 pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme, _tick: u64) {
     if area.width < 10 || area.height < 5 {
         return;

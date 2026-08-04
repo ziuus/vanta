@@ -34,7 +34,7 @@ With six dedicated dashboard modes, Vanta transforms from a dense technical moni
 | `2` | **Monitor** | Focused hardware metrics layout for quick glance-and-go health checks. |
 | `3` | **Processes** | Full-width process table with sort, search, tree-view, collapse, and immediate kill signals. |
 | `4` | **Media** | Large music visualizer + MPRIS player controls + prominent clock. |
-| `5` | **Aesthetic** | Pure eye candy: Matrix Rain, Calendar, Visualizer, and Clock. |
+| `5` | **Aesthetic** | Pure eye candy: Matrix Rain, Calendar, Visualizer, Clock, and a rotating 3D donut demo. |
 | `6` | **Settings** | Configuration help, active theme selection, and full keyboard reference. |
 
 ---
@@ -94,6 +94,9 @@ Vanta is fully modular. Configure widgets, refresh rates, and your default theme
 [ui]
 refresh_rate = 0.5
 theme = "dark"
+# Optional: render any image as ASCII art in the profile widget.
+# Leave unset to use the built-in vanta logo. Supports ~ expansion.
+image_path = "~/Pictures/avatar.png"
 
 [widgets]
 cpu = true
@@ -135,7 +138,7 @@ cargo run --release            # Live hardware monitoring
 |-------|------------|
 | **Core Framework** | Rust + Ratatui `0.29` |
 | **Terminal IO** | Crossterm |
-| **Telemetry** | `sysinfo`, `/proc`, `nvidia-smi` |
+| **Telemetry** | `sysinfo`, `/proc`, `/sys` (NVIDIA/AMD/Intel GPU) |
 | **Media Sync** | MPRIS (DBus / `playerctl`) |
 | **Audio Viz** | `cava` + PulseAudio |
 | **Time** | `chrono` |

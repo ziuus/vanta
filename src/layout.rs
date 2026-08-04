@@ -226,8 +226,12 @@ fn aesthetic_layout(area: Rect) -> Vec<WidgetPlacement> {
 
     let top = Layout::horizontal([Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)]).split(rows[0]);
 
-    let bottom =
-        Layout::horizontal([Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)]).split(rows[1]);
+    let bottom = Layout::horizontal([
+        Constraint::Ratio(1, 3),
+        Constraint::Ratio(1, 3),
+        Constraint::Ratio(1, 3),
+    ])
+    .split(rows[1]);
 
     vec![
         WidgetPlacement {
@@ -245,6 +249,10 @@ fn aesthetic_layout(area: Rect) -> Vec<WidgetPlacement> {
         WidgetPlacement {
             id: "cmatrix",
             area: bottom[1],
+        },
+        WidgetPlacement {
+            id: "video",
+            area: bottom[2],
         },
     ]
 }
