@@ -6,13 +6,24 @@ use ratatui::Frame;
 use crate::app;
 
 use std::collections::HashMap;
+use std::sync::{LazyLock, Mutex};
 use std::time::Instant;
 
 const HISTORY_LEN: usize = 40;
 
-static mut PREV_DISK_IO: Option<DiskIoState> = None;
-static mut PREV_DISK_TIME: Option<Instant> = None;
-static mut IO_HISTORY: Option<HashMap<String, Vec<(f64, f64)>>> = None;
+struct DiskState {
+    prev_io: Option<DiskIoState>,
+    prev_time: Option<Instant>,
+    io_history: HashMap<String, Vec<(f64, f64)>>,
+}
+
+static DISK: LazyLock<Mutex<DiskState>> = LazyLock::new(|| {
+    Mutex::new(DiskState {
+        prev_io: None,
+        prev_time: None,
+        io_history: HashMap::new(),
+    })
+});
 
 struct DiskIoState {
     reads: HashMap<String, u64>,
@@ -84,51 +95,49 @@ fn update_io_history() {
     let now = Instant::now();
     let current = read_disk_io();
 
-    unsafe {
-        let elapsed = PREV_DISK_TIME
-            .map(|t| now.duration_since(t).as_secs_f64())
-            .unwrap_or(1.0);
-        let elapsed = elapsed.max(0.1);
+    let mut disk = DISK.lock().unwrap();
+    let elapsed = disk
+        .prev_time
+        .map(|t| now.duration_since(t).as_secs_f64())
+        .unwrap_or(1.0);
+    let elapsed = elapsed.max(0.1);
 
-        let mut read_kbps = HashMap::new();
-        let mut write_kbps = HashMap::new();
+    let mut read_kbps = HashMap::new();
+    let mut write_kbps = HashMap::new();
 
-        if let Some(ref prev) = PREV_DISK_IO {
-            for (dev, &(cur_read, cur_write)) in &current {
-                if let Some(&prev_read) = prev.reads.get(dev) {
-                    if cur_read >= prev_read {
-                        read_kbps.insert(
-                            dev.clone(),
-                            (cur_read - prev_read) as f64 / 1024.0 / elapsed,
-                        );
-                    }
+    if let Some(ref prev) = disk.prev_io {
+        for (dev, &(cur_read, cur_write)) in &current {
+            if let Some(&prev_read) = prev.reads.get(dev) {
+                if cur_read >= prev_read {
+                    read_kbps.insert(
+                        dev.clone(),
+                        (cur_read - prev_read) as f64 / 1024.0 / elapsed,
+                    );
                 }
-                if let Some(&prev_write) = prev.writes.get(dev) {
-                    if cur_write >= prev_write {
-                        write_kbps.insert(
-                            dev.clone(),
-                            (cur_write - prev_write) as f64 / 1024.0 / elapsed,
-                        );
-                    }
+            }
+            if let Some(&prev_write) = prev.writes.get(dev) {
+                if cur_write >= prev_write {
+                    write_kbps.insert(
+                        dev.clone(),
+                        (cur_write - prev_write) as f64 / 1024.0 / elapsed,
+                    );
                 }
             }
         }
+    }
 
-        PREV_DISK_IO = Some(DiskIoState {
-            reads: current.iter().map(|(k, v)| (k.clone(), v.0)).collect(),
-            writes: current.iter().map(|(k, v)| (k.clone(), v.1)).collect(),
-        });
-        PREV_DISK_TIME = Some(now);
+    disk.prev_io = Some(DiskIoState {
+        reads: current.iter().map(|(k, v)| (k.clone(), v.0)).collect(),
+        writes: current.iter().map(|(k, v)| (k.clone(), v.1)).collect(),
+    });
+    disk.prev_time = Some(now);
 
-        #[allow(static_mut_refs)]
-        let hist = IO_HISTORY.get_or_insert_with(HashMap::new);
-        for (dev, &r) in &read_kbps {
-            if let Some(w) = write_kbps.get(dev) {
-                let entry = hist.entry(dev.clone()).or_default();
-                entry.push((r, *w));
-                if entry.len() > HISTORY_LEN {
-                    entry.remove(0);
-                }
+    for (dev, &r) in &read_kbps {
+        if let Some(w) = write_kbps.get(dev) {
+            let entry = disk.io_history.entry(dev.clone()).or_default();
+            entry.push((r, *w));
+            if entry.len() > HISTORY_LEN {
+                entry.remove(0);
             }
         }
     }
@@ -145,13 +154,10 @@ fn fmt_rate(kbps: f64) -> String {
 fn get_current_rates(mount: &str) -> Option<(f64, f64)> {
     let devices = read_mount_devices();
     let device = devices.get(mount)?;
-    unsafe {
-        if let Some(ref hist) = IO_HISTORY {
-            if let Some(entries) = hist.get(device) {
-                if let Some(&(r, w)) = entries.last() {
-                    return Some((r, w));
-                }
-            }
+    let disk = DISK.lock().unwrap();
+    if let Some(entries) = disk.io_history.get(device) {
+        if let Some(&(r, w)) = entries.last() {
+            return Some((r, w));
         }
     }
     None

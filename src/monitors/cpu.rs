@@ -1,4 +1,5 @@
 use std::fs;
+use std::sync::{LazyLock, Mutex};
 
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Style};
@@ -7,8 +8,8 @@ use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
 const HIST_LEN: usize = 240;
-static mut CPU_HISTORY: [f64; HIST_LEN] = [0.0; HIST_LEN];
-static mut CPU_IDX: usize = 0;
+static CPU_HISTORY: LazyLock<Mutex<([f64; HIST_LEN], usize)>> =
+    LazyLock::new(|| Mutex::new(([0.0; HIST_LEN], 0)));
 
 use crate::app;
 
@@ -64,9 +65,11 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
     let cores: Vec<_> = sys.cpus().iter().map(|c| c.cpu_usage()).collect();
     let la = sysinfo::System::load_average();
     let cpu_usage = sys.global_cpu_usage();
-    unsafe {
-        CPU_HISTORY[CPU_IDX] = cpu_usage as f64;
-        CPU_IDX = (CPU_IDX + 1) % HIST_LEN;
+    {
+        let mut cpu = CPU_HISTORY.lock().unwrap();
+        let idx = cpu.1;
+        cpu.0[idx] = cpu_usage as f64;
+        cpu.1 = (idx + 1) % HIST_LEN;
     }
     let (load_vals, core_count, freq_mhz) = (
         (la.one, la.five, la.fifteen),
@@ -118,12 +121,11 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
 
     // ── Sparkline (Braille Graph) ──
     let max_w = (chunks[1].width as usize * 2).min(HIST_LEN);
-    let hist: Vec<f64> = unsafe {
+    let hist: Vec<f64> = {
+        let cpu = CPU_HISTORY.lock().unwrap();
+        let idx = cpu.1;
         (0..max_w)
-            .map(|i| {
-                let idx = (CPU_IDX + HIST_LEN - 1 - i) % HIST_LEN;
-                CPU_HISTORY[idx]
-            })
+            .map(|i| cpu.0[(idx + HIST_LEN - 1 - i) % HIST_LEN])
             .rev()
             .collect()
     };

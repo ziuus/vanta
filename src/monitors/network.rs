@@ -1,3 +1,4 @@
+use std::sync::{LazyLock, Mutex};
 use std::time::Instant;
 
 use ratatui::layout::{Constraint, Layout, Rect};
@@ -9,14 +10,27 @@ use crate::app;
 /// Ring buffers for download and upload history
 const SHORT_LEN: usize = 60;
 
-static mut DL_SHORT: [f64; SHORT_LEN] = [0.0; SHORT_LEN];
-static mut UL_SHORT: [f64; SHORT_LEN] = [0.0; SHORT_LEN];
-static mut SHORT_IDX: usize = 0;
+struct NetState {
+    dl_short: [f64; SHORT_LEN],
+    ul_short: [f64; SHORT_LEN],
+    short_idx: usize,
+    prev_rx: u64,
+    prev_tx: u64,
+    prev_time: Option<Instant>,
+    first: bool,
+}
 
-static mut PREV_RX: u64 = 0;
-static mut PREV_TX: u64 = 0;
-static mut PREV_TIME: Option<Instant> = None;
-static mut FIRST: bool = true;
+static NET: LazyLock<Mutex<NetState>> = LazyLock::new(|| {
+    Mutex::new(NetState {
+        dl_short: [0.0; SHORT_LEN],
+        ul_short: [0.0; SHORT_LEN],
+        short_idx: 0,
+        prev_rx: 0,
+        prev_tx: 0,
+        prev_time: None,
+        first: true,
+    })
+});
 
 fn read_net_rates() -> (f64, f64) {
     let counters = std::fs::read_to_string("/proc/net/dev").ok();
@@ -37,33 +51,33 @@ fn read_net_rates() -> (f64, f64) {
         }
     }
 
-    unsafe {
-        if FIRST {
-            PREV_RX = total_rx;
-            PREV_TX = total_tx;
-            PREV_TIME = Some(Instant::now());
-            FIRST = false;
-            return (0.0, 0.0);
-        }
-
-        let now = Instant::now();
-        let elapsed = PREV_TIME.map(|t| t.elapsed().as_secs_f64()).unwrap_or(1.0);
-        let drx = total_rx.saturating_sub(PREV_RX);
-        let dtx = total_tx.saturating_sub(PREV_TX);
-
-        PREV_RX = total_rx;
-        PREV_TX = total_tx;
-        PREV_TIME = Some(now);
-
-        let rx_kbps = drx as f64 / 1024.0 / elapsed.max(0.1);
-        let tx_kbps = dtx as f64 / 1024.0 / elapsed.max(0.1);
-
-        DL_SHORT[SHORT_IDX] = rx_kbps;
-        UL_SHORT[SHORT_IDX] = tx_kbps;
-        SHORT_IDX = (SHORT_IDX + 1) % SHORT_LEN;
-
-        (rx_kbps, tx_kbps)
+    let mut net = NET.lock().unwrap();
+    if net.first {
+        net.prev_rx = total_rx;
+        net.prev_tx = total_tx;
+        net.prev_time = Some(Instant::now());
+        net.first = false;
+        return (0.0, 0.0);
     }
+
+    let now = Instant::now();
+    let elapsed = net.prev_time.map(|t| t.elapsed().as_secs_f64()).unwrap_or(1.0);
+    let drx = total_rx.saturating_sub(net.prev_rx);
+    let dtx = total_tx.saturating_sub(net.prev_tx);
+
+    net.prev_rx = total_rx;
+    net.prev_tx = total_tx;
+    net.prev_time = Some(now);
+
+    let rx_kbps = drx as f64 / 1024.0 / elapsed.max(0.1);
+    let tx_kbps = dtx as f64 / 1024.0 / elapsed.max(0.1);
+
+    let idx = net.short_idx;
+    net.dl_short[idx] = rx_kbps;
+    net.ul_short[idx] = tx_kbps;
+    net.short_idx = (idx + 1) % SHORT_LEN;
+
+    (rx_kbps, tx_kbps)
 }
 
 fn max_rate(history: &[f64]) -> f64 {
@@ -84,7 +98,10 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
     let (rx_kbps, tx_kbps) = read_net_rates();
 
     // Copy history locally
-    let (dl_short, ul_short, _short_idx) = unsafe { (DL_SHORT, UL_SHORT, SHORT_IDX) };
+    let (dl_short, ul_short) = {
+        let net = NET.lock().unwrap();
+        (net.dl_short, net.ul_short)
+    };
 
     let _gauge_width = area.width.saturating_sub(2) as usize;
     let dl_max = max_rate(&dl_short).max(1.0);

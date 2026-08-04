@@ -1,3 +1,5 @@
+use std::sync::{LazyLock, Mutex};
+
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
@@ -17,8 +19,8 @@ fn usage_color(usage: f64, theme: &app::Theme) -> Color {
 }
 
 const HIST_LEN: usize = 240;
-static mut MEM_HISTORY: [f64; HIST_LEN] = [0.0; HIST_LEN];
-static mut MEM_IDX: usize = 0;
+static MEM_HISTORY: LazyLock<Mutex<([f64; HIST_LEN], usize)>> =
+    LazyLock::new(|| Mutex::new(([0.0; HIST_LEN], 0)));
 
 pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
     let sys = crate::app::SYS.lock().unwrap();
@@ -37,9 +39,12 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
         0.0
     };
 
-    unsafe {
-        MEM_HISTORY[MEM_IDX] = pct;
-        MEM_IDX = (MEM_IDX + 1) % HIST_LEN;
+    // Record this sample into the ring buffer.
+    {
+        let mut mem = MEM_HISTORY.lock().unwrap();
+        let idx = mem.1;
+        mem.0[idx] = pct;
+        mem.1 = (idx + 1) % HIST_LEN;
     }
 
     let chunks = Layout::vertical([
@@ -80,12 +85,11 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
 
     // Sparkline (Braille Graph)
     let max_w = (chunks[1].width as usize * 2).min(HIST_LEN);
-    let hist: Vec<f64> = unsafe {
+    let hist: Vec<f64> = {
+        let mem = MEM_HISTORY.lock().unwrap();
+        let idx = mem.1;
         (0..max_w)
-            .map(|i| {
-                let idx = (MEM_IDX + HIST_LEN - 1 - i) % HIST_LEN;
-                MEM_HISTORY[idx]
-            })
+            .map(|i| mem.0[(idx + HIST_LEN - 1 - i) % HIST_LEN])
             .rev()
             .collect()
     };
