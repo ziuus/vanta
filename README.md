@@ -48,6 +48,7 @@ No mouse. No touch. Just keys.
 |-----|--------|
 | `1`–`6` | Switch dashboard modes |
 | `T` | Cycle themes (changes persist to config) |
+| `v` | Cycle visualizer style (bars / mirror / wave) |
 | `Tab` / `Shift‑Tab` | Cycle panel focus |
 | `↑` `↓` `←` `→` | Navigate the active panel |
 | `Esc` | Clear panel focus |
