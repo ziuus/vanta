@@ -1,6 +1,6 @@
 use std::io::Read;
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Mutex;
 
 use ratatui::layout::Rect;
@@ -17,6 +17,24 @@ const CAVA_N_BARS: usize = 64;
 static CAVA_BARS: Mutex<Vec<f32>> = Mutex::new(Vec::new());
 static CAVA_RUNNING: AtomicBool = AtomicBool::new(false);
 static CAVA_CHILD: Mutex<Option<u32>> = Mutex::new(None);
+
+// ── Visualizer style ──
+// 0 = bars (bottom-up), 1 = mirror (center-out), 2 = wave (midline).
+const STYLE_COUNT: usize = 3;
+static VIZ_STYLE: AtomicUsize = AtomicUsize::new(0);
+
+/// Cycle to the next visualizer style. Bound to `v` globally.
+pub fn cycle_style() {
+    VIZ_STYLE.fetch_add(1, Ordering::Relaxed);
+}
+
+fn style_name(s: usize) -> &'static str {
+    match s % STYLE_COUNT {
+        0 => "bars",
+        1 => "mirror",
+        _ => "wave",
+    }
+}
 
 fn ensure_cava() {
     if CAVA_RUNNING.load(Ordering::Relaxed) {
@@ -143,6 +161,8 @@ fn detect_monitor_source() -> Option<String> {
         .output()
         .ok()?;
     let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Prefer a monitor that's actively RUNNING/IDLE (audio flowing right now).
     for line in stdout.lines() {
         let parts: Vec<&str> = line.split('\t').collect();
         if parts.len() < 4 {
@@ -154,6 +174,29 @@ fn detect_monitor_source() -> Option<String> {
             return Some(name.to_string());
         }
     }
+
+    // Nothing active (all SUSPENDED, e.g. no audio yet). Bind to the default
+    // sink's monitor so cava still connects on PipeWire — bare "auto" often
+    // fails to bind and leaves the bars dead.
+    if let Ok(out) = Command::new("pactl").args(["get-default-sink"]).output() {
+        let sink = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if !sink.is_empty() {
+            let monitor = format!("{sink}.monitor");
+            // Confirm the monitor exists in the source list before using it.
+            if stdout.lines().any(|l| l.contains(&monitor)) {
+                return Some(monitor);
+            }
+        }
+    }
+
+    // Last resort: any .monitor at all, regardless of state.
+    for line in stdout.lines() {
+        let parts: Vec<&str> = line.split('\t').collect();
+        if parts.len() >= 2 && parts[1].ends_with(".monitor") {
+            return Some(parts[1].to_string());
+        }
+    }
+
     None
 }
 
@@ -221,92 +264,192 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme, _tick: u64) {
     // Silence is tracked by the reader thread; here we only read the counter.
     let is_silent = SILENCE_FRAMES.lock().map_or(true, |sf| *sf > 8);
 
-    if is_silent {
-        let bg = Style::default().bg(theme.surface);
-        let mut lines: Vec<Line> = Vec::with_capacity(term_rows);
+    // When silent, synthesize a gentle "breathing" wave so the widget stays
+    // alive-looking instead of showing dead/blank bars.
+    let heights: Vec<f32> = if is_silent {
+        idle_wave(term_cols, _tick)
+    } else {
+        resample_max(&raw, term_cols)
+    };
 
-        let msg = "(waiting for audio signal)";
-        let pad = if term_cols > msg.len() {
-            (term_cols - msg.len()) / 2
+    // ── Decaying peak (normalization) ──
+    let norm_peak = if is_silent {
+        1.0 // idle wave is already 0..1
+    } else {
+        let current_max = heights.iter().copied().fold(0.0f32, f32::max);
+        let mut peak = PEAK.lock().unwrap_or_else(|e| e.into_inner());
+        if current_max > *peak {
+            *peak = current_max;
         } else {
-            0
-        };
-        let msg_line = format!("{}{}", " ".repeat(pad), msg);
-
-        let center_row = term_rows / 2;
-
-        for r in 0..term_rows {
-            if r == center_row {
-                lines.push(Line::from(Span::styled(
-                    &msg_line,
-                    Style::default().fg(theme.dim).bg(theme.surface),
-                )));
-            } else {
-                lines.push(Line::from(Span::styled(" ".repeat(term_cols), bg)));
+            *peak *= 0.98;
+            if *peak < 0.001 {
+                *peak = 0.001;
             }
         }
+        *peak
+    };
 
-        f.render_widget(Paragraph::new(lines).style(bg), area);
-        return;
-    }
-
-    // Resample to panel width using max-pick (preserves peaks)
-    let heights: Vec<f32> = resample_max(&raw, term_cols);
-
-    // ── Decaying peak ──
-    let current_max = heights.iter().copied().fold(0.0f32, f32::max);
-    let mut peak = PEAK.lock().unwrap_or_else(|e| e.into_inner());
-
-    if current_max > *peak {
-        *peak = current_max;
-    } else {
-        *peak *= 0.98;
-        if *peak < 0.001 {
-            *peak = 0.001;
-        }
-    }
-    let norm_peak = *peak;
-    drop(peak);
-
-    let display_rows = term_rows as f32;
-
-    // ── Render bottom-up, 1 char per column ──
-    let mut lines: Vec<Line> = Vec::with_capacity(term_rows);
+    let style = VIZ_STYLE.load(Ordering::Relaxed) % STYLE_COUNT;
     let bg = Style::default().bg(theme.surface);
+    let dim = is_silent;
 
-    for display_row in (0..term_rows).rev() {
-        let mut spans: Vec<Span<'static>> = Vec::with_capacity(term_cols);
+    let mut lines = match style {
+        1 => draw_mirror(&heights, norm_peak, term_cols, term_rows, theme, dim),
+        2 => draw_wave(&heights, norm_peak, term_cols, term_rows, theme, dim),
+        _ => draw_bars(&heights, norm_peak, term_cols, term_rows, theme, dim),
+    };
 
-        for &h in &heights {
-            let bar_float = (h / norm_peak).min(1.0) * display_rows;
-
-            let row_low = display_row as f32;
-            let row_high = (display_row + 1) as f32;
-
-            let (ch, fill_level) = if bar_float <= row_low {
-                (' ', 0)
-            } else if bar_float >= row_high {
-                ('█', 8)
-            } else {
-                let frac = (bar_float - row_low) / (row_high - row_low);
-                let idx = (frac * 8.0).round().clamp(1.0, 8.0) as usize;
-                (BLOCKS[idx], idx)
-            };
-
-            let height_frac = display_row as f32 / display_rows;
-            let color = if fill_level == 0 {
-                theme.surface
-            } else if height_frac > 0.6 {
-                theme.secondary
-            } else {
-                theme.accent
-            };
-
-            spans.push(Span::styled(ch.to_string(), Style::default().fg(color)));
+    // Style indicator in the top-left corner (feedback for the `v` toggle).
+    if let Some(first) = lines.first_mut() {
+        let tag = format!(" {} ", style_name(style));
+        let tag_len = tag.chars().count();
+        if term_cols > tag_len {
+            let mut spans = vec![Span::styled(tag, Style::default().fg(theme.dim))];
+            // Keep the rest of the row that the draw fn produced, minus the width we overwrote.
+            let rest: String = first
+                .spans
+                .iter()
+                .flat_map(|s| s.content.chars())
+                .skip(tag_len)
+                .collect();
+            spans.push(Span::styled(rest, Style::default().fg(theme.surface)));
+            *first = Line::from(spans);
         }
-
-        lines.push(Line::from(spans));
     }
 
     f.render_widget(Paragraph::new(lines).style(bg), area);
+}
+
+/// A slow sine "breathing" pattern for the idle state, normalized 0..1.
+fn idle_wave(cols: usize, tick: u64) -> Vec<f32> {
+    let t = tick as f32 * 0.05;
+    (0..cols)
+        .map(|c| {
+            let x = c as f32 * 0.25;
+            // Two summed sines for a soft, non-repetitive breathing look.
+            let v = (x + t).sin() * 0.5 + (x * 0.5 - t * 0.7).sin() * 0.5;
+            (v * 0.5 + 0.5) * 0.35 // keep it low/gentle (max ~35% height)
+        })
+        .collect()
+}
+
+fn bar_color(theme: &app::Theme, height_frac: f32, filled: bool, dim: bool) -> ratatui::style::Color {
+    if !filled {
+        theme.surface
+    } else if dim {
+        theme.dim
+    } else if height_frac > 0.6 {
+        theme.secondary
+    } else {
+        theme.accent
+    }
+}
+
+/// Classic bottom-up bars, one char per column.
+fn draw_bars(
+    heights: &[f32],
+    norm_peak: f32,
+    cols: usize,
+    rows: usize,
+    theme: &app::Theme,
+    dim: bool,
+) -> Vec<Line<'static>> {
+    let display_rows = rows as f32;
+    let mut lines: Vec<Line> = Vec::with_capacity(rows);
+    for display_row in (0..rows).rev() {
+        let mut spans: Vec<Span<'static>> = Vec::with_capacity(cols);
+        for &h in heights {
+            let bar_float = (h / norm_peak).min(1.0) * display_rows;
+            let row_low = display_row as f32;
+            let (ch, filled) = if bar_float <= row_low {
+                (' ', false)
+            } else if bar_float >= row_low + 1.0 {
+                ('█', true)
+            } else {
+                let frac = bar_float - row_low;
+                (BLOCKS[(frac * 8.0).round().clamp(1.0, 8.0) as usize], true)
+            };
+            let height_frac = display_row as f32 / display_rows;
+            spans.push(Span::styled(
+                ch.to_string(),
+                Style::default().fg(bar_color(theme, height_frac, filled, dim)),
+            ));
+        }
+        lines.push(Line::from(spans));
+    }
+    lines
+}
+
+/// Mirrored bars growing out from the horizontal centre line.
+fn draw_mirror(
+    heights: &[f32],
+    norm_peak: f32,
+    cols: usize,
+    rows: usize,
+    theme: &app::Theme,
+    dim: bool,
+) -> Vec<Line<'static>> {
+    let half = (rows / 2).max(1) as f32;
+    let mid = rows / 2;
+    let mut lines: Vec<Line> = Vec::with_capacity(rows);
+    for row in 0..rows {
+        // Distance from centre, in rows.
+        let dist = if row >= mid {
+            (row - mid) as f32
+        } else {
+            (mid - row) as f32 - 1.0
+        };
+        let mut spans: Vec<Span<'static>> = Vec::with_capacity(cols);
+        for &h in heights {
+            let amp = (h / norm_peak).min(1.0) * half;
+            let filled = amp > dist;
+            let ch = if filled { '█' } else { ' ' };
+            let height_frac = dist / half;
+            spans.push(Span::styled(
+                ch.to_string(),
+                Style::default().fg(bar_color(theme, height_frac, filled, dim)),
+            ));
+        }
+        lines.push(Line::from(spans));
+    }
+    lines
+}
+
+/// A single-row waveform tracing the amplitude across a midline.
+fn draw_wave(
+    heights: &[f32],
+    norm_peak: f32,
+    cols: usize,
+    rows: usize,
+    theme: &app::Theme,
+    dim: bool,
+) -> Vec<Line<'static>> {
+    let mid = rows / 2;
+    // Row index (from top) the wave sits at for each column.
+    let wave_rows: Vec<usize> = heights
+        .iter()
+        .map(|&h| {
+            let amp = (h / norm_peak).min(1.0);
+            let offset = (amp * (rows as f32 / 2.0)) as usize;
+            mid.saturating_sub(offset)
+        })
+        .collect();
+    let color = if dim { theme.dim } else { theme.accent };
+    let mut lines: Vec<Line> = Vec::with_capacity(rows);
+    for row in 0..rows {
+        let mut spans: Vec<Span<'static>> = Vec::with_capacity(cols);
+        for &wr in wave_rows.iter().take(cols) {
+            let ch = if row == wr {
+                '━'
+            } else if row > wr && row <= mid {
+                '│' // faint fill down to the midline
+            } else {
+                ' '
+            };
+            let c = if ch == '│' { theme.surface } else { color };
+            spans.push(Span::styled(ch.to_string(), Style::default().fg(c)));
+        }
+        lines.push(Line::from(spans));
+    }
+    lines
 }

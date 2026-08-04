@@ -75,6 +75,9 @@ fn run_app<B: ratatui::backend::Backend>(
                         // Global keys
                         KeyCode::Char('q') | KeyCode::Char('Q') => app.running = false,
                         KeyCode::Char('T') => app.toggle_theme(),
+                        KeyCode::Char('v') | KeyCode::Char('V') => {
+                            widgets::music_viz::cycle_style();
+                        }
                         // Mode switches (must be BEFORE panel-focused handler to avoid capture)
                         KeyCode::Char('1') => {
                             app.set_mode(mode::DashboardMode::Overview);
