@@ -24,18 +24,16 @@
 
 **Vanta** collapses all the system metrics you care about into a single, beautiful terminal pane. It's fully keyboard-driven with zero mouse dependency and no floating tabs.
 
-With six dedicated dashboard modes, Vanta transforms from a dense technical monitor to pure terminal eye-candy with a single keystroke.
+With three focused pages plus an on-demand help overlay, Vanta transforms from a dense technical monitor to pure terminal eye-candy with a single keystroke.
 
-## ⚡ Core Modes
+## ⚡ Pages
 
-| Key | Mode | Description |
+| Key | Page | Description |
 |-----|------|-------------|
-| `1` | **Overview** | Full monitoring grid: CPU, Memory, Disk, Network, GPU, Clock, Calendar, Media Player, System Info, and Live Processes. |
-| `2` | **Monitor** | Focused hardware metrics layout for quick glance-and-go health checks. |
-| `3` | **Processes** | Full-width process table with sort, search, tree-view, collapse, and immediate kill signals. |
-| `4` | **Media** | Large music visualizer + MPRIS player controls + prominent clock. |
-| `5` | **Aesthetic** | Pure eye candy: Matrix Rain, Calendar, Visualizer, Clock, and a rotating 3D donut demo. |
-| `6` | **Settings** | Configuration help, active theme selection, and full keyboard reference. |
+| `1` | **Dashboard** | All-in-one: CPU, Memory, Disk, Network, GPU, Clock, Calendar, Media Player, System Info, live Processes, and the visualizer. |
+| `2` | **Monitor** | btop-style detail: large CPU/Mem/Net/Disk/GPU graphs on top, full interactive process table below (sort, search, tree, kill). |
+| `3` | **Aesthetic** | Pure eye candy: Matrix Rain, Calendar, Visualizer, Clock, and a rotating 3D donut demo. |
+| `?` | **Help** | Floating overlay: keybinds, active theme, and config path. Toggle over any page. |
 
 ---
 
@@ -46,15 +44,16 @@ No mouse. No touch. Just keys.
 ### Global Actions
 | Key | Action |
 |-----|--------|
-| `1`–`6` | Switch dashboard modes |
+| `1`–`3` | Switch pages (Dashboard / Monitor / Aesthetic) |
+| `?` | Toggle help & settings overlay |
 | `T` | Cycle themes (changes persist to config) |
 | `v` | Cycle visualizer style (bars / mirror / wave) |
 | `Tab` / `Shift‑Tab` | Cycle panel focus |
 | `↑` `↓` `←` `→` | Navigate the active panel |
-| `Esc` | Clear panel focus |
+| `Esc` | Clear panel focus / close overlay |
 | `q` | Quit |
 
-### Process Explorer (`Mode 3`)
+### Process Explorer (Monitor page)
 | Key | Action |
 |-----|--------|
 | `s` | Cycle sort fields (PID, CPU, Mem, Name, RSS) |
@@ -65,7 +64,7 @@ No mouse. No touch. Just keys.
 | `c` | Toggle compact command view |
 | `k` | Send Kill signal (SIGTERM) |
 
-### Media Player (`Mode 4`)
+### Media Player (Dashboard page)
 | Key | Action |
 |-----|--------|
 | `Space` | Play / Pause |

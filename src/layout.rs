@@ -15,11 +15,9 @@ pub struct WidgetPlacement {
 /// Phase 4 uses this + `widgets_for_mode` to drive `app.render()` dispatch.
 pub fn layout_for_mode(mode: DashboardMode, area: Rect, config: &Config) -> Vec<WidgetPlacement> {
     match mode {
-        DashboardMode::Overview => overview_layout(area, config),
+        DashboardMode::Dashboard => overview_layout(area, config),
         DashboardMode::Monitor => monitor_layout(area),
-        DashboardMode::Media => media_layout(area),
         DashboardMode::Aesthetic => aesthetic_layout(area),
-        DashboardMode::Processes | DashboardMode::Settings => Vec::new(),
     }
 }
 
@@ -187,32 +185,6 @@ fn overview_layout(area: Rect, config: &Config) -> Vec<WidgetPlacement> {
     }
 
     placements
-}
-
-// ── Media: visualizer + player + clock ──
-
-fn media_layout(area: Rect) -> Vec<WidgetPlacement> {
-    let rows = Layout::vertical([
-        Constraint::Length(5),   // Clock
-        Constraint::Ratio(2, 3), // Visualizer
-        Constraint::Ratio(1, 3), // Media player
-    ])
-    .split(area);
-
-    vec![
-        WidgetPlacement {
-            id: "clock",
-            area: rows[0],
-        },
-        WidgetPlacement {
-            id: "music_viz",
-            area: rows[1],
-        },
-        WidgetPlacement {
-            id: "media",
-            area: rows[2],
-        },
-    ]
 }
 
 // ── Aesthetic: clock + calendar + visualizer + cmatrix ──

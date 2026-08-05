@@ -78,27 +78,21 @@ fn run_app<B: ratatui::backend::Backend>(
                         KeyCode::Char('v') | KeyCode::Char('V') => {
                             widgets::music_viz::cycle_style();
                         }
-                        // Mode switches (must be BEFORE panel-focused handler to avoid capture)
+                        KeyCode::Char('?') => app.toggle_help(),
+                        // Page switches (must be BEFORE panel-focused handler to avoid capture)
                         KeyCode::Char('1') => {
-                            app.set_mode(mode::DashboardMode::Overview);
+                            app.set_mode(mode::DashboardMode::Dashboard);
                         }
                         KeyCode::Char('2') => {
                             app.set_mode(mode::DashboardMode::Monitor);
                         }
                         KeyCode::Char('3') => {
-                            app.set_mode(mode::DashboardMode::Processes);
-                        }
-                        KeyCode::Char('4') => {
-                            app.set_mode(mode::DashboardMode::Media);
-                        }
-                        KeyCode::Char('5') => {
                             app.set_mode(mode::DashboardMode::Aesthetic);
                         }
-                        KeyCode::Char('6') => {
-                            app.set_mode(mode::DashboardMode::Settings);
-                        }
                         KeyCode::Esc => {
-                            if app.panel_states.process_search_active {
+                            if app.show_help {
+                                app.show_help = false;
+                            } else if app.panel_states.process_search_active {
                                 app.panel_states.process_search_active = false;
                                 app.panel_states.process_search.clear();
                             } else {

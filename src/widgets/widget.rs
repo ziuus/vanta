@@ -8,7 +8,6 @@ use crate::app::{PanelStates, Theme};
 use crate::config::Config;
 use crate::mode::DashboardMode;
 use crate::monitors::{cpu, disk, gpu, memory, network, processes, system_info};
-use crate::screens::settings;
 use crate::widgets::{calendar, clock, cmatrix, media, music_viz, video};
 
 /// A single dashboard widget that can render itself to a given area.
@@ -51,7 +50,6 @@ pub struct MusicVizWidget;
 pub struct ProcessesWidget;
 pub struct CmatrixWidget;
 pub struct VideoWidget;
-pub struct SettingsWidget;
 
 // ── Trait implementations ──
 
@@ -396,30 +394,6 @@ impl DashboardWidget for VideoWidget {
     }
 }
 
-impl DashboardWidget for SettingsWidget {
-    fn id(&self) -> &'static str {
-        "settings"
-    }
-    fn label(&self) -> &'static str {
-        "Settings"
-    }
-    fn icon(&self) -> &'static str {
-        "⚙ "
-    }
-    fn render(
-        &self,
-        f: &mut Frame,
-        area: Rect,
-        theme: &Theme,
-        config: &Config,
-        _states: &PanelStates,
-        _tick: u64,
-    ) {
-        let inner = draw_border(f, area, self.label(), theme);
-        settings::render(f, inner, theme, config);
-    }
-}
-
 // ── Registry ──
 
 /// Returns the widget list active in each dashboard mode.
@@ -428,7 +402,7 @@ impl DashboardWidget for SettingsWidget {
 /// Phase 4 wires this into the render dispatch and applies config toggles.
 pub fn widgets_for_mode(mode: DashboardMode) -> Vec<Box<dyn DashboardWidget>> {
     match mode {
-        DashboardMode::Overview => vec![
+        DashboardMode::Dashboard => vec![
             Box::new(CpuWidget),
             Box::new(MemoryWidget),
             Box::new(DiskWidget),
@@ -450,11 +424,6 @@ pub fn widgets_for_mode(mode: DashboardMode) -> Vec<Box<dyn DashboardWidget>> {
             Box::new(SystemWidget),
             Box::new(ProcessesWidget),
         ],
-        DashboardMode::Media => vec![
-            Box::new(ClockWidget),
-            Box::new(MusicVizWidget),
-            Box::new(MediaWidget),
-        ],
         DashboardMode::Aesthetic => vec![
             Box::new(ClockWidget),
             Box::new(CalendarWidget),
@@ -462,6 +431,5 @@ pub fn widgets_for_mode(mode: DashboardMode) -> Vec<Box<dyn DashboardWidget>> {
             Box::new(CmatrixWidget),
             Box::new(VideoWidget),
         ],
-        DashboardMode::Processes | DashboardMode::Settings => Vec::new(),
     }
 }

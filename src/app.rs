@@ -349,6 +349,7 @@ pub struct App {
     pub tick_count: u64,
     pub focused_panel: Option<PanelId>,
     pub panel_states: PanelStates,
+    pub show_help: bool,
     summary: Summary,
 }
 
@@ -356,7 +357,7 @@ impl App {
     pub fn new(config: Config) -> Self {
         // Initialize theme based on saved config theme name
         let init_theme = Theme::from_name(&config.ui.theme);
-        // Initialize mode from saved startup mode, fall back to Overview
+        // Initialize mode from saved startup mode, fall back to Dashboard
         let init_mode = DashboardMode::from_str(&config.ui.startup_mode);
         let mut app = Self {
             running: true,
@@ -366,6 +367,7 @@ impl App {
             tick_count: 0,
             focused_panel: None,
             panel_states: PanelStates::new(),
+            show_help: false,
             summary: collect_summary(),
         };
         // Ensure mode is persisted on first run
@@ -379,18 +381,25 @@ impl App {
         self.config.save();
     }
 
-    /// Switch mode and persist to config.
+    /// Switch page and persist to config.
     pub fn set_mode(&mut self, mode: DashboardMode) {
         self.mode = mode;
-        self.focused_panel = if mode == DashboardMode::Processes {
+        // The Monitor page is keyboard-driven around its process table, so
+        // auto-focus it there; other pages start unfocused.
+        self.focused_panel = if mode == DashboardMode::Monitor {
             Some(PanelId::Processes)
         } else {
             None
         };
-        if mode == DashboardMode::Processes {
+        if mode == DashboardMode::Monitor {
             self.sync_selected_pid();
         }
         self.persist_mode();
+    }
+
+    /// Toggle the help/settings overlay.
+    pub fn toggle_help(&mut self) {
+        self.show_help = !self.show_help;
     }
 
     /// Cycle through available themes (used by UI hotkey).
@@ -784,25 +793,12 @@ impl App {
             Style::default().fg(text).bg(bg),
         ));
 
-        // Nav — unique two-letter tags from the real mode list
+        // Nav — the three pages
         let nav_modes = [
-            DashboardMode::Overview,
+            DashboardMode::Dashboard,
             DashboardMode::Monitor,
-            DashboardMode::Processes,
-            DashboardMode::Media,
             DashboardMode::Aesthetic,
-            DashboardMode::Settings,
         ];
-        let tag = |m: &DashboardMode| -> &'static str {
-            match m {
-                DashboardMode::Overview => "Ov",
-                DashboardMode::Monitor => "Mo",
-                DashboardMode::Processes => "Pr",
-                DashboardMode::Media => "Me",
-                DashboardMode::Aesthetic => "Ae",
-                DashboardMode::Settings => "Se",
-            }
-        };
         let mut nav_spans = vec![Span::styled(" ", Style::default().bg(bg))];
         for (i, m) in nav_modes.iter().enumerate() {
             if i > 0 {
@@ -817,9 +813,10 @@ impl App {
             } else {
                 Style::default().fg(dim).bg(bg)
             };
-            nav_spans.push(Span::styled(format!("{}{}", m.hotkey(), tag(m)), style));
+            nav_spans.push(Span::styled(format!(" {}·{} ", m.hotkey(), m.label()), style));
         }
-        nav_spans.push(Span::styled("  T↑", Style::default().fg(dim).bg(bg)));
+        nav_spans.push(Span::styled("  ?Help", Style::default().fg(dim).bg(bg)));
+        nav_spans.push(Span::styled(" T↑", Style::default().fg(dim).bg(bg)));
         nav_spans.push(Span::styled(" Q←", Style::default().fg(dim).bg(bg)));
         let nav_display = nav_spans
             .iter()
@@ -852,9 +849,9 @@ impl App {
             title_bar,
         );
 
-        // Main content — dispatch by mode
+        // Main content — dispatch by page
         match self.mode {
-            DashboardMode::Overview => {
+            DashboardMode::Dashboard => {
                 overview::render(
                     f,
                     main_area,
@@ -866,33 +863,7 @@ impl App {
                     &self.summary,
                 );
             }
-            DashboardMode::Processes => {
-                let inner = crate::screens::settings::block_inner(
-                    f,
-                    main_area,
-                    "PROCESSES",
-                    &self.theme,
-                    self.focused_panel == Some(PanelId::Processes),
-                );
-                processes::render(
-                    f,
-                    inner,
-                    &self.theme,
-                    self.panel_states.process_scroll_offset,
-                    self.panel_states.process_sort_field,
-                    self.panel_states.process_sort_asc,
-                    &self.panel_states.process_search,
-                    self.panel_states.process_tree_mode,
-                    &self.panel_states.process_collapsed,
-                    self.panel_states.process_selected_pid,
-                    self.panel_states.process_compact_cmd,
-                    self.panel_states.process_show_detail,
-                );
-            }
-            DashboardMode::Settings => {
-                crate::screens::settings::render(f, main_area, &self.theme, &self.config);
-            }
-            DashboardMode::Monitor | DashboardMode::Media | DashboardMode::Aesthetic => {
+            DashboardMode::Monitor | DashboardMode::Aesthetic => {
                 // Themed background
                 f.render_widget(
                     Paragraph::new("").style(Style::default().bg(self.theme.bg)),
@@ -923,7 +894,7 @@ impl App {
             None => String::new(),
         };
         let in_processes =
-            self.mode == DashboardMode::Processes || self.focused_panel == Some(PanelId::Processes);
+            self.mode == DashboardMode::Monitor || self.focused_panel == Some(PanelId::Processes);
         let process_status = if in_processes {
             let sort = format!(" Sort:{}", self.panel_states.process_sort_field.label());
             if self.panel_states.process_search_active {
@@ -950,5 +921,10 @@ impl App {
             .style(Style::default().bg(self.theme.surface)),
             status_bar,
         );
+
+        // Help/settings overlay — drawn last so it floats over any page.
+        if self.show_help {
+            crate::screens::settings::render_overlay(f, area, &self.theme, &self.config);
+        }
     }
 }
