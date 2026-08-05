@@ -27,8 +27,15 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
             continue;
         }
         let mount = d.mount_point().to_string_lossy().to_string();
-        // Skip nested bind/container mounts; they duplicate a real filesystem.
-        if mount.contains("/waydroid") || mount.contains("/efivars") {
+        // Skip nested bind/container mounts and transient helper mounts; they
+        // duplicate a real filesystem or are always ~100% by construction.
+        if mount.contains("/waydroid")
+            || mount.contains("/efivars")
+            || mount.starts_with("/tmp/.mount")
+            || mount.starts_with("/run")
+            || mount.starts_with("/var/lib/docker")
+            || mount.starts_with("/snap")
+        {
             continue;
         }
         let total = d.total_space();

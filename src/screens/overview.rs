@@ -7,7 +7,7 @@ use ratatui::Frame;
 use crate::app::{self, PanelId, PanelStates, Summary};
 use crate::config::Config;
 use crate::monitors::{analytics, system_info};
-use crate::widgets::{calendar, clock, cmatrix, cowsay, media, music_viz, profile, status, storage};
+use crate::widgets::{calendar, clock, cmatrix, cores, media, music_viz, profile, status, storage};
 
 fn section_header(
     f: &mut Frame,
@@ -201,11 +201,11 @@ pub fn render(
     let inner = section_header(
         f,
         bot[3],
-        "󰸋 COWSAY",
+        "\u{f0ee0} CORES",
         theme,
-        focused == Some(PanelId::Cowsay),
+        focused == Some(PanelId::Cpu),
     );
-    cowsay::render(f, inner, theme);
+    cores::render(f, inner, theme);
 }
 
 /// Neofetch-style hero: ASCII logo on the left, key/value rows on the right.
@@ -221,6 +221,19 @@ fn render_neofetch(
         return;
     }
     let data = system_info::collect_neofetch(sum, term_w, term_h);
+
+    // Tip bubble lives in the hero's right margin, which the kv columns leave
+    // empty on wide terminals.
+    if area.width >= 150 {
+        let tip_w = area.width / 4;
+        let tip_area = Rect::new(
+            area.x + area.width - tip_w,
+            area.y,
+            tip_w,
+            area.height,
+        );
+        crate::widgets::cowsay::render(f, tip_area, theme);
+    }
 
     let logo_w = 48u16.min(area.width / 3);
     let logo_area = Rect::new(area.x, area.y, logo_w, area.height);

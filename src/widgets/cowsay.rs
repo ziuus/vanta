@@ -25,9 +25,10 @@ const COW: [&str; 6] = [
 ];
 
 pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
-    if area.height < 8 || area.width < 30 {
+    if area.height < 3 || area.width < 24 {
         return;
     }
+    let with_cow = area.height >= 9;
 
     // Pick a tip based on the current second (cycles through all tips every minute)
     let tip_idx = (std::time::SystemTime::now()
@@ -69,8 +70,8 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
         Style::default().fg(theme.dim),
     )));
 
-    // Cow
-    for cow_line in &COW {
+    // Cow (only when the panel is tall enough to hold it)
+    for cow_line in COW.iter().filter(|_| with_cow) {
         lines.push(Line::from(Span::styled(
             cow_line.to_string(),
             Style::default().fg(theme.dim),

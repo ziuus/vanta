@@ -180,7 +180,6 @@ pub enum PanelId {
     Profile,
     Video,
     Cmatrix,
-    Cowsay,
 }
 
 impl PanelId {
