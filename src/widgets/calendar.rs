@@ -104,7 +104,10 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme, month_offset: i32) 
             if *is_today && month_offset == 0 {
                 spans.push(Span::styled(
                     format!("{:>2}", text),
-                    Style::default().fg(theme.accent).bg(theme.surface),
+                    Style::default()
+                        .fg(theme.bg)
+                        .bg(theme.accent)
+                        .add_modifier(ratatui::style::Modifier::BOLD),
                 ));
             } else if text.is_empty() {
                 spans.push(Span::styled("  ", Style::default().fg(theme.dim)));

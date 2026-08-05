@@ -207,14 +207,10 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
         }
     }
 
-    // No player active — vertically centered placeholder
-    let top = area.height.saturating_sub(1) / 2;
-    f.render_widget(
-        Paragraph::new(Line::from(Span::styled(
-            " (no media)",
-            Style::default().fg(theme.dim),
-        )))
-        .style(Style::default().bg(theme.bg)),
-        Rect::new(area.x, area.y + top, area.width, 1),
-    );
+    // No player active — show the idle visualizer so the panel stays alive.
+    let tick = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64 / 80)
+        .unwrap_or(0);
+    crate::widgets::music_viz::render(f, area, theme, tick);
 }
