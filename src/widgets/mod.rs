@@ -10,5 +10,6 @@ pub mod status;
 pub mod storage;
 pub mod cores;
 pub mod cowsay;
+pub mod gauge;
 pub mod video;
 pub mod widget;

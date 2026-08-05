@@ -7,7 +7,7 @@ use ratatui::Frame;
 use crate::app::{self, PanelId, PanelStates, Summary};
 use crate::config::Config;
 use crate::monitors::{analytics, system_info};
-use crate::widgets::{calendar, clock, cmatrix, cores, media, music_viz, profile, status, storage};
+use crate::widgets::{calendar, clock, cmatrix, cores, gauge, media, music_viz, profile, status, storage};
 
 fn section_header(
     f: &mut Frame,
@@ -65,7 +65,7 @@ pub fn render(
     let rows = Layout::vertical([
         Constraint::Length(6), // SYSTEM neofetch hero
         Constraint::Length(12), // CLOCK | MEDIA | ANALYTICS
-        Constraint::Length(8), // STATUS | STORAGE | VISUALIZER
+        Constraint::Length(9), // STATUS | STORAGE | GAUGES | VISUALIZER
         Constraint::Min(0),    // PROFILE | CALENDAR | MATRIX | COWSAY
     ])
     .spacing(1)
@@ -121,13 +121,14 @@ pub fn render(
 
     // ── STATUS | STORAGE | VISUALIZER ──
     let row2 = Layout::horizontal([
-        Constraint::Ratio(1, 4),
-        Constraint::Ratio(1, 4),
-        Constraint::Ratio(2, 4),
+        Constraint::Ratio(1, 5),
+        Constraint::Ratio(1, 5),
+        Constraint::Ratio(1, 5),
+        Constraint::Ratio(2, 5),
     ])
     .spacing(1)
     .split(rows[2]);
-    if row2.len() < 3 {
+    if row2.len() < 4 {
         return;
     }
 
@@ -152,6 +153,51 @@ pub fn render(
     let inner = section_header(
         f,
         row2[2],
+        "󰈈 GAUGES",
+        theme,
+        focused == Some(PanelId::Memory),
+    );
+    let bat = sum.bat_pct.unwrap_or(0) as f64;
+    let bat_col = if bat < 20.0 {
+        theme.red
+    } else if bat < 40.0 {
+        theme.yellow
+    } else {
+        theme.green
+    };
+    let mem_col = if sum.mem_pct > 90.0 {
+        theme.red
+    } else if sum.mem_pct > 75.0 {
+        theme.yellow
+    } else {
+        theme.accent
+    };
+    let cpu_col = if sum.cpu_pct > 90.0 {
+        theme.red
+    } else if sum.cpu_pct > 75.0 {
+        theme.yellow
+    } else {
+        theme.accent
+    };
+    gauge::render(
+        f,
+        inner,
+        theme,
+        &[
+            ("BAT", bat, format!("{:.0}%", bat), bat_col),
+            ("RAM", sum.mem_pct, format!("{:.0}%", sum.mem_pct), mem_col),
+            (
+                "CPU",
+                sum.cpu_pct as f64,
+                format!("{:.0}%", sum.cpu_pct),
+                cpu_col,
+            ),
+        ],
+    );
+
+    let inner = section_header(
+        f,
+        row2[3],
         "󰝚 VISUALIZER",
         theme,
         focused == Some(PanelId::Visualizer),
