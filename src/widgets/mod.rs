@@ -11,5 +11,6 @@ pub mod storage;
 pub mod cores;
 pub mod cowsay;
 pub mod gauge;
+pub mod heatmap;
 pub mod video;
 pub mod widget;

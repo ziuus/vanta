@@ -7,7 +7,7 @@ use ratatui::Frame;
 use crate::app::{self, PanelId, PanelStates, Summary};
 use crate::config::Config;
 use crate::monitors::{analytics, system_info};
-use crate::widgets::{calendar, clock, cmatrix, cores, gauge, media, music_viz, profile, status, storage};
+use crate::widgets::{calendar, clock, cores, gauge, heatmap, media, music_viz, profile, status, storage};
 
 fn section_header(
     f: &mut Frame,
@@ -238,20 +238,20 @@ pub fn render(
     let inner = section_header(
         f,
         bot[2],
-        "〰 MATRIX",
-        theme,
-        focused == Some(PanelId::Cmatrix),
-    );
-    cmatrix::render(f, inner, _tick, theme);
-
-    let inner = section_header(
-        f,
-        bot[3],
         "\u{f0ee0} CORES",
         theme,
         focused == Some(PanelId::Cpu),
     );
     cores::render(f, inner, theme);
+
+    let inner = section_header(
+        f,
+        bot[3],
+        "\u{f0ee0} CPU HEAT",
+        theme,
+        focused == Some(PanelId::Cpu),
+    );
+    heatmap::render(f, inner, theme);
 }
 
 /// Neofetch-style hero: ASCII logo on the left, key/value rows on the right.
