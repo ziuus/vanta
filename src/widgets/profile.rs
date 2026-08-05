@@ -2,12 +2,11 @@ use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
 use ratatui::layout::{Alignment, Rect};
-use ratatui::style::{Color, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
-use image::{imageops::FilterType, GenericImageView};
 
 use crate::app;
 
@@ -25,13 +24,6 @@ pub fn set_image_path(path: String) {
 
 fn image_path() -> &'static str {
     IMAGE_PATH.get().map(|s| s.as_str()).unwrap_or("")
-}
-
-const ASCII_CHARS: &[u8] = b" .:-=+*#%@";
-
-fn get_char_for_luma(luma: u8) -> char {
-    let idx = (luma as usize * (ASCII_CHARS.len() - 1)) / 255;
-    ASCII_CHARS[idx] as char
 }
 
 const WORDMARK: [&str; 4] = [
@@ -89,49 +81,13 @@ fn generate_ascii_art(width: u16, height: u16, image_path: &str) -> Vec<Line<'st
         }
     };
 
-    let target_w = width.max(1) as u32;
-    let target_h = height.max(1) as u32;
-
-    let aspect_ratio = img.width() as f32 / img.height() as f32;
-    // Terminal characters are roughly twice as tall as they are wide.
-    let mut calc_w = target_w;
-    let mut calc_h = (calc_w as f32 / (aspect_ratio * 2.1)) as u32; // 2.1 is a good general terminal font aspect
-
-    if calc_h > target_h {
-        calc_h = target_h;
-        calc_w = (calc_h as f32 * (aspect_ratio * 2.1)) as u32;
+    // Braille at 2x4 subpixels per cell — 8x the detail of a char ramp.
+    let art = super::braille_image::render_image(&img, width.max(1), height.max(1));
+    if art.is_empty() {
+        fallback_art()
+    } else {
+        art
     }
-
-    calc_w = calc_w.max(1);
-    calc_h = calc_h.max(1);
-
-    let resized = img.resize_exact(calc_w, calc_h, FilterType::Triangle);
-
-    let mut lines = Vec::new();
-
-    for y in 0..resized.height() {
-        let mut spans = Vec::new();
-        for x in 0..resized.width() {
-            let pixel = resized.get_pixel(x, y);
-            let r = pixel[0];
-            let g = pixel[1];
-            let b = pixel[2];
-            let a = pixel[3];
-
-            if a < 50 {
-                spans.push(Span::raw(" "));
-            } else {
-                let luma = (r as f32 * 0.299 + g as f32 * 0.587 + b as f32 * 0.114) as u8;
-                let ch = get_char_for_luma(luma);
-                spans.push(Span::styled(
-                    ch.to_string(),
-                    Style::default().fg(Color::Rgb(r, g, b)),
-                ));
-            }
-        }
-        lines.push(Line::from(spans));
-    }
-    lines
 }
 
 
