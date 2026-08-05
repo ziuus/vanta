@@ -4,9 +4,8 @@ use std::time::{Duration, Instant};
 
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::Style;
-use ratatui::symbols::line;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{LineGauge, Paragraph};
+use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
 use crate::app;
@@ -23,6 +22,12 @@ struct CachedGpu {
     data: Option<GpuData>,
     timestamp: Instant,
 }
+
+/// Rolling GPU utilisation history, so the panel gets a real graph like btop
+/// instead of a flat gauge. Fed from the same cached read.
+const HIST_LEN: usize = 240;
+static GPU_HISTORY: LazyLock<Mutex<([f64; HIST_LEN], usize)>> =
+    LazyLock::new(|| Mutex::new(([0.0; HIST_LEN], 0)));
 
 static GPU_CACHE: LazyLock<Mutex<CachedGpu>> = LazyLock::new(|| {
     Mutex::new(CachedGpu {
@@ -151,58 +156,105 @@ pub fn util_pct() -> u64 {
 pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
     let gpu_data = read_gpu();
 
-    if let Some(gpu) = gpu_data {
-        let util_color = if gpu.util_pct > 95.0 {
-            theme.red
-        } else if gpu.util_pct > 80.0 {
-            theme.yellow
-        } else {
-            theme.accent
-        };
-        let _mem_pct = if gpu.mem_total_mb > 0.0 {
-            (gpu.mem_used_mb / gpu.mem_total_mb * 100.0) as u16
-        } else {
-            0
-        };
+    let gpu = match gpu_data {
+        Some(g) => g,
+        None => {
+            f.render_widget(
+                Paragraph::new(Line::from(Span::styled(
+                    " GPU n/a",
+                    Style::default().fg(theme.dim),
+                ))),
+                area,
+            );
+            return;
+        }
+    };
 
-        // Single info line + gauge, btop-style
-        let chunks = Layout::vertical([
-            Constraint::Length(1), // text line
-            Constraint::Length(1), // gauge
-        ])
-        .split(area);
+    // Record utilisation for the history graph.
+    {
+        let mut h = GPU_HISTORY.lock().unwrap();
+        let idx = h.1;
+        h.0[idx] = gpu.util_pct;
+        h.1 = (idx + 1) % HIST_LEN;
+    }
 
-        let text = Line::from(vec![
+    let util_color = if gpu.util_pct > 95.0 {
+        theme.red
+    } else if gpu.util_pct > 80.0 {
+        theme.yellow
+    } else {
+        theme.accent
+    };
+
+    let chunks = Layout::vertical([
+        Constraint::Length(1), // info line
+        Constraint::Min(1),    // util history graph
+        Constraint::Length(1), // VRAM bar
+    ])
+    .split(area);
+
+    let mem_pct = if gpu.mem_total_mb > 0.0 {
+        gpu.mem_used_mb / gpu.mem_total_mb * 100.0
+    } else {
+        0.0
+    };
+
+    f.render_widget(
+        Paragraph::new(Line::from(vec![
             Span::styled(
-                format!(" {}% ", gpu.util_pct as u64),
-                Style::default().fg(util_color),
+                format!("{:>3.0}% ", gpu.util_pct),
+                Style::default()
+                    .fg(util_color)
+                    .add_modifier(ratatui::style::Modifier::BOLD),
             ),
             Span::styled(
-                format!("{}°C ", gpu.temp_c as u64),
+                format!("{}\u{00b0}C  ", gpu.temp_c as u64),
                 Style::default().fg(theme.dim),
             ),
             Span::styled(
                 format!("VRAM {:.0}/{:.0} MiB", gpu.mem_used_mb, gpu.mem_total_mb),
                 Style::default().fg(theme.text),
             ),
-        ]);
-        f.render_widget(Paragraph::new(text), chunks[0]);
+        ])),
+        chunks[0],
+    );
 
-        let gauge = LineGauge::default()
-            .filled_style(Style::default().fg(util_color).bg(theme.surface))
-            .ratio((gpu.util_pct / 100.0).clamp(0.0, 1.0))
-            .label(format!("Util {:.0}%", gpu.util_pct))
-            .line_set(line::THICK);
-        f.render_widget(gauge, chunks[1]);
-    } else {
-        f.render_widget(
-            Paragraph::new(Line::from(Span::styled(
-                " N/A (no GPU metrics available)",
-                Style::default().fg(theme.dim),
-            )))
-            .style(Style::default().bg(theme.bg)),
-            area,
-        );
+    if chunks[1].height > 0 {
+        let want = (chunks[1].width as usize * 2).min(HIST_LEN);
+        let series: Vec<f64> = {
+            let h = GPU_HISTORY.lock().unwrap();
+            let idx = h.1;
+            (0..want)
+                .map(|i| h.0[(idx + HIST_LEN - 1 - i) % HIST_LEN])
+                .rev()
+                .collect()
+        };
+        let graph = crate::widgets::braille_graph::BrailleGraph::new(&series)
+            .min(0.0)
+            .max(100.0)
+            .colors(theme.green, theme.yellow, theme.red);
+        f.render_widget(graph, chunks[1]);
     }
-}
 
+    // VRAM as a compact block meter on the last row.
+    let bar_w = chunks[2].width.saturating_sub(16) as usize;
+    let filled = ((mem_pct / 100.0).clamp(0.0, 1.0) * bar_w as f64).round() as usize;
+    f.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("VRAM ", Style::default().fg(theme.dim)),
+            Span::styled(
+                "\u{25a0}".repeat(filled),
+                Style::default().fg(theme.secondary),
+            ),
+            Span::styled(
+                "\u{25a0}".repeat(bar_w.saturating_sub(filled)),
+                Style::default().fg(theme.surface),
+            ),
+            Span::styled(
+                format!(" {:>3.0}%", mem_pct),
+                Style::default().fg(theme.secondary),
+            ),
+        ])),
+        chunks[2],
+    );
+}

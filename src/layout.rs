@@ -26,8 +26,8 @@ pub fn layout_for_mode(mode: DashboardMode, area: Rect, config: &Config) -> Vec<
 fn monitor_layout(area: Rect) -> Vec<WidgetPlacement> {
     // Split into top half (metrics) and bottom half (processes)
     let chunks = Layout::vertical([
-        Constraint::Ratio(2, 5), // Top half
-        Constraint::Ratio(3, 5), // Bottom half
+        Constraint::Ratio(1, 2), // metrics band
+        Constraint::Ratio(1, 2), // process table
     ])
     .split(area);
 
@@ -42,20 +42,19 @@ fn monitor_layout(area: Rect) -> Vec<WidgetPlacement> {
     // CPU is full height in col 0
     let cpu_area = cols[0];
 
-    // Col 1: Mem, Disk
+    // Col 1: Mem, Disk — split evenly so both get room for a real graph.
     let col1 = Layout::vertical([
-        Constraint::Length(4), // Memory
-        Constraint::Length(4), // Disk
-        Constraint::Min(0),
+        Constraint::Ratio(1, 2), // Memory
+        Constraint::Ratio(1, 2), // Disk
     ])
     .split(cols[1]);
 
-    // Col 2: Net, GPU, System
+    // Col 2: Net, GPU, System. Net and GPU carry history graphs so they take
+    // the bulk; System is a fixed-size text block.
     let col2 = Layout::vertical([
-        Constraint::Length(4), // Net
-        Constraint::Length(4), // GPU
-        Constraint::Length(7), // System
-        Constraint::Min(0),
+        Constraint::Ratio(2, 5), // Net (two stacked graphs)
+        Constraint::Ratio(2, 5), // GPU
+        Constraint::Ratio(1, 5), // System
     ])
     .split(cols[2]);
 

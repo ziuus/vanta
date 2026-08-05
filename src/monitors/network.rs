@@ -2,6 +2,8 @@ use std::sync::{LazyLock, Mutex};
 use std::time::Instant;
 
 use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::style::Style;
+use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
@@ -98,22 +100,10 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
     let (rx_kbps, tx_kbps) = read_net_rates();
 
     // Copy history locally
-    let (dl_short, ul_short) = {
+    let (dl_short, ul_short, idx) = {
         let net = NET.lock().unwrap();
-        (net.dl_short, net.ul_short)
+        (net.dl_short, net.ul_short, net.short_idx)
     };
-
-    let _gauge_width = area.width.saturating_sub(2) as usize;
-    let dl_max = max_rate(&dl_short).max(1.0);
-    let ul_max = max_rate(&ul_short).max(1.0);
-    let dl_pct = ((rx_kbps / dl_max) * 100.0) as u16;
-    let ul_pct = ((tx_kbps / ul_max) * 100.0) as u16;
-
-    let chunks = Layout::vertical([
-        Constraint::Length(1), // dl gauge
-        Constraint::Length(1), // ul gauge
-    ])
-    .split(area);
 
     let rx_color = if rx_kbps > 10000.0 {
         theme.red
@@ -130,30 +120,49 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
         theme.secondary
     };
 
-    let dl_stats = fmt_kbps(rx_kbps);
-    let dl_line = crate::widgets::bar::draw_premium_bar(
-        "↓ RX",
-        6,
-        &dl_stats,
-        13,
-        (dl_pct as f64) / 100.0,
-        rx_color,
-        theme,
-        chunks[0].width,
-    );
-    f.render_widget(Paragraph::new(dl_line), chunks[0]);
+    // Split the panel in half: download on top, upload below. Each half is a
+    // header line plus a braille history graph that fills the leftover rows.
+    let halves = Layout::vertical([Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)]).split(area);
 
-    // Upload
-    let ul_stats = fmt_kbps(tx_kbps);
-    let ul_line = crate::widgets::bar::draw_premium_bar(
-        "↑ TX",
-        6,
-        &ul_stats,
-        13,
-        (ul_pct as f64) / 100.0,
-        tx_color,
-        theme,
-        chunks[1].width,
-    );
-    f.render_widget(Paragraph::new(ul_line), chunks[1]);
+    for (half, label, rate, hist, color, peak_label) in [
+        (halves[0], "\u{2193} RX", rx_kbps, &dl_short, rx_color, "peak"),
+        (halves[1], "\u{2191} TX", tx_kbps, &ul_short, tx_color, "peak"),
+    ] {
+        let rows = Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).split(half);
+
+        let peak = max_rate(hist).max(1.0);
+        let header = Line::from(vec![
+            Span::styled(format!("{} ", label), Style::default().fg(theme.dim)),
+            Span::styled(
+                format!("{:>10}", fmt_kbps(rate)),
+                Style::default()
+                    .fg(color)
+                    .add_modifier(ratatui::style::Modifier::BOLD),
+            ),
+            Span::styled(
+                format!("  {} {}", peak_label, fmt_kbps(peak)),
+                Style::default().fg(theme.dim),
+            ),
+        ]);
+        f.render_widget(Paragraph::new(header), rows[0]);
+
+        if rows[1].height == 0 {
+            continue;
+        }
+
+        // Oldest-to-newest window sized to the graph (2 samples per cell).
+        let want = (rows[1].width as usize * 2).min(SHORT_LEN);
+        let series: Vec<f64> = (0..want)
+            .map(|i| hist[(idx + SHORT_LEN - 1 - i) % SHORT_LEN])
+            .rev()
+            .collect();
+
+        // Network has no natural ceiling — scale to the window peak so the
+        // shape is always visible regardless of absolute throughput.
+        let graph = crate::widgets::braille_graph::BrailleGraph::new(&series)
+            .min(0.0)
+            .max(peak)
+            .colors(color, theme.yellow, theme.red);
+        f.render_widget(graph, rows[1]);
+    }
 }

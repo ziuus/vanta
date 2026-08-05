@@ -1,4 +1,4 @@
-use ratatui::layout::Rect;
+use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Style};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
@@ -151,6 +151,21 @@ fn fmt_rate(kbps: f64) -> String {
     }
 }
 
+/// Combined read+write rate history for a mount, oldest first. Used to draw
+/// the per-disk IO graph.
+fn io_series(mount: &str, want: usize) -> Vec<f64> {
+    let devices = read_mount_devices();
+    let Some(device) = devices.get(mount) else {
+        return Vec::new();
+    };
+    let disk = DISK.lock().unwrap();
+    let Some(entries) = disk.io_history.get(device) else {
+        return Vec::new();
+    };
+    let start = entries.len().saturating_sub(want);
+    entries[start..].iter().map(|(r, w)| r + w).collect()
+}
+
 fn get_current_rates(mount: &str) -> Option<(f64, f64)> {
     let devices = read_mount_devices();
     let device = devices.get(mount)?;
@@ -210,42 +225,83 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
             .collect()
     };
 
-    // Compact: each disk = 1 gauge with detailed label
-    for (i, (mount, pct, rates)) in entries.iter().enumerate() {
-        let y_offset = i as u16;
-        if y_offset >= area.height {
-            break;
+    // Each disk gets a header (mount + rates + used%), a usage meter, and an
+    // IO history graph — btop-style, instead of a single dotted line.
+    if entries.is_empty() {
+        return;
+    }
+    let slots = Layout::vertical(
+        std::iter::repeat_n(
+            Constraint::Ratio(1, entries.len() as u32),
+            entries.len(),
+        )
+        .collect::<Vec<_>>(),
+    )
+    .split(area);
+
+    for (slot, (mount, pct, rates)) in slots.iter().zip(entries.iter()) {
+        if slot.height == 0 {
+            continue;
         }
-        let chunk_area = Rect::new(area.x, area.y + y_offset, area.width, 1);
-
         let color = gauge_color(*pct, theme);
+
+        let rows = Layout::vertical([
+            Constraint::Length(1), // header
+            Constraint::Min(0),    // io graph
+            Constraint::Length(1), // usage meter
+        ])
+        .split(*slot);
+
         let stats = match rates {
-            Some((r, w)) => format!("↓ {:>9}  ↑ {:>9}", fmt_rate(*r), fmt_rate(*w)),
-            None => format!("↓ {:>9}  ↑ {:>9}", "--", "--"),
+            Some((r, w)) => format!("\u{2193}{:>9}  \u{2191}{:>9}", fmt_rate(*r), fmt_rate(*w)),
+            None => format!("\u{2193}{:>9}  \u{2191}{:>9}", "--", "--"),
         };
+        f.render_widget(
+            Paragraph::new(ratatui::text::Line::from(vec![
+                ratatui::text::Span::styled(
+                    format!("{:<6}", mount.chars().take(6).collect::<String>()),
+                    Style::default().fg(theme.dim),
+                ),
+                ratatui::text::Span::styled(stats, Style::default().fg(theme.text)),
+            ])),
+            rows[0],
+        );
 
-        let label = mount.chars().take(8).collect::<String>();
-        let label_fmt = format!("{:<5}", label);
-        let pct_str = format!("{:>3.0}%", pct);
-        let needed_w = label_fmt.len() + stats.len() + pct_str.len() + 3;
-        let dots_w = chunk_area.width.saturating_sub(needed_w as u16) as usize;
-        let dots = if dots_w > 0 {
-            "·".repeat(dots_w)
-        } else {
-            String::new()
-        };
+        // IO history graph, scaled to its own window peak (no fixed ceiling).
+        if rows[1].height > 0 {
+            let want = rows[1].width as usize * 2;
+            let series = io_series(mount, want);
+            if !series.is_empty() {
+                let peak = series.iter().copied().fold(1.0f64, f64::max);
+                let graph = crate::widgets::braille_graph::BrailleGraph::new(&series)
+                    .min(0.0)
+                    .max(peak)
+                    .colors(theme.secondary, theme.yellow, theme.red);
+                f.render_widget(graph, rows[1]);
+            }
+        }
 
-        let line = ratatui::text::Line::from(vec![
-            ratatui::text::Span::styled(format!("{} ", label_fmt), Style::default().fg(theme.dim)),
-            ratatui::text::Span::styled(format!("{} ", stats), Style::default().fg(theme.text)),
-            ratatui::text::Span::styled(dots, Style::default().fg(theme.dim)),
-            ratatui::text::Span::styled(
-                format!(" {}", pct_str),
-                Style::default()
-                    .fg(color)
-                    .add_modifier(ratatui::style::Modifier::BOLD),
-            ),
-        ]);
-        f.render_widget(Paragraph::new(line), chunk_area);
+        // Capacity meter on the bottom row.
+        let bar_w = rows[2].width.saturating_sub(12) as usize;
+        let filled = ((pct / 100.0).clamp(0.0, 1.0) * bar_w as f64).round() as usize;
+        f.render_widget(
+            Paragraph::new(ratatui::text::Line::from(vec![
+                ratatui::text::Span::styled(
+                    "\u{25a0}".repeat(filled),
+                    Style::default().fg(color),
+                ),
+                ratatui::text::Span::styled(
+                    "\u{25a0}".repeat(bar_w.saturating_sub(filled)),
+                    Style::default().fg(theme.surface),
+                ),
+                ratatui::text::Span::styled(
+                    format!(" {:>3.0}% used", pct),
+                    Style::default()
+                        .fg(color)
+                        .add_modifier(ratatui::style::Modifier::BOLD),
+                ),
+            ])),
+            rows[2],
+        );
     }
 }
