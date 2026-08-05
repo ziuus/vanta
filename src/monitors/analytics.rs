@@ -12,7 +12,6 @@ use crate::app::{self, Summary};
 /// plus NET / GPU as value cells. Everything reads from the cached Summary,
 /// so it never spawns subprocesses on its own.
 const HIST_LEN: usize = 90;
-const SPARK: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
 
 static CPU_H: LazyLock<Mutex<[f64; HIST_LEN]>> = LazyLock::new(|| Mutex::new([0.0; HIST_LEN]));
 static MEM_H: LazyLock<Mutex<[f64; HIST_LEN]>> = LazyLock::new(|| Mutex::new([0.0; HIST_LEN]));
@@ -27,27 +26,6 @@ static LAST: LazyLock<Mutex<(f32, f64, f64, f64)>> = LazyLock::new(|| Mutex::new
 
 fn push_hist(hist: &mut [f64], idx: usize, v: f64) {
     hist[idx] = v;
-}
-
-/// Sparkline over the most recent `n` samples, scaled to `scale` (the value that
-/// maps to a full block). Slots with no data yet render blank rather than as a
-/// flat row of ▁, which would read as "pinned at zero".
-fn spark_str(hist: &[f64], idx: usize, n: usize, fill: usize, scale: f64) -> String {
-    let n = n.clamp(4, HIST_LEN);
-    let scale = if scale.abs() < f64::EPSILON { 1.0 } else { scale };
-    let mut s = String::with_capacity(n);
-    for i in 0..n {
-        // How far back this column is from the newest sample.
-        let age = n - i;
-        if age > fill {
-            s.push(' ');
-            continue;
-        }
-        let k = (idx + HIST_LEN - age) % HIST_LEN;
-        let level = ((hist[k] / scale).clamp(0.0, 1.0) * 7.0).round() as usize;
-        s.push(SPARK[level.min(7)]);
-    }
-    s
 }
 
 fn usage_color(v: f64, theme: &app::Theme) -> Color {
@@ -104,86 +82,128 @@ fn temp_color(t: f64, theme: &app::Theme) -> Color {
 
 /// Compact vertical stack: one row per metric, `LABEL  VALUE  ▁▃▅█▇▅` — lvsk
 /// style. Fits 6 metrics in 6 rows, for a narrow sidebar column.
+/// Graph-forward metrics column: each metric gets a header row (label + value)
+/// and its own braille history graph beneath, so the graph gets the panel's
+/// full width instead of competing with the label for it.
 pub fn render_compact(f: &mut Frame, area: Rect, theme: &app::Theme, sum: &Summary) {
     if area.height < 6 || area.width < 18 {
         return;
     }
     let (cpu_h, mem_h, dsk_h, tmp_h, idx, fill) = record(sum);
 
-    // label(4) + space + value(8) + space => graph gets the rest
-    let graph_n = (area.width as usize).saturating_sub(14);
-
-    let metrics: [(&str, String, Color, Option<&Hist>, f64); 6] = [
+    // Graphed metrics get a header + graph block; NET/GPU are value-only rows.
+    let graphed: [(&str, String, Color, &Hist, f64); 4] = [
         (
             "CPU",
             format!("{:.0}%", sum.cpu_pct),
             usage_color(sum.cpu_pct as f64, theme),
-            Some(&cpu_h),
+            &cpu_h,
             100.0,
         ),
         (
             "MEM",
             format!("{:.0}%", sum.mem_pct),
             usage_color(sum.mem_pct, theme),
-            Some(&mem_h),
+            &mem_h,
+            100.0,
+        ),
+        (
+            "TMP",
+            format!("{:.0}\u{00b0}C", sum.temp_c),
+            temp_color(sum.temp_c, theme),
+            &tmp_h,
             100.0,
         ),
         (
             "DSK",
             format!("{:.0}%", sum.disk_pct),
             usage_color(sum.disk_pct, theme),
-            Some(&dsk_h),
+            &dsk_h,
             100.0,
         ),
+    ];
+
+    // Two rows of chrome (NET, GPU) plus one header row per graphed metric;
+    // whatever is left is split evenly between the graphs.
+    let n = graphed.len() as u16;
+    let chrome = n + 2;
+    let graph_space = area.height.saturating_sub(chrome);
+    let per_graph = (graph_space / n).max(1);
+
+    let mut y = area.y;
+    let bottom = area.y + area.height;
+
+    for (label, value, col, hist, scale) in graphed.iter() {
+        if y >= bottom {
+            break;
+        }
+        // Header: label left, value right-aligned against the panel edge.
+        let pad = (area.width as usize)
+            .saturating_sub(4 + value.chars().count());
+        f.render_widget(
+            Paragraph::new(Line::from(vec![
+                Span::styled(format!("{:<4}", label), Style::default().fg(theme.dim)),
+                Span::raw(" ".repeat(pad)),
+                Span::styled(
+                    value.clone(),
+                    Style::default().fg(*col).add_modifier(Modifier::BOLD),
+                ),
+            ])),
+            Rect::new(area.x, y, area.width, 1),
+        );
+        y += 1;
+
+        let h = per_graph.min(bottom.saturating_sub(y));
+        if h == 0 {
+            break;
+        }
+        // Only feed the graph samples we actually recorded; the untouched tail
+        // of the ring would otherwise draw as a flat floor at zero.
+        let cap = area.width as usize * 2;
+        let want = cap.min(fill);
+        if want >= 2 {
+            let series: Vec<f64> = (0..want)
+                .map(|i| hist[(idx + HIST_LEN - want + i) % HIST_LEN])
+                .collect();
+            // Until the ring fills, draw into the right-hand slice so the trace
+            // grows leftward from "now" rather than hugging the left edge.
+            let cells = (want as u16).div_ceil(2).min(area.width);
+            let gx = area.x + area.width - cells;
+            let graph = crate::widgets::braille_graph::BrailleGraph::new(&series)
+                .min(0.0)
+                .max(*scale)
+                .colors(*col, theme.yellow, theme.red);
+            f.render_widget(graph, Rect::new(gx, y, cells, h));
+        }
+        y += h;
+    }
+
+    // NET / GPU as plain value rows at the foot of the column.
+    for (label, value, col) in [
         (
-            "TMP",
-            format!("{:.0}°C", sum.temp_c),
-            temp_color(sum.temp_c, theme),
-            Some(&tmp_h),
-            // temps are degrees, not percent: full block at 100 °C
-            100.0,
+            "NET",
+            format!("\u{2193}{} \u{2191}{}", sum.net_dl, sum.net_ul),
+            theme.secondary,
         ),
         (
             "GPU",
             format!("{}%", sum.gpu_pct),
             usage_color(sum.gpu_pct as f64, theme),
-            None,
-            0.0,
         ),
-        (
-            "NET",
-            format!("↓{} ↑{}", sum.net_dl, sum.net_ul),
-            theme.secondary,
-            None,
-            0.0,
-        ),
-    ];
-
-    let lines: Vec<Line> = metrics
-        .iter()
-        .map(|(label, value, col, hist, scale)| {
-            let mut spans = vec![
+    ] {
+        if y >= bottom {
+            break;
+        }
+        f.render_widget(
+            Paragraph::new(Line::from(vec![
                 Span::styled(format!("{:<4}", label), Style::default().fg(theme.dim)),
                 Span::styled(
-                    format!("{:>7} ", value),
-                    Style::default().fg(*col).add_modifier(Modifier::BOLD),
+                    value,
+                    Style::default().fg(col).add_modifier(Modifier::BOLD),
                 ),
-            ];
-            if let Some(h) = hist {
-                if graph_n >= 4 {
-                    spans.push(Span::styled(
-                        spark_str(*h, idx, graph_n, fill, *scale),
-                        Style::default().fg(*col),
-                    ));
-                }
-            }
-            Line::from(spans)
-        })
-        .collect();
-
-    let top = (area.height.saturating_sub(lines.len() as u16)) / 2;
-    f.render_widget(
-        Paragraph::new(lines),
-        Rect::new(area.x, area.y + top, area.width, area.height - top),
-    );
+            ])),
+            Rect::new(area.x, y, area.width, 1),
+        );
+        y += 1;
+    }
 }
