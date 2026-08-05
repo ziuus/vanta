@@ -454,6 +454,7 @@ fn sort_tree(nodes: &mut [ProcNode], by: SortField, asc: bool) {
 
 /// Top-N processes by memory usage for the Overview preview list.
 /// Returns (pid, name, mem_kb, cpu_pct) sorted by RSS descending.
+#[allow(dead_code)] // kept for Monitor page / future compact preview
 pub(crate) fn top_by_mem(n: usize) -> Vec<(u32, String, u64, f64)> {
     collect_processes(SortField::Mem, false, "")
         .into_iter()

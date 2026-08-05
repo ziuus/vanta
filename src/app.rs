@@ -179,6 +179,8 @@ pub enum PanelId {
     System,
     Profile,
     Video,
+    Cmatrix,
+    Cowsay,
 }
 
 impl PanelId {

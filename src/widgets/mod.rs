@@ -7,5 +7,6 @@ pub mod cmatrix;
 pub mod media;
 pub mod music_viz;
 pub mod profile;
+pub mod cowsay;
 pub mod video;
 pub mod widget;

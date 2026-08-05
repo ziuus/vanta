@@ -6,8 +6,8 @@ use ratatui::Frame;
 
 use crate::app::{self, PanelId, PanelStates, Summary};
 use crate::config::Config;
-use crate::monitors::{analytics, processes, system_info};
-use crate::widgets::{calendar, clock, media, profile};
+use crate::monitors::{analytics, system_info};
+use crate::widgets::{calendar, clock, cmatrix, cowsay, media, music_viz, profile};
 
 fn section_header(
     f: &mut Frame,
@@ -63,13 +63,14 @@ pub fn render(
     sum: &Summary,
 ) {
     let rows = Layout::vertical([
-        Constraint::Length(10), // SYSTEM neofetch hero
-        Constraint::Length(9),  // CLOCK | ANALYTICS | MEDIA
-        Constraint::Min(0),     // PROFILE | CALENDAR | PROCESSES
+        Constraint::Length(6), // SYSTEM neofetch hero
+        Constraint::Length(8), // CLOCK | MEDIA | ANALYTICS
+        Constraint::Length(7), // VISUALIZER strip
+        Constraint::Min(0),    // PROFILE | CALENDAR | MATRIX | COWSAY
     ])
     .spacing(1)
     .split(area);
-    if rows.len() < 3 {
+    if rows.len() < 4 {
         return;
     }
 
@@ -77,7 +78,7 @@ pub fn render(
     let inner = section_header(
         f,
         rows[0],
-        "󰒋 SYSTEM",
+        "󰓋 SYSTEM",
         theme,
         focused == Some(PanelId::System),
     );
@@ -91,11 +92,11 @@ pub fn render(
         term.height as usize,
     );
 
-    // ── Middle: CLOCK | ANALYTICS | MEDIA ──
+    // ── Middle: CLOCK | MEDIA | ANALYTICS ── (ratios so it spans any width)
     let mid = Layout::horizontal([
-        Constraint::Length(36),
-        Constraint::Fill(1),
-        Constraint::Length(36),
+        Constraint::Ratio(1, 4),
+        Constraint::Ratio(2, 4),
+        Constraint::Ratio(1, 4),
     ])
     .spacing(1)
     .split(rows[1]);
@@ -106,27 +107,38 @@ pub fn render(
     let inner = section_header(f, mid[0], "󰥔 CLOCK", theme, focused == Some(PanelId::Clock));
     clock::render(f, inner, theme);
 
+    let inner = section_header(f, mid[1], "󰝚 MEDIA", theme, focused == Some(PanelId::Media));
+    media::render(f, inner, theme);
+
     let inner = section_header(
         f,
-        mid[1],
+        mid[2],
         "󰋼 ANALYTICS",
         theme,
         focused == Some(PanelId::Cpu),
     );
-    analytics::render(f, inner, theme, sum);
+    analytics::render_compact(f, inner, theme, sum);
 
-    let inner = section_header(f, mid[2], "󰝚 MEDIA", theme, focused == Some(PanelId::Media));
-    media::render(f, inner, theme);
+    // ── Visualizer strip: full width, always animating ──
+    let inner = section_header(
+        f,
+        rows[2],
+        "󰝚 VISUALIZER",
+        theme,
+        focused == Some(PanelId::Visualizer),
+    );
+    music_viz::render(f, inner, theme, _tick);
 
-    // ── Bottom: PROFILE | CALENDAR | PROCESSES ──
+    // ── Bottom: PROFILE | CALENDAR | MATRIX | COWSAY ──
     let bot = Layout::horizontal([
-        Constraint::Length(52),
-        Constraint::Length(24),
-        Constraint::Length(48),
+        Constraint::Ratio(2, 7),
+        Constraint::Ratio(1, 7),
+        Constraint::Ratio(2, 7),
+        Constraint::Ratio(2, 7),
     ])
     .spacing(1)
-    .split(rows[2]);
-    if bot.len() < 3 {
+    .split(rows[3]);
+    if bot.len() < 4 {
         return;
     }
 
@@ -151,11 +163,20 @@ pub fn render(
     let inner = section_header(
         f,
         bot[2],
-        "󰒓 PROCESSES",
+        "〰 MATRIX",
         theme,
-        focused == Some(PanelId::Processes),
+        focused == Some(PanelId::Cmatrix),
     );
-    render_process_preview(f, inner, theme);
+    cmatrix::render(f, inner, _tick, theme);
+
+    let inner = section_header(
+        f,
+        bot[3],
+        "󰸋 COWSAY",
+        theme,
+        focused == Some(PanelId::Cowsay),
+    );
+    cowsay::render(f, inner, theme);
 }
 
 /// Neofetch-style hero: ASCII logo on the left, key/value rows on the right.
@@ -235,79 +256,4 @@ fn kv_line(key: &str, value: &str, theme: &app::Theme) -> Line<'static> {
             Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
         ),
     ])
-}
-
-/// Compact top-by-memory process list for the Overview preview.
-fn render_process_preview(f: &mut Frame, area: Rect, theme: &app::Theme) {
-    if area.height < 2 {
-        return;
-    }
-    let rows = processes::top_by_mem(area.height.saturating_sub(1) as usize);
-    if rows.is_empty() {
-        f.render_widget(
-            Paragraph::new(Line::from(Span::styled(
-                " (no process data)",
-                Style::default().fg(theme.dim),
-            ))),
-            area,
-        );
-        return;
-    }
-
-    let w = area.width as usize;
-    let name_w = w.saturating_sub(25).max(8);
-
-    let mut lines: Vec<Line<'static>> = Vec::new();
-
-    let mut hdr: Vec<Span<'static>> = Vec::new();
-    hdr.push(Span::styled(" PID  ", Style::default().fg(theme.dim)));
-    hdr.push(Span::styled(
-        format!("{:<1$}", "NAME", name_w),
-        Style::default().fg(theme.dim),
-    ));
-    hdr.push(Span::styled(
-        format!("  {:>6}  {:>5}", "MEM", "CPU"),
-        Style::default().fg(theme.dim),
-    ));
-    lines.push(Line::from(hdr));
-
-    for (pid, name, mem_kb, cpu) in rows {
-        let mut name_disp = name.clone();
-        if name_disp.chars().count() > name_w {
-            let mut t: String = name_disp.chars().take(name_w.saturating_sub(1)).collect();
-            t.push('…');
-            name_disp = t;
-        }
-
-        let mem_s = if mem_kb >= 1024 * 1024 {
-            format!("{:.1}G", mem_kb as f64 / (1024.0 * 1024.0))
-        } else {
-            format!("{:.0}M", mem_kb as f64 / 1024.0)
-        };
-        let cpu_col = if cpu > 10.0 { theme.accent } else { theme.dim };
-
-        let mut spans: Vec<Span<'static>> = Vec::new();
-        spans.push(Span::styled(
-            format!(" {:>5} ", pid),
-            Style::default().fg(theme.dim),
-        ));
-        spans.push(Span::styled(
-            format!("{:<1$}", name_disp, name_w),
-            Style::default().fg(theme.text),
-        ));
-        spans.push(Span::styled(
-            format!("  {:>6}  ", mem_s),
-            Style::default().fg(theme.secondary),
-        ));
-        spans.push(Span::styled(
-            format!("{:>4.1}%", cpu),
-            Style::default().fg(cpu_col).add_modifier(Modifier::BOLD),
-        ));
-        lines.push(Line::from(spans));
-    }
-
-    f.render_widget(
-        Paragraph::new(lines).style(Style::default().bg(theme.bg)),
-        area,
-    );
 }

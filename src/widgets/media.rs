@@ -18,6 +18,7 @@ struct TrackInfo {
     title: String,
     artist: String,
     length_usec: i64,
+    art_url: String,
 }
 
 /// Read metadata dict from a Properties.Get reply using inline Iter walking.
@@ -65,6 +66,12 @@ fn read_metadata(conn: &Connection, player: &str, timeout: Duration) -> TrackInf
         if let Some(length) = map.get("mpris:length") {
             if let Some(l) = length.0.as_i64() {
                 info.length_usec = l;
+            }
+        }
+
+        if let Some(art) = map.get("mpris:artUrl") {
+            if let Some(a) = art.0.as_str() {
+                info.art_url = a.to_string();
             }
         }
     }
@@ -124,6 +131,19 @@ fn fmt_dur(usec: i64) -> String {
     format!("{}:{:02}", m, s)
 }
 
+/// MPRIS `mpris:artUrl` is usually a `file://` URI. Return a readable local
+/// path, or `None` for remote/unsupported schemes.
+fn local_art_path(url: &str) -> Option<String> {
+    let path = url.strip_prefix("file://")?;
+    // Percent-decode the few characters that actually show up in music paths.
+    let decoded = path
+        .replace("%20", " ")
+        .replace("%28", "(")
+        .replace("%29", ")")
+        .replace("%27", "'");
+    std::path::Path::new(&decoded).exists().then_some(decoded)
+}
+
 pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
     let conn = Connection::new_session().ok();
     let timeout = Duration::from_millis(50);
@@ -156,7 +176,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
 
                 let icon = if status == "Playing" { "▶" } else { "⏸" };
 
-                let inner_w = area.width.saturating_sub(2) as usize;
+                let inner_w = area.width.saturating_sub(20) as usize;
                 let title = if track.title.len() > inner_w.saturating_sub(5) {
                     let mut t = track.title;
                     t.truncate(inner_w.saturating_sub(8));
@@ -178,9 +198,42 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
                     0
                 };
 
+                // Album art (braille) on the left when available, text on the right.
+                let art_w: u16 = if area.height >= 6 { 16 } else { 0 };
+                let art_lines = if art_w > 0 {
+                    local_art_path(&track.art_url)
+                        .and_then(|p| {
+                            crate::widgets::braille_image::render_path(
+                                &p,
+                                art_w,
+                                area.height.saturating_sub(1),
+                            )
+                        })
+                } else {
+                    None
+                };
+
+                let text_area = match &art_lines {
+                    Some(lines) => {
+                        let h = lines.len() as u16;
+                        let top = area.height.saturating_sub(h) / 2;
+                        f.render_widget(
+                            Paragraph::new(lines.clone()),
+                            Rect::new(area.x, area.y + top, art_w, h),
+                        );
+                        Rect::new(
+                            area.x + art_w + 1,
+                            area.y,
+                            area.width.saturating_sub(art_w + 1),
+                            area.height,
+                        )
+                    }
+                    None => area,
+                };
+
                 // 2 lines: info + progress gauge (vertically centered)
-                let top = area.height.saturating_sub(2) / 2;
-                let content = Rect::new(area.x, area.y + top, area.width, 2);
+                let top = text_area.height.saturating_sub(2) / 2;
+                let content = Rect::new(text_area.x, text_area.y + top, text_area.width, 2);
                 let chunks = ratatui::layout::Layout::vertical([
                     ratatui::layout::Constraint::Length(1),
                     ratatui::layout::Constraint::Length(1),
@@ -207,10 +260,16 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
         }
     }
 
-    // No player active — show the idle visualizer so the panel stays alive.
-    let tick = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64 / 80)
-        .unwrap_or(0);
-    crate::widgets::music_viz::render(f, area, theme, tick);
+    // No player active — quiet placeholder. (The dashboard has its own
+    // full-width visualizer strip, so we don't duplicate it here.)
+    let top = area.height.saturating_sub(1) / 2;
+    f.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            "  no media playing",
+            Style::default().fg(theme.dim),
+        )))
+        .alignment(ratatui::layout::Alignment::Center)
+        .style(Style::default().bg(theme.bg)),
+        Rect::new(area.x, area.y + top, area.width, 1),
+    );
 }
