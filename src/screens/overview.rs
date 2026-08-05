@@ -64,7 +64,7 @@ pub fn render(
 ) {
     let rows = Layout::vertical([
         Constraint::Length(10), // SYSTEM neofetch hero
-        Constraint::Length(7),  // CLOCK | ANALYTICS | MEDIA
+        Constraint::Length(9),  // CLOCK | ANALYTICS | MEDIA
         Constraint::Min(0),     // PROFILE | CALENDAR | PROCESSES
     ])
     .spacing(1)
@@ -104,7 +104,7 @@ pub fn render(
     }
 
     let inner = section_header(f, mid[0], "󰥔 CLOCK", theme, focused == Some(PanelId::Clock));
-    clock::render(f, vcenter(inner, 3), theme);
+    clock::render(f, inner, theme);
 
     let inner = section_header(
         f,
@@ -120,9 +120,9 @@ pub fn render(
 
     // ── Bottom: PROFILE | CALENDAR | PROCESSES ──
     let bot = Layout::horizontal([
-        Constraint::Length(60),
-        Constraint::Length(26),
-        Constraint::Fill(1),
+        Constraint::Length(52),
+        Constraint::Length(24),
+        Constraint::Length(48),
     ])
     .spacing(1)
     .split(rows[2]);
@@ -172,9 +172,9 @@ fn render_neofetch(
     }
     let data = system_info::collect_neofetch(sum, term_w, term_h);
 
-    let logo_w = 30u16.min(area.width / 4);
+    let logo_w = 48u16.min(area.width / 3);
     let logo_area = Rect::new(area.x, area.y, logo_w, area.height);
-    let art = profile::ascii_art(logo_area.width, area.height);
+    let art = profile::wordmark(theme);
     let mut logo_lines: Vec<Line<'static>> = Vec::new();
     for _ in 0..area.height.saturating_sub(art.len() as u16) / 2 {
         logo_lines.push(Line::from(""));

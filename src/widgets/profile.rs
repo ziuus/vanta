@@ -34,16 +34,33 @@ fn get_char_for_luma(luma: u8) -> char {
     ASCII_CHARS[idx] as char
 }
 
+const WORDMARK: [&str; 4] = [
+    " ██╗   ██╗ █████╗ ███╗   ██╗████████╗ █████╗ ",
+    " ██║   ██║██╔══██╗████╗  ██║╚══██╔══╝██╔══██╗",
+    " ██║   ██║███████║██╔██╗ ██║   ██║   ███████║",
+    " ╚██████╔╝██╔══██║██║ ╚███║   ██║   ██╔══██║",
+];
+
 fn fallback_art() -> Vec<Line<'static>> {
-    const FALLBACK: [&str; 4] = [
-        " ██╗   ██╗ █████╗ ███╗   ██╗████████╗ █████╗ ",
-        " ██║   ██║██╔══██╗████╗  ██║╚══██╔══╝██╔══██╗",
-        " ██║   ██║███████║██╔██╗ ██║   ██║   ███████║",
-        " ╚██████╔╝██╔══██║██║ ╚███║   ██║   ██╔══██║",
-    ];
-    FALLBACK
+    WORDMARK
         .iter()
         .map(|line| Line::from(Span::raw(*line)))
+        .collect()
+}
+
+/// Styled "VANTA" block wordmark — crisp accent-colored art for the neofetch hero,
+/// where photo-ASCII of the logo renders illegibly small.
+pub(crate) fn wordmark(theme: &app::Theme) -> Vec<Line<'static>> {
+    WORDMARK
+        .iter()
+        .map(|line| {
+            Line::from(Span::styled(
+                *line,
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(ratatui::style::Modifier::BOLD),
+            ))
+        })
         .collect()
 }
 
@@ -117,10 +134,7 @@ fn generate_ascii_art(width: u16, height: u16, image_path: &str) -> Vec<Line<'st
     lines
 }
 
-/// Render the logo into the exact given area (used by Overview neofetch).
-pub(crate) fn ascii_art(width: u16, height: u16) -> Vec<Line<'static>> {
-    generate_ascii_art(width, height, image_path())
-}
+
 
 pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
     if area.height < 2 {
