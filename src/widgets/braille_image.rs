@@ -44,6 +44,21 @@ pub fn render_image(img: &image::DynamicImage, w: u16, h: u16) -> Vec<Line<'stat
     let px_h = ch as u32 * 4;
     let small = img.resize_exact(px_w, px_h, FilterType::Lanczos3).to_rgba8();
 
+    // Image-wide luma midpoint, used as the dot threshold. Computed once over
+    // the opaque pixels so solid regions stay solid instead of self-cancelling.
+    let (mut sum, mut count) = (0f64, 0u32);
+    for p in small.pixels() {
+        if p[3] >= 50 {
+            sum += p[0] as f64 * 0.299 + p[1] as f64 * 0.587 + p[2] as f64 * 0.114;
+            count += 1;
+        }
+    }
+    let global_mid = if count == 0 {
+        128.0
+    } else {
+        (sum / count as f64) as f32
+    };
+
     let mut lines = Vec::with_capacity(ch as usize);
     for cy in 0..ch as u32 {
         let mut spans: Vec<Span<'static>> = Vec::with_capacity(cw as usize);
@@ -70,9 +85,12 @@ pub fn render_image(img: &image::DynamicImage, w: u16, h: u16) -> Vec<Line<'stat
                 continue;
             }
 
-            // Threshold at the block mean so both dark and bright regions keep detail.
-            let mean: f32 = luma.iter().filter(|l| **l >= 0.0).sum::<f32>() / opaque as f32;
-            let thresh = if mean < 24.0 { -1.0 } else { mean * 0.85 };
+            // Threshold against the *image-wide* midpoint rather than the block
+            // mean: a block that is uniformly bright (or uniformly dark) has no
+            // internal edge, and comparing it to its own mean would light half
+            // its dots anyway, turning solid regions into ⣿ mush.
+            let block_mean: f32 = luma.iter().filter(|l| **l >= 0.0).sum::<f32>() / opaque as f32;
+            let thresh = global_mid;
 
             let mut pattern = 0u8;
             for (dy, row) in DOT_BITS.iter().enumerate() {
@@ -82,6 +100,12 @@ pub fn render_image(img: &image::DynamicImage, w: u16, h: u16) -> Vec<Line<'stat
                         pattern |= 1 << bit;
                     }
                 }
+            }
+
+            // Uniform block that sits above the midpoint: fill it solid so large
+            // bright areas stay bright instead of dropping out.
+            if pattern == 0 && block_mean >= global_mid {
+                pattern = 0xFF;
             }
 
             if pattern == 0 {

@@ -19,6 +19,9 @@ static MEM_H: LazyLock<Mutex<[f64; HIST_LEN]>> = LazyLock::new(|| Mutex::new([0.
 static DSK_H: LazyLock<Mutex<[f64; HIST_LEN]>> = LazyLock::new(|| Mutex::new([0.0; HIST_LEN]));
 static TMP_H: LazyLock<Mutex<[f64; HIST_LEN]>> = LazyLock::new(|| Mutex::new([0.0; HIST_LEN]));
 static H_IDX: LazyLock<Mutex<usize>> = LazyLock::new(|| Mutex::new(0));
+/// Number of real samples recorded so far (saturates at HIST_LEN). Without this
+/// the untouched zeros in the ring render as a flat floor under the live data.
+static H_FILL: LazyLock<Mutex<usize>> = LazyLock::new(|| Mutex::new(0));
 /// Last recorded values, used to detect when Summary actually changed (vs. render spam)
 static LAST: LazyLock<Mutex<(f32, f64, f64, f64)>> = LazyLock::new(|| Mutex::new((0.0, 0.0, 0.0, 0.0)));
 
@@ -26,13 +29,22 @@ fn push_hist(hist: &mut [f64], idx: usize, v: f64) {
     hist[idx] = v;
 }
 
-fn spark_str(hist: &[f64], idx: usize, n: usize) -> String {
+/// Sparkline over the most recent `n` samples, scaled to `scale` (the value that
+/// maps to a full block). Slots with no data yet render blank rather than as a
+/// flat row of ▁, which would read as "pinned at zero".
+fn spark_str(hist: &[f64], idx: usize, n: usize, fill: usize, scale: f64) -> String {
     let n = n.clamp(4, HIST_LEN);
+    let scale = if scale.abs() < f64::EPSILON { 1.0 } else { scale };
     let mut s = String::with_capacity(n);
     for i in 0..n {
-        let k = (idx + HIST_LEN - n + i) % HIST_LEN;
-        let v = hist[k];
-        let level = ((v / 100.0).clamp(0.0, 1.0) * 7.0).round() as usize;
+        // How far back this column is from the newest sample.
+        let age = n - i;
+        if age > fill {
+            s.push(' ');
+            continue;
+        }
+        let k = (idx + HIST_LEN - age) % HIST_LEN;
+        let level = ((hist[k] / scale).clamp(0.0, 1.0) * 7.0).round() as usize;
         s.push(SPARK[level.min(7)]);
     }
     s
@@ -53,7 +65,7 @@ fn usage_color(v: f64, theme: &app::Theme) -> Color {
 /// graphs stay time-aligned; we only advance when Summary actually changed
 /// (render fires ~125fps but Summary refreshes every 0.5s).
 type Hist = [f64; HIST_LEN];
-fn record(sum: &Summary) -> (Hist, Hist, Hist, Hist, usize) {
+fn record(sum: &Summary) -> (Hist, Hist, Hist, Hist, usize, usize) {
     let mut last = LAST.lock().unwrap();
     let curr = (sum.cpu_pct, sum.mem_pct, sum.disk_pct, sum.temp_c);
     let changed = *last != curr;
@@ -72,9 +84,12 @@ fn record(sum: &Summary) -> (Hist, Hist, Hist, Hist, usize) {
         push_hist(&mut tmp[..], pos, sum.temp_c);
         *idx = (pos + 1) % HIST_LEN;
         *last = curr;
+        let mut fill = H_FILL.lock().unwrap();
+        *fill = (*fill + 1).min(HIST_LEN);
     }
 
-    (*cpu, *mem, *dsk, *tmp, *idx)
+    let fill = *H_FILL.lock().unwrap();
+    (*cpu, *mem, *dsk, *tmp, *idx, fill)
 }
 
 fn temp_color(t: f64, theme: &app::Theme) -> Color {
@@ -93,53 +108,60 @@ pub fn render_compact(f: &mut Frame, area: Rect, theme: &app::Theme, sum: &Summa
     if area.height < 6 || area.width < 18 {
         return;
     }
-    let (cpu_h, mem_h, dsk_h, tmp_h, idx) = record(sum);
+    let (cpu_h, mem_h, dsk_h, tmp_h, idx, fill) = record(sum);
 
     // label(4) + space + value(8) + space => graph gets the rest
     let graph_n = (area.width as usize).saturating_sub(14);
 
-    let metrics: [(&str, String, Color, Option<&Hist>); 6] = [
+    let metrics: [(&str, String, Color, Option<&Hist>, f64); 6] = [
         (
             "CPU",
             format!("{:.0}%", sum.cpu_pct),
             usage_color(sum.cpu_pct as f64, theme),
             Some(&cpu_h),
+            100.0,
         ),
         (
             "MEM",
             format!("{:.0}%", sum.mem_pct),
             usage_color(sum.mem_pct, theme),
             Some(&mem_h),
+            100.0,
         ),
         (
             "DSK",
             format!("{:.0}%", sum.disk_pct),
             usage_color(sum.disk_pct, theme),
             Some(&dsk_h),
+            100.0,
         ),
         (
             "TMP",
             format!("{:.0}°C", sum.temp_c),
             temp_color(sum.temp_c, theme),
             Some(&tmp_h),
+            // temps are degrees, not percent: full block at 100 °C
+            100.0,
         ),
         (
             "GPU",
             format!("{}%", sum.gpu_pct),
             usage_color(sum.gpu_pct as f64, theme),
             None,
+            0.0,
         ),
         (
             "NET",
             format!("↓{} ↑{}", sum.net_dl, sum.net_ul),
             theme.secondary,
             None,
+            0.0,
         ),
     ];
 
     let lines: Vec<Line> = metrics
         .iter()
-        .map(|(label, value, col, hist)| {
+        .map(|(label, value, col, hist, scale)| {
             let mut spans = vec![
                 Span::styled(format!("{:<4}", label), Style::default().fg(theme.dim)),
                 Span::styled(
@@ -150,7 +172,7 @@ pub fn render_compact(f: &mut Frame, area: Rect, theme: &app::Theme, sum: &Summa
             if let Some(h) = hist {
                 if graph_n >= 4 {
                     spans.push(Span::styled(
-                        spark_str(*h, idx, graph_n),
+                        spark_str(*h, idx, graph_n, fill, *scale),
                         Style::default().fg(*col),
                     ));
                 }

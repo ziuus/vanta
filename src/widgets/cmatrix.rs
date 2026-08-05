@@ -33,11 +33,7 @@ pub fn render(f: &mut Frame, area: Rect, _tick: u64, theme: &crate::app::Theme) 
     let matrix_chars: Vec<char> = CHARSET.chars().collect();
 
     for col in 0..width {
-        // Space out columns slightly to look better (every other column is empty in many cmatrix implementations)
-        if col % 2 != 0 {
-            continue;
-        }
-
+        // Every column rains — real cmatrix is dense, not a sparse scatter.
         let col_seed = col.wrapping_mul(713).wrapping_add(12345);
         // speed modifier
         let speed_div = 1 + (col_seed % 3);
@@ -46,8 +42,7 @@ pub fn render(f: &mut Frame, area: Rect, _tick: u64, theme: &crate::app::Theme) 
         let interval = 40 + (col_seed % 60); // 40-100 ticks per cycle
 
         // Draw multiple drops per column to allow density
-        for drop_idx in 0..1 {
-            // Reduced from 2 to 1 for half density
+        for drop_idx in 0..2 {
             let offset_time = tick_local
                 .wrapping_add(drop_idx * (interval / 2))
                 .wrapping_add(col_seed % interval);
