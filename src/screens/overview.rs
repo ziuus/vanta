@@ -7,7 +7,7 @@ use ratatui::Frame;
 use crate::app::{self, PanelId, PanelStates, Summary};
 use crate::config::Config;
 use crate::monitors::{analytics, system_info};
-use crate::widgets::{calendar, clock, cmatrix, cowsay, media, music_viz, profile};
+use crate::widgets::{calendar, clock, cmatrix, cowsay, media, music_viz, profile, status, storage};
 
 fn section_header(
     f: &mut Frame,
@@ -65,7 +65,7 @@ pub fn render(
     let rows = Layout::vertical([
         Constraint::Length(6), // SYSTEM neofetch hero
         Constraint::Length(9), // CLOCK | MEDIA | ANALYTICS
-        Constraint::Length(7), // VISUALIZER strip
+        Constraint::Length(8), // STATUS | STORAGE | VISUALIZER
         Constraint::Min(0),    // PROFILE | CALENDAR | MATRIX | COWSAY
     ])
     .spacing(1)
@@ -119,10 +119,39 @@ pub fn render(
     );
     analytics::render_compact(f, inner, theme, sum);
 
-    // ── Visualizer strip: full width, always animating ──
+    // ── STATUS | STORAGE | VISUALIZER ──
+    let row2 = Layout::horizontal([
+        Constraint::Ratio(1, 4),
+        Constraint::Ratio(1, 4),
+        Constraint::Ratio(2, 4),
+    ])
+    .spacing(1)
+    .split(rows[2]);
+    if row2.len() < 3 {
+        return;
+    }
+
     let inner = section_header(
         f,
-        rows[2],
+        row2[0],
+        "󰈀 STATUS",
+        theme,
+        focused == Some(PanelId::Network),
+    );
+    status::render(f, inner, theme);
+
+    let inner = section_header(
+        f,
+        row2[1],
+        "󰋊 STORAGE",
+        theme,
+        focused == Some(PanelId::Disk),
+    );
+    storage::render(f, inner, theme);
+
+    let inner = section_header(
+        f,
+        row2[2],
         "󰝚 VISUALIZER",
         theme,
         focused == Some(PanelId::Visualizer),
