@@ -1,3 +1,5 @@
+use std::f64::consts::PI;
+
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -6,132 +8,98 @@ use ratatui::Frame;
 
 use crate::app::Theme;
 
-/// A gauge ring is drawn in a 13x7 cell box.
-const W: usize = 13;
-const H: usize = 7;
+/// Gauge box in cells. Cells are roughly twice as tall as they are wide, so a
+/// 2:1 grid is what makes the ellipse read as a circle on screen.
+const W: usize = 15;
+const H: usize = 8;
 
-/// Braille dot bit for a (row, col) position within a 2x4 cell.
-fn dot_bit(dy: usize, dx: usize) -> Option<u8> {
-    Some(match (dy, dx) {
-        (0, 0) => 0,
-        (1, 0) => 1,
-        (2, 0) => 2,
-        (3, 0) => 6,
-        (0, 1) => 3,
-        (1, 1) => 4,
-        (2, 1) => 5,
-        (3, 1) => 7,
-        _ => return None,
-    })
-}
+/// The arc spans 270 degrees, leaving a gap at the bottom.
+const SWEEP: f64 = 270.0;
+/// Ring thickness as a fraction of the outer radius.
+const INNER: f64 = 0.55;
 
-/// Rasterise a 270-degree arc into a braille grid.
+/// One ring: solid blocks for the filled arc, a dim track for the remainder,
+/// label and value stacked in the hollow centre.
 ///
-/// Terminal cells are 2 dots wide but 4 dots tall, so the vertical radius is
-/// twice the horizontal one — otherwise the "circle" renders as a squashed oval.
-fn arc_grid(pct: f64) -> Vec<Vec<u8>> {
-    let filled = (pct.clamp(0.0, 100.0) / 100.0) * 270.0;
-    let (cx, cy) = (W as f64, (H * 4) as f64 / 2.0);
-    let (rx_o, ry_o) = (10.0, 20.0);
-    let (rx_i, ry_i) = (6.5, 13.0);
+/// Uses full blocks rather than braille because braille renders as a visibly
+/// sparse dot-matrix in most terminal fonts, which reads as broken rather than
+/// as a gauge.
+fn ring(pct: f64, label: &str, value: &str, col: Color, theme: &Theme) -> Vec<Line<'static>> {
+    let sweep = (pct.clamp(0.0, 100.0) / 100.0) * SWEEP;
 
-    let mut grid = vec![vec![0u8; W]; H];
-    let put = |x: f64, y: f64, grid: &mut Vec<Vec<u8>>| {
-        if x < 0.0 || y < 0.0 {
-            return;
-        }
-        let (cell_x, cell_y) = ((x / 2.0) as usize, (y / 4.0) as usize);
-        if cell_x >= W || cell_y >= H {
-            return;
-        }
-        if let Some(bit) = dot_bit(y as usize % 4, x as usize % 2) {
-            grid[cell_y][cell_x] |= 1 << bit;
-        }
-    };
+    let mut rows: Vec<Line<'static>> = Vec::with_capacity(H);
+    for cy in 0..H {
+        let mut spans: Vec<Span<'static>> = Vec::with_capacity(W);
+        for cx in 0..W {
+            // Normalise the cell centre into a unit circle.
+            let dx = (cx as f64 - W as f64 / 2.0 + 0.5) / (W as f64 / 2.0);
+            let dy = (cy as f64 - H as f64 / 2.0 + 0.5) / (H as f64 / 2.0);
+            let r = (dx * dx + dy * dy).sqrt();
 
-    // Quarter-degree steps keep the arc solid with no gaps at the outer edge.
-    let steps = (filled * 4.0) as usize;
-    for i in 0..=steps {
-        let deg = i as f64 / 4.0;
-        if deg > filled {
-            break;
+            if !(INNER..=1.02).contains(&r) {
+                spans.push(Span::raw(" "));
+                continue;
+            }
+
+            // Screen y grows downward, so increasing atan2 runs clockwise.
+            // Offset by 135 deg to start the arc at the bottom-left.
+            let ang = (dy.atan2(dx) * 180.0 / PI - 135.0).rem_euclid(360.0);
+            if ang > SWEEP {
+                // Bottom gap — outside the gauge range entirely.
+                spans.push(Span::raw(" "));
+            } else if ang <= sweep {
+                spans.push(Span::styled("█", Style::default().fg(col)));
+            } else {
+                spans.push(Span::styled("█", Style::default().fg(theme.surface)));
+            }
         }
-        // Start at bottom-left (135 deg) and sweep clockwise.
-        let (sin, cos) = (deg + 135.0).to_radians().sin_cos();
-        for k in 0..=8 {
-            let t = k as f64 / 8.0;
-            let rx = rx_i + (rx_o - rx_i) * t;
-            let ry = ry_i + (ry_o - ry_i) * t;
-            put(cx + cos * rx, cy + sin * ry, &mut grid);
-        }
+        rows.push(Line::from(spans));
     }
-    grid
-}
 
-/// One ring with its label and value stacked in the hollow centre.
-fn render_ring(pct: f64, label: &str, value: &str, col: Color, theme: &Theme) -> Vec<Line<'static>> {
-    let grid = arc_grid(pct);
-
-    let mut lines: Vec<Line<'static>> = grid
-        .iter()
-        .map(|row| {
-            Line::from(
-                row.iter()
-                    .map(|&p| {
-                        let ch = if p == 0 {
-                            ' '
-                        } else {
-                            char::from_u32(0x2800 + p as u32).unwrap_or(' ')
-                        };
-                        Span::styled(ch.to_string(), Style::default().fg(col))
-                    })
-                    .collect::<Vec<_>>(),
-            )
-        })
-        .collect();
-
-    // Punch the label and value into the middle rows, keeping the ring around them.
+    // Punch label and value through the hollow middle.
     let centre = |text: &str, style: Style| -> Line<'static> {
-        let pad = W.saturating_sub(text.chars().count()) / 2;
+        let n = text.chars().count();
+        let pad = W.saturating_sub(n) / 2;
         Line::from(vec![
             Span::raw(" ".repeat(pad)),
             Span::styled(text.to_string(), style),
-            Span::raw(" ".repeat(W.saturating_sub(pad + text.chars().count()))),
+            Span::raw(" ".repeat(W.saturating_sub(pad + n))),
         ])
     };
-    if lines.len() >= 5 {
-        lines[2] = centre(label, Style::default().fg(theme.dim));
-        lines[3] = centre(
+    if H >= 6 {
+        rows[H / 2 - 1] = centre(label, Style::default().fg(theme.dim));
+        rows[H / 2] = centre(
             value,
             Style::default().fg(col).add_modifier(Modifier::BOLD),
         );
     }
-    lines
+    rows
 }
 
 /// Render up to three circular gauges side by side.
 ///
-/// Each entry is `(label, percent, display value, colour)` — percent drives the
-/// arc, the display value is what goes in the middle (so a gauge can show
-/// "6.2G" while the arc tracks 83%).
+/// Each entry is `(label, percent, display value, colour)`: the percent drives
+/// the arc while the display value is what sits in the middle, so a ring can
+/// read "6.2G" while the arc tracks 83%.
 pub fn render(f: &mut Frame, area: Rect, theme: &Theme, metrics: &[(&str, f64, String, Color)]) {
     if area.height < H as u16 || metrics.is_empty() {
         return;
     }
 
-    let gap = 2usize;
-    // Fit as many rings as the panel is wide enough to hold.
+    let gap = 1usize;
     let n = metrics
         .len()
         .min(3)
         .min(((area.width as usize + gap) / (W + gap)).max(1));
-    let total = n * W + (n - 1) * gap;
-    let x_pad = (area.width as usize).saturating_sub(total) / 2;
+    let total = n * W + n.saturating_sub(1) * gap;
+    let pad = (area.width as usize).saturating_sub(total) / 2;
 
-    let mut rows: Vec<Line<'static>> = vec![Line::from(vec![Span::raw(" ".repeat(x_pad))]); H];
+    let mut rows: Vec<Line<'static>> = (0..H)
+        .map(|_| Line::from(vec![Span::raw(" ".repeat(pad))]))
+        .collect();
+
     for (i, (label, pct, value, col)) in metrics.iter().take(n).enumerate() {
-        let ring = render_ring(*pct, label, value, *col, theme);
-        for (r, line) in ring.into_iter().enumerate() {
+        for (r, line) in ring(*pct, label, value, *col, theme).into_iter().enumerate() {
             if i > 0 {
                 rows[r].spans.push(Span::raw(" ".repeat(gap)));
             }

@@ -65,7 +65,7 @@ pub fn render(
     let rows = Layout::vertical([
         Constraint::Length(6), // SYSTEM neofetch hero
         Constraint::Length(12), // CLOCK | MEDIA | ANALYTICS
-        Constraint::Length(9), // STATUS | STORAGE | GAUGES | VISUALIZER
+        Constraint::Length(10), // STATUS | STORAGE | GAUGES | VISUALIZER
         Constraint::Min(0),    // PROFILE | CALENDAR | MATRIX | COWSAY
     ])
     .spacing(1)
