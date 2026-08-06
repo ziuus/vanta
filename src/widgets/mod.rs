@@ -3,7 +3,6 @@ pub mod braille_image;
 pub mod calendar;
 pub mod clock;
 pub mod cmatrix;
-pub mod cores;
 pub mod cowsay;
 pub mod gauge;
 pub mod half_block_image;

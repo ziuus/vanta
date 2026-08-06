@@ -90,10 +90,10 @@ pub fn render_compact(f: &mut Frame, area: Rect, theme: &app::Theme, sum: &Summa
     if area.height < 6 || area.width < 18 {
         return;
     }
-    let (cpu_h, mem_h, dsk_h, tmp_h, idx, fill) = record(sum);
+    let (cpu_h, mem_h, _dsk_h, _tmp_h, idx, fill) = record(sum);
 
-    // Graphed metrics get a header + graph block; NET/GPU are value-only rows.
-    let graphed: [(&str, String, Color, &Hist, f64); 4] = [
+    // Graphed metrics get a header + graph block; NET/GPU/TMP/DSK are value-only rows.
+    let graphed: [(&str, String, Color, &Hist, f64); 2] = [
         (
             "CPU",
             format!("{:.0}%", sum.cpu_pct),
@@ -108,26 +108,12 @@ pub fn render_compact(f: &mut Frame, area: Rect, theme: &app::Theme, sum: &Summa
             &mem_h,
             100.0,
         ),
-        (
-            "TMP",
-            format!("{:.0}\u{00b0}C", sum.temp_c),
-            temp_color(sum.temp_c, theme),
-            &tmp_h,
-            100.0,
-        ),
-        (
-            "DSK",
-            format!("{:.0}%", sum.disk_pct),
-            usage_color(sum.disk_pct, theme),
-            &dsk_h,
-            100.0,
-        ),
     ];
 
-    // Two rows of chrome (NET, GPU) plus one header row per graphed metric;
+    // Four rows of chrome (TMP, DSK, NET, GPU) plus one header row per graphed metric;
     // whatever is left is split evenly between the graphs.
     let n = graphed.len() as u16;
-    let chrome = n + 2;
+    let chrome = n + 4;
     let graph_space = area.height.saturating_sub(chrome);
     let per_graph = (graph_space / n).max(1);
 
@@ -178,8 +164,18 @@ pub fn render_compact(f: &mut Frame, area: Rect, theme: &app::Theme, sum: &Summa
         y += h;
     }
 
-    // NET / GPU as plain value rows at the foot of the column.
+    // TMP / DSK / NET / GPU as plain value rows at the foot of the column.
     for (label, value, col) in [
+        (
+            "TMP",
+            format!("{:.0}\u{00b0}C", sum.temp_c),
+            temp_color(sum.temp_c, theme),
+        ),
+        (
+            "DSK",
+            format!("{:.0}%", sum.disk_pct),
+            usage_color(sum.disk_pct, theme),
+        ),
         (
             "NET",
             format!("\u{2193}{} \u{2191}{}", sum.net_dl, sum.net_ul),
@@ -194,9 +190,11 @@ pub fn render_compact(f: &mut Frame, area: Rect, theme: &app::Theme, sum: &Summa
         if y >= bottom {
             break;
         }
+        let pad = (area.width as usize).saturating_sub(4 + value.chars().count());
         f.render_widget(
             Paragraph::new(Line::from(vec![
                 Span::styled(format!("{:<4}", label), Style::default().fg(theme.dim)),
+                Span::raw(" ".repeat(pad)),
                 Span::styled(value, Style::default().fg(col).add_modifier(Modifier::BOLD)),
             ])),
             Rect::new(area.x, y, area.width, 1),
