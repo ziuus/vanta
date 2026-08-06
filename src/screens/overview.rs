@@ -204,16 +204,17 @@ pub fn render(
     );
     music_viz::render(f, inner, theme, _tick);
 
-    // ── Bottom: PROFILE | CALENDAR | MATRIX | COWSAY ──
+    // ── Bottom: PROFILE | CALENDAR | CORES | CPU HEAT | MATRIX ──
     let bot = Layout::horizontal([
-        Constraint::Ratio(2, 7),
-        Constraint::Ratio(1, 7),
-        Constraint::Ratio(2, 7),
-        Constraint::Ratio(2, 7),
+        Constraint::Ratio(1, 5),
+        Constraint::Ratio(1, 5),
+        Constraint::Ratio(1, 5),
+        Constraint::Ratio(1, 5),
+        Constraint::Ratio(1, 5),
     ])
     .spacing(1)
     .split(rows[3]);
-    if bot.len() < 4 {
+    if bot.len() < 5 {
         return;
     }
 
@@ -252,6 +253,15 @@ pub fn render(
         focused == Some(PanelId::Cpu),
     );
     heatmap::render(f, inner, theme);
+
+    let inner = section_header(
+        f,
+        bot[4],
+        "󰘦 MATRIX",
+        theme,
+        false, // Cmatrix doesn't need focus yet
+    );
+    crate::widgets::cmatrix::render(f, inner, _tick, theme);
 }
 
 /// Neofetch-style hero: ASCII logo on the left, key/value rows on the right.
