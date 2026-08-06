@@ -89,7 +89,7 @@ fn heat_cell(pct: f32, theme: &Theme) -> (char, Color) {
 /// so a single pinned core shows as a bright horizontal streak that neither
 /// the aggregate graph nor instantaneous bars can reveal.
 pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
-    if area.height < 3 || area.width < 12 {
+    if area.height < 3 || area.width < 24 {
         return;
     }
 
@@ -107,33 +107,53 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
         return;
     }
 
-    // Label gutter: "c12 " (we drop the right value to save space for the heatmap)
+    // label_w: e.g. "c12 " (3 or 4)
     let label_w = if n >= 10 { 3 } else { 2 };
-    let graph_w = (area.width as usize).saturating_sub(label_w + 1);
-    if graph_w < 4 {
-        return;
-    }
+    let bar_w = 6;
+    // "c0 " + bar + " 100% " = label_w + 1 + bar_w + 6 = label_w + bar_w + 7
+    let prefix_w = label_w + 1 + bar_w + 6;
+    let graph_w = (area.width as usize).saturating_sub(prefix_w);
 
-    // One row per core, but never more rows than the panel can show.
     let rows = n.min(area.height as usize);
     let want = graph_w.min(fill);
 
     let mut lines: Vec<Line<'static>> = Vec::with_capacity(rows);
     for (c, hist) in grid.iter().enumerate().take(rows) {
-        let mut spans: Vec<Span<'static>> = Vec::with_capacity(want + 1);
+        let mut spans: Vec<Span<'static>> = Vec::with_capacity(want + 4);
+        let usage = cores.get(c).copied().unwrap_or(0.0);
+        let bar_col = if usage >= 90.0 {
+            theme.red
+        } else if usage >= 70.0 {
+            theme.yellow
+        } else {
+            theme.accent
+        };
+
         spans.push(Span::styled(
             format!("c{:<w$} ", c, w = label_w - 1),
             Style::default().fg(theme.dim),
         ));
 
-        // Pad on the left when history hasn't filled the width yet, so the
-        // trace grows leftward from "now" instead of hugging the left edge.
+        let filled = ((usage / 100.0).clamp(0.0, 1.0) * bar_w as f32).round() as usize;
+        spans.push(Span::styled(
+            format!("{}{}", "━".repeat(filled), "─".repeat(bar_w - filled)),
+            Style::default().fg(bar_col),
+        ));
+
+        spans.push(Span::styled(
+            format!("{:>4.0}% ", usage),
+            Style::default()
+                .fg(bar_col)
+                .add_modifier(ratatui::style::Modifier::BOLD),
+        ));
+
         if want < graph_w {
             spans.push(Span::raw(" ".repeat(graph_w - want)));
         }
         for i in 0..want {
             let slot = (idx + HIST - want + i) % HIST;
-            let (ch, col) = heat_cell(hist[slot], theme);
+            let p = hist[slot];
+            let (ch, col) = heat_cell(p, theme);
             spans.push(Span::styled(ch.to_string(), Style::default().fg(col)));
         }
 

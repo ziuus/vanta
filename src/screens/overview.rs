@@ -7,9 +7,7 @@ use ratatui::Frame;
 use crate::app::{self, PanelId, PanelStates, Summary};
 use crate::config::Config;
 use crate::monitors::{analytics, system_info};
-use crate::widgets::{
-    calendar, clock, cores, gauge, heatmap, media, music_viz, profile, status, storage,
-};
+use crate::widgets::{calendar, clock, gauge, heatmap, media, music_viz, profile, status, storage};
 
 fn section_header(
     f: &mut Frame,
@@ -206,17 +204,16 @@ pub fn render(
     );
     music_viz::render(f, inner, theme, _tick);
 
-    // ── Bottom: PROFILE | CALENDAR | CORES | CPU HEAT | MATRIX ──
+    // ── Bottom: PROFILE | CALENDAR | CPU CORES | MATRIX ──
     let bot = Layout::horizontal([
-        Constraint::Ratio(1, 5),
-        Constraint::Ratio(1, 5),
-        Constraint::Ratio(1, 5),
-        Constraint::Ratio(1, 5),
-        Constraint::Ratio(1, 5),
+        Constraint::Ratio(3, 16),
+        Constraint::Ratio(3, 16),
+        Constraint::Ratio(6, 16),
+        Constraint::Ratio(4, 16),
     ])
     .spacing(1)
     .split(rows[3]);
-    if bot.len() < 5 {
+    if bot.len() < 4 {
         return;
     }
 
@@ -241,16 +238,7 @@ pub fn render(
     let inner = section_header(
         f,
         bot[2],
-        "\u{f0ee0} CORES",
-        theme,
-        focused == Some(PanelId::Cpu),
-    );
-    cores::render(f, inner, theme);
-
-    let inner = section_header(
-        f,
-        bot[3],
-        "\u{f0ee0} CPU HEAT",
+        "\u{f0ee0} CPU CORES",
         theme,
         focused == Some(PanelId::Cpu),
     );
@@ -258,7 +246,7 @@ pub fn render(
 
     let inner = section_header(
         f,
-        bot[4],
+        bot[3],
         "󰘦 MATRIX",
         theme,
         false, // Cmatrix doesn't need focus yet
