@@ -231,11 +231,8 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
         return;
     }
     let slots = Layout::vertical(
-        std::iter::repeat_n(
-            Constraint::Ratio(1, entries.len() as u32),
-            entries.len(),
-        )
-        .collect::<Vec<_>>(),
+        std::iter::repeat_n(Constraint::Ratio(1, entries.len() as u32), entries.len())
+            .collect::<Vec<_>>(),
     )
     .split(area);
 
@@ -286,10 +283,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
         let filled = ((pct / 100.0).clamp(0.0, 1.0) * bar_w as f64).round() as usize;
         f.render_widget(
             Paragraph::new(ratatui::text::Line::from(vec![
-                ratatui::text::Span::styled(
-                    "\u{25a0}".repeat(filled),
-                    Style::default().fg(color),
-                ),
+                ratatui::text::Span::styled("\u{25a0}".repeat(filled), Style::default().fg(color)),
                 ratatui::text::Span::styled(
                     "\u{25a0}".repeat(bar_w.saturating_sub(filled)),
                     Style::default().fg(theme.surface),

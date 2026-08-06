@@ -43,20 +43,32 @@ pub fn render_overlay(f: &mut Frame, area: Rect, theme: &Theme, config: &Config)
     let head = |s: &str| {
         Line::from(Span::styled(
             format!(" {s}"),
-            Style::default().fg(green).bg(bg).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(green)
+                .bg(bg)
+                .add_modifier(Modifier::BOLD),
         ))
     };
 
     let lines = vec![
         Line::from(Span::styled(
             " ⚙  vanta — help & settings",
-            Style::default().fg(accent).bg(bg).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(accent)
+                .bg(bg)
+                .add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
         head("Pages"),
-        key("1", "Dashboard   monitoring overview + clock/calendar/media/viz"),
+        key(
+            "1",
+            "Dashboard   monitoring overview + clock/calendar/media/viz",
+        ),
         key("2", "Monitor     btop-style detail + full process table"),
-        key("3", "Aesthetic   clock, calendar, visualizer, matrix, 3D demo"),
+        key(
+            "3",
+            "Aesthetic   clock, calendar, visualizer, matrix, 3D demo",
+        ),
         Line::from(""),
         head("Global"),
         key("T", "cycle theme (saved to config)"),

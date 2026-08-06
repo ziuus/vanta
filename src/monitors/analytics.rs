@@ -22,7 +22,8 @@ static H_IDX: LazyLock<Mutex<usize>> = LazyLock::new(|| Mutex::new(0));
 /// the untouched zeros in the ring render as a flat floor under the live data.
 static H_FILL: LazyLock<Mutex<usize>> = LazyLock::new(|| Mutex::new(0));
 /// Last recorded values, used to detect when Summary actually changed (vs. render spam)
-static LAST: LazyLock<Mutex<(f32, f64, f64, f64)>> = LazyLock::new(|| Mutex::new((0.0, 0.0, 0.0, 0.0)));
+static LAST: LazyLock<Mutex<(f32, f64, f64, f64)>> =
+    LazyLock::new(|| Mutex::new((0.0, 0.0, 0.0, 0.0)));
 
 fn push_hist(hist: &mut [f64], idx: usize, v: f64) {
     hist[idx] = v;
@@ -138,8 +139,7 @@ pub fn render_compact(f: &mut Frame, area: Rect, theme: &app::Theme, sum: &Summa
             break;
         }
         // Header: label left, value right-aligned against the panel edge.
-        let pad = (area.width as usize)
-            .saturating_sub(4 + value.chars().count());
+        let pad = (area.width as usize).saturating_sub(4 + value.chars().count());
         f.render_widget(
             Paragraph::new(Line::from(vec![
                 Span::styled(format!("{:<4}", label), Style::default().fg(theme.dim)),
@@ -197,10 +197,7 @@ pub fn render_compact(f: &mut Frame, area: Rect, theme: &app::Theme, sum: &Summa
         f.render_widget(
             Paragraph::new(Line::from(vec![
                 Span::styled(format!("{:<4}", label), Style::default().fg(theme.dim)),
-                Span::styled(
-                    value,
-                    Style::default().fg(col).add_modifier(Modifier::BOLD),
-                ),
+                Span::styled(value, Style::default().fg(col).add_modifier(Modifier::BOLD)),
             ])),
             Rect::new(area.x, y, area.width, 1),
         );

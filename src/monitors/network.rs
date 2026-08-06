@@ -63,7 +63,10 @@ fn read_net_rates() -> (f64, f64) {
     }
 
     let now = Instant::now();
-    let elapsed = net.prev_time.map(|t| t.elapsed().as_secs_f64()).unwrap_or(1.0);
+    let elapsed = net
+        .prev_time
+        .map(|t| t.elapsed().as_secs_f64())
+        .unwrap_or(1.0);
     let drx = total_rx.saturating_sub(net.prev_rx);
     let dtx = total_tx.saturating_sub(net.prev_tx);
 
@@ -125,8 +128,22 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
     let halves = Layout::vertical([Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)]).split(area);
 
     for (half, label, rate, hist, color, peak_label) in [
-        (halves[0], "\u{2193} RX", rx_kbps, &dl_short, rx_color, "peak"),
-        (halves[1], "\u{2191} TX", tx_kbps, &ul_short, tx_color, "peak"),
+        (
+            halves[0],
+            "\u{2193} RX",
+            rx_kbps,
+            &dl_short,
+            rx_color,
+            "peak",
+        ),
+        (
+            halves[1],
+            "\u{2191} TX",
+            tx_kbps,
+            &ul_short,
+            tx_color,
+            "peak",
+        ),
     ] {
         let rows = Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).split(half);
 

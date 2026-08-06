@@ -52,10 +52,9 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
                 format!("c{:<2} ", idx),
                 Style::default().fg(theme.dim),
             ));
-            spans.push(Span::styled("■".repeat(filled), Style::default().fg(col)));
             spans.push(Span::styled(
-                "·".repeat(bar_w.saturating_sub(filled)),
-                Style::default().fg(theme.surface),
+                format!("{}{}", "━".repeat(filled), "─".repeat(bar_w - filled)),
+                Style::default().fg(col),
             ));
             spans.push(Span::styled(
                 format!("{:>4.0}% ", usage),

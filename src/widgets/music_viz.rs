@@ -28,8 +28,6 @@ pub fn cycle_style() {
     VIZ_STYLE.fetch_add(1, Ordering::Relaxed);
 }
 
-
-
 fn ensure_cava() {
     if CAVA_RUNNING.load(Ordering::Relaxed) {
         return;
@@ -310,7 +308,12 @@ fn idle_wave(cols: usize, tick: u64) -> Vec<f32> {
         .collect()
 }
 
-fn bar_color(theme: &app::Theme, height_frac: f32, filled: bool, dim: bool) -> ratatui::style::Color {
+fn bar_color(
+    theme: &app::Theme,
+    height_frac: f32,
+    filled: bool,
+    dim: bool,
+) -> ratatui::style::Color {
     if !filled {
         theme.surface
     } else if dim {

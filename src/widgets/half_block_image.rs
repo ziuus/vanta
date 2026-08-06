@@ -15,7 +15,7 @@ pub fn render_image(img: &image::DynamicImage, w: u16, h: u16) -> Vec<Line<'stat
     if iw == 0 || ih == 0 {
         return Vec::new();
     }
-    
+
     // Fit image inside the cell box, preserving aspect.
     // Cells are typically ~2x taller than wide, and half-blocks map 1 cell to 1x2 pixels,
     // so in pixel space, the cell aspect ratio is roughly 1:1.
@@ -31,7 +31,9 @@ pub fn render_image(img: &image::DynamicImage, w: u16, h: u16) -> Vec<Line<'stat
 
     let px_w = cw as u32;
     let px_h = ch as u32 * 2;
-    let small = img.resize_exact(px_w, px_h, FilterType::Lanczos3).to_rgba8();
+    let small = img
+        .resize_exact(px_w, px_h, FilterType::Lanczos3)
+        .to_rgba8();
 
     let mut lines = Vec::with_capacity(ch as usize);
     for cy in 0..ch as u32 {

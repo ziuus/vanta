@@ -74,8 +74,12 @@ fn ring(pct: f64, label: &str, value: &str, col: Color, theme: &Theme) -> Vec<Li
                 (Pxl::Empty, Pxl::Filled) => Span::styled("▄", Style::default().fg(col)),
                 (Pxl::Dim, Pxl::Empty) => Span::styled("▀", Style::default().fg(theme.surface)),
                 (Pxl::Empty, Pxl::Dim) => Span::styled("▄", Style::default().fg(theme.surface)),
-                (Pxl::Filled, Pxl::Dim) => Span::styled("▀", Style::default().fg(col).bg(theme.surface)),
-                (Pxl::Dim, Pxl::Filled) => Span::styled("▄", Style::default().fg(col).bg(theme.surface)),
+                (Pxl::Filled, Pxl::Dim) => {
+                    Span::styled("▀", Style::default().fg(col).bg(theme.surface))
+                }
+                (Pxl::Dim, Pxl::Filled) => {
+                    Span::styled("▄", Style::default().fg(col).bg(theme.surface))
+                }
             };
             spans.push(span);
         }
@@ -94,10 +98,7 @@ fn ring(pct: f64, label: &str, value: &str, col: Color, theme: &Theme) -> Vec<Li
     };
     if H >= 6 {
         rows[H / 2 - 1] = centre(label, Style::default().fg(theme.dim));
-        rows[H / 2] = centre(
-            value,
-            Style::default().fg(col).add_modifier(Modifier::BOLD),
-        );
+        rows[H / 2] = centre(value, Style::default().fg(col).add_modifier(Modifier::BOLD));
     }
     rows
 }
@@ -125,7 +126,10 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, metrics: &[(&str, f64, S
         .collect();
 
     for (i, (label, pct, value, col)) in metrics.iter().take(n).enumerate() {
-        for (r, line) in ring(*pct, label, value, *col, theme).into_iter().enumerate() {
+        for (r, line) in ring(*pct, label, value, *col, theme)
+            .into_iter()
+            .enumerate()
+        {
             if i > 0 {
                 rows[r].spans.push(Span::raw(" ".repeat(gap)));
             }

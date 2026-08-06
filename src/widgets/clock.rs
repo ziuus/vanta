@@ -70,13 +70,7 @@ fn glyph(c: char) -> [&'static str; 5] {
 fn compose<const N: usize>(s: &str, f: impl Fn(char) -> [&'static str; N]) -> Vec<String> {
     let glyphs: Vec<[&'static str; N]> = s.chars().map(f).collect();
     (0..N)
-        .map(|row| {
-            glyphs
-                .iter()
-                .map(|g| g[row])
-                .collect::<Vec<_>>()
-                .join(" ")
-        })
+        .map(|row| glyphs.iter().map(|g| g[row]).collect::<Vec<_>>().join(" "))
         .collect()
 }
 

@@ -42,7 +42,9 @@ pub fn render_image(img: &image::DynamicImage, w: u16, h: u16) -> Vec<Line<'stat
 
     let px_w = cw as u32 * 2;
     let px_h = ch as u32 * 4;
-    let small = img.resize_exact(px_w, px_h, FilterType::Lanczos3).to_rgba8();
+    let small = img
+        .resize_exact(px_w, px_h, FilterType::Lanczos3)
+        .to_rgba8();
 
     // Image-wide luma midpoint, used as the dot threshold. Computed once over
     // the opaque pixels so solid regions stay solid instead of self-cancelling.
@@ -114,11 +116,7 @@ pub fn render_image(img: &image::DynamicImage, w: u16, h: u16) -> Vec<Line<'stat
             }
 
             let ch_out = char::from_u32(0x2800 + pattern as u32).unwrap_or(' ');
-            let color = Color::Rgb(
-                (r / opaque) as u8,
-                (g / opaque) as u8,
-                (b / opaque) as u8,
-            );
+            let color = Color::Rgb((r / opaque) as u8, (g / opaque) as u8, (b / opaque) as u8);
             spans.push(Span::styled(ch_out.to_string(), Style::default().fg(color)));
         }
         lines.push(Line::from(spans));

@@ -58,7 +58,15 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme, month_offset: i32) 
     let nav = if month_offset == 0 {
         String::new()
     } else {
-        format!(" {}{}", if month_offset < 0 { '\u{25c0}' } else { '\u{25b6}' }, month_offset.abs())
+        format!(
+            " {}{}",
+            if month_offset < 0 {
+                '\u{25c0}'
+            } else {
+                '\u{25b6}'
+            },
+            month_offset.abs()
+        )
     };
     let title_col = if month_offset == 0 {
         theme.accent
@@ -108,10 +116,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme, month_offset: i32) 
                         .bg(theme.accent)
                         .add_modifier(ratatui::style::Modifier::BOLD),
                 ));
-                spans.push(Span::styled(
-                    "\u{25c6}",
-                    Style::default().fg(theme.accent),
-                ));
+                spans.push(Span::styled("\u{25c6}", Style::default().fg(theme.accent)));
             } else {
                 spans.push(Span::styled(
                     format!("{:>2} ", day),

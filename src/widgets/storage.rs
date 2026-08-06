@@ -73,10 +73,13 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
             let label: String = mount.chars().take(9).collect();
             Line::from(vec![
                 Span::styled(format!("{:<10}", label), Style::default().fg(theme.dim)),
-                Span::styled("■".repeat(filled), Style::default().fg(col)),
                 Span::styled(
-                    "·".repeat(bar_w.saturating_sub(filled)),
-                    Style::default().fg(theme.surface),
+                    format!(
+                        "{}{}",
+                        "━".repeat(filled),
+                        "─".repeat(bar_w.saturating_sub(filled))
+                    ),
+                    Style::default().fg(col),
                 ),
                 Span::styled(
                     format!(" {:>3.0}%", pct),

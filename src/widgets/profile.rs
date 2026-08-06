@@ -7,7 +7,6 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
-
 use crate::app;
 
 // Cache the ASCII rendering so we don't recalculate it every frame
@@ -89,8 +88,6 @@ fn generate_ascii_art(width: u16, height: u16, image_path: &str) -> Vec<Line<'st
         art
     }
 }
-
-
 
 pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
     if area.height < 2 {

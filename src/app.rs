@@ -813,7 +813,10 @@ impl App {
             } else {
                 Style::default().fg(dim).bg(bg)
             };
-            nav_spans.push(Span::styled(format!(" {}·{} ", m.hotkey(), m.label()), style));
+            nav_spans.push(Span::styled(
+                format!(" {}·{} ", m.hotkey(), m.label()),
+                style,
+            ));
         }
         nav_spans.push(Span::styled("  ?Help", Style::default().fg(dim).bg(bg)));
         nav_spans.push(Span::styled(" T↑", Style::default().fg(dim).bg(bg)));

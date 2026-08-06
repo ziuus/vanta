@@ -83,8 +83,5 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
     let top = (area.height.saturating_sub(content_h)) / 2;
     let inner = Rect::new(area.x, area.y + top, area.width, content_h);
 
-    f.render_widget(
-        Paragraph::new(lines).alignment(Alignment::Center),
-        inner,
-    );
+    f.render_widget(Paragraph::new(lines).alignment(Alignment::Center), inner);
 }

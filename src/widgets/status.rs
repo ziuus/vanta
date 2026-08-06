@@ -204,10 +204,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
             key("LOAD"),
             val(format!("{:.2} {:.2} {:.2}", one, five, fifteen), col),
         ]));
-        lines.push(Line::from(vec![
-            key("PROCS"),
-            val(procs, theme.text),
-        ]));
+        lines.push(Line::from(vec![key("PROCS"), val(procs, theme.text)]));
     }
 
     let core_temps = crate::monitors::cpu::read_core_temps();

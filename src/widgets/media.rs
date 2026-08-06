@@ -212,7 +212,11 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
                 let position_usec = get_prop_i64(&conn, player, "Position", timeout).unwrap_or(0);
                 let _volume = get_prop_f64(&conn, player, "Volume", timeout).unwrap_or(0.0);
 
-                let icon = if status == "Playing" { "\u{25b6}" } else { "\u{23f8}" };
+                let icon = if status == "Playing" {
+                    "\u{25b6}"
+                } else {
+                    "\u{23f8}"
+                };
 
                 let pos_str = fmt_dur(position_usec);
                 let len_str = fmt_dur(track.length_usec);
@@ -231,9 +235,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
                 };
                 let art_lines = if art_w > 0 {
                     local_art_path(&track.art_url)
-                        .and_then(|p| {
-                            crate::widgets::braille_image::render_path(&p, art_w, art_h)
-                        })
+                        .and_then(|p| crate::widgets::braille_image::render_path(&p, art_w, art_h))
                 } else {
                     None
                 };
