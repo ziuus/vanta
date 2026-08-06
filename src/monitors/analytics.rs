@@ -169,7 +169,7 @@ pub fn render_compact(f: &mut Frame, area: Rect, theme: &app::Theme, sum: &Summa
             // grows leftward from "now" rather than hugging the left edge.
             let cells = (want as u16).div_ceil(2).min(area.width);
             let gx = area.x + area.width - cells;
-            let graph = crate::widgets::braille_graph::BrailleGraph::new(&series)
+            let graph = crate::widgets::block_graph::BlockGraph::new(&series)
                 .min(0.0)
                 .max(*scale)
                 .colors(*col, theme.yellow, theme.red);

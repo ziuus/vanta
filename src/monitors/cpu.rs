@@ -130,7 +130,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
             .collect()
     };
 
-    let braille = crate::widgets::braille_graph::BrailleGraph::new(&hist)
+    let braille = crate::widgets::block_graph::BlockGraph::new(&hist)
         .min(0.0)
         .max(100.0)
         .colors(theme.green, theme.yellow, theme.red);

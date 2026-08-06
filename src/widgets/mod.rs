@@ -1,4 +1,4 @@
-pub mod braille_graph;
+pub mod block_graph;
 pub mod braille_image;
 pub mod calendar;
 pub mod clock;

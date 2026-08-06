@@ -273,7 +273,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
             let series = io_series(mount, want);
             if !series.is_empty() {
                 let peak = series.iter().copied().fold(1.0f64, f64::max);
-                let graph = crate::widgets::braille_graph::BrailleGraph::new(&series)
+                let graph = crate::widgets::block_graph::BlockGraph::new(&series)
                     .min(0.0)
                     .max(peak)
                     .colors(theme.secondary, theme.yellow, theme.red);

@@ -159,7 +159,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
 
         // Network has no natural ceiling — scale to the window peak so the
         // shape is always visible regardless of absolute throughput.
-        let graph = crate::widgets::braille_graph::BrailleGraph::new(&series)
+        let graph = crate::widgets::block_graph::BlockGraph::new(&series)
             .min(0.0)
             .max(peak)
             .colors(color, theme.yellow, theme.red);
