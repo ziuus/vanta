@@ -1,7 +1,7 @@
 use std::sync::{LazyLock, Mutex};
 
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
@@ -107,30 +107,29 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
         return;
     }
 
-    // Label gutter: "c12 " plus the current value on the right.
-    let gutter = 4usize;
-    let val_w = 5usize;
-    let cols = (area.width as usize).saturating_sub(gutter + val_w);
-    if cols < 4 {
+    // Label gutter: "c12 " (we drop the right value to save space for the heatmap)
+    let label_w = if n >= 10 { 3 } else { 2 };
+    let graph_w = (area.width as usize).saturating_sub(label_w + 1);
+    if graph_w < 4 {
         return;
     }
 
     // One row per core, but never more rows than the panel can show.
     let rows = n.min(area.height as usize);
-    let want = cols.min(fill);
+    let want = graph_w.min(fill);
 
     let mut lines: Vec<Line<'static>> = Vec::with_capacity(rows);
     for (c, hist) in grid.iter().enumerate().take(rows) {
-        let mut spans: Vec<Span<'static>> = Vec::with_capacity(cols + 2);
+        let mut spans: Vec<Span<'static>> = Vec::with_capacity(want + 1);
         spans.push(Span::styled(
-            format!("c{:<3}", c),
+            format!("c{:<w$} ", c, w = label_w - 1),
             Style::default().fg(theme.dim),
         ));
 
         // Pad on the left when history hasn't filled the width yet, so the
         // trace grows leftward from "now" instead of hugging the left edge.
-        if want < cols {
-            spans.push(Span::raw(" ".repeat(cols - want)));
+        if want < graph_w {
+            spans.push(Span::raw(" ".repeat(graph_w - want)));
         }
         for i in 0..want {
             let slot = (idx + HIST - want + i) % HIST;
@@ -138,12 +137,6 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
             spans.push(Span::styled(ch.to_string(), Style::default().fg(col)));
         }
 
-        let now = cores.get(c).copied().unwrap_or(0.0);
-        let (_, ncol) = heat_cell(now, theme);
-        spans.push(Span::styled(
-            format!("{:>4.0}%", now),
-            Style::default().fg(ncol).add_modifier(Modifier::BOLD),
-        ));
         lines.push(Line::from(spans));
     }
 

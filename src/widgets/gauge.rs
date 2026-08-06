@@ -13,8 +13,8 @@ use crate::app::Theme;
 const W: usize = 15;
 const H: usize = 8;
 
-/// The arc spans 270 degrees, leaving a gap at the bottom.
-const SWEEP: f64 = 270.0;
+/// The arc spans 180 degrees (a semicircle).
+const SWEEP: f64 = 180.0;
 /// Ring thickness as a fraction of the outer radius.
 const INNER: f64 = 0.55;
 
@@ -48,7 +48,8 @@ fn ring(pct: f64, label: &str, value: &str, col: Color, theme: &Theme) -> Vec<Li
                 continue;
             }
 
-            let ang = (dy.atan2(dx) * 180.0 / PI - 135.0).rem_euclid(360.0);
+            // -180.0 starts the arc at the left (9 o'clock)
+            let ang = (dy.atan2(dx) * 180.0 / PI - 180.0).rem_euclid(360.0);
             if ang > SWEEP {
                 pixels[py][px] = Pxl::Empty;
             } else if ang <= sweep {
@@ -59,12 +60,12 @@ fn ring(pct: f64, label: &str, value: &str, col: Color, theme: &Theme) -> Vec<Li
         }
     }
 
-    let mut rows: Vec<Line<'static>> = Vec::with_capacity(H);
-    for cy in 0..H {
-        let mut spans: Vec<Span<'static>> = Vec::with_capacity(W);
-        for cx in 0..W {
-            let top = pixels[cy * 2][cx];
-            let bot = pixels[cy * 2 + 1][cx];
+    let mut rows = Vec::new();
+    for y in 0..H {
+        let mut spans = Vec::new();
+        for x in 0..W {
+            let top = pixels[y * 2][x];
+            let bot = pixels[y * 2 + 1][x];
 
             let span = match (top, bot) {
                 (Pxl::Empty, Pxl::Empty) => Span::raw(" "),
@@ -86,7 +87,7 @@ fn ring(pct: f64, label: &str, value: &str, col: Color, theme: &Theme) -> Vec<Li
         rows.push(Line::from(spans));
     }
 
-    // Punch label and value through the hollow middle.
+    // Place label and value in the hollow centre, slightly lower so it's under the arch
     let centre = |text: &str, style: Style| -> Line<'static> {
         let n = text.chars().count();
         let pad = W.saturating_sub(n) / 2;
@@ -97,8 +98,8 @@ fn ring(pct: f64, label: &str, value: &str, col: Color, theme: &Theme) -> Vec<Li
         ])
     };
     if H >= 6 {
-        rows[H / 2 - 1] = centre(label, Style::default().fg(theme.dim));
-        rows[H / 2] = centre(value, Style::default().fg(col).add_modifier(Modifier::BOLD));
+        rows[4] = centre(label, Style::default().fg(theme.dim));
+        rows[5] = centre(value, Style::default().fg(col).add_modifier(Modifier::BOLD));
     }
     rows
 }

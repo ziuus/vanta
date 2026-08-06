@@ -7,7 +7,9 @@ use ratatui::Frame;
 use crate::app::{self, PanelId, PanelStates, Summary};
 use crate::config::Config;
 use crate::monitors::{analytics, system_info};
-use crate::widgets::{calendar, clock, cores, gauge, heatmap, media, music_viz, profile, status, storage};
+use crate::widgets::{
+    calendar, clock, cores, gauge, heatmap, media, music_viz, profile, status, storage,
+};
 
 fn section_header(
     f: &mut Frame,
@@ -63,10 +65,10 @@ pub fn render(
     sum: &Summary,
 ) {
     let rows = Layout::vertical([
-        Constraint::Length(6), // SYSTEM neofetch hero
+        Constraint::Length(6),  // SYSTEM neofetch hero
         Constraint::Length(12), // CLOCK | MEDIA | ANALYTICS
         Constraint::Length(10), // STATUS | STORAGE | GAUGES | VISUALIZER
-        Constraint::Min(0),    // PROFILE | CALENDAR | MATRIX | COWSAY
+        Constraint::Min(0),     // PROFILE | CALENDAR | MATRIX | COWSAY
     ])
     .spacing(1)
     .split(area);
@@ -282,12 +284,7 @@ fn render_neofetch(
     // empty on wide terminals.
     if area.width >= 150 {
         let tip_w = area.width / 4;
-        let tip_area = Rect::new(
-            area.x + area.width - tip_w,
-            area.y,
-            tip_w,
-            area.height,
-        );
+        let tip_area = Rect::new(area.x + area.width - tip_w, area.y, tip_w, area.height);
         crate::widgets::cowsay::render(f, tip_area, theme);
     }
 
