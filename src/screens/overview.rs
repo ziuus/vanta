@@ -7,7 +7,7 @@ use ratatui::Frame;
 use crate::app::{self, PanelId, PanelStates, Summary};
 use crate::config::Config;
 use crate::monitors::{analytics, system_info};
-use crate::widgets::{clock, cores, heatmap, music_viz, profile, status, storage};
+use crate::widgets::{calendar, clock, cores, gauge, heatmap, media, music_viz, profile, status, storage};
 
 fn section_header(
     f: &mut Frame,
@@ -59,110 +59,199 @@ pub fn render(
     _config: &Config,
     _tick: u64,
     focused: Option<PanelId>,
-    _states: &PanelStates,
+    states: &PanelStates,
     sum: &Summary,
 ) {
     let rows = Layout::vertical([
-        Constraint::Ratio(1, 3), // PRIMARY: STATUS | CPU HEAT
-        Constraint::Ratio(1, 3), // SECONDARY: CORES | STORAGE | ANALYTICS
-        Constraint::Ratio(1, 3), // TERTIARY: CLOCK | VISUALIZER
+        Constraint::Length(6), // SYSTEM neofetch hero
+        Constraint::Length(12), // CLOCK | MEDIA | ANALYTICS
+        Constraint::Length(10), // STATUS | STORAGE | GAUGES | VISUALIZER
+        Constraint::Min(0),    // PROFILE | CALENDAR | MATRIX | COWSAY
     ])
     .spacing(1)
     .split(area);
-    if rows.len() < 3 {
+    if rows.len() < 4 {
         return;
     }
 
-    // ── Row 1: PRIMARY ──
-    let row1 = Layout::horizontal([
-        Constraint::Ratio(1, 3), // STATUS (4 cols)
-        Constraint::Ratio(2, 3), // CPU HEAT (8 cols)
-    ])
-    .spacing(1)
-    .split(rows[0]);
+    // ── SYSTEM (neofetch) ──
+    let inner = section_header(
+        f,
+        rows[0],
+        "󰓋 SYSTEM",
+        theme,
+        focused == Some(PanelId::System),
+    );
+    let term = f.area();
+    render_neofetch(
+        f,
+        inner,
+        theme,
+        sum,
+        term.width as usize,
+        term.height as usize,
+    );
 
-    if row1.len() >= 2 {
-        let inner = section_header(
-            f,
-            row1[0],
-            "󰈀 STATUS",
-            theme,
-            focused == Some(PanelId::Network),
-        );
-        status::render(f, inner, theme);
-
-        let inner = section_header(
-            f,
-            row1[1],
-            "\u{f0ee0} CPU HEAT",
-            theme,
-            focused == Some(PanelId::Cpu),
-        );
-        heatmap::render(f, inner, theme);
-    }
-
-    // ── Row 2: SECONDARY ──
-    let row2 = Layout::horizontal([
-        Constraint::Ratio(1, 3),
-        Constraint::Ratio(1, 3),
-        Constraint::Ratio(1, 3),
+    // ── Middle: CLOCK | MEDIA | ANALYTICS ── (ratios so it spans any width)
+    let mid = Layout::horizontal([
+        Constraint::Ratio(1, 4),
+        Constraint::Ratio(2, 4),
+        Constraint::Ratio(1, 4),
     ])
     .spacing(1)
     .split(rows[1]);
-
-    if row2.len() >= 3 {
-        let inner = section_header(
-            f,
-            row2[0],
-            "\u{f0ee0} CORES",
-            theme,
-            focused == Some(PanelId::Cpu),
-        );
-        cores::render(f, inner, theme);
-
-        let inner = section_header(
-            f,
-            row2[1],
-            "󰋊 STORAGE",
-            theme,
-            focused == Some(PanelId::Disk),
-        );
-        storage::render(f, inner, theme);
-
-        let inner = section_header(
-            f,
-            row2[2],
-            "󰋼 ANALYTICS",
-            theme,
-            focused == Some(PanelId::Cpu),
-        );
-        analytics::render_compact(f, inner, theme, sum);
+    if mid.len() < 3 {
+        return;
     }
 
-    // ── Row 3: TERTIARY ──
-    let row3 = Layout::horizontal([Constraint::Ratio(1, 4), Constraint::Ratio(3, 4)])
-        .spacing(1)
-        .split(rows[2]);
+    let inner = section_header(f, mid[0], "󰥔 CLOCK", theme, focused == Some(PanelId::Clock));
+    clock::render(f, inner, theme);
 
-    if row3.len() >= 2 {
-        let inner = section_header(
-            f,
-            row3[0],
-            "󰥔 CLOCK",
-            theme,
-            focused == Some(PanelId::Clock),
-        );
-        clock::render(f, inner, theme);
+    let inner = section_header(f, mid[1], "󰝚 MEDIA", theme, focused == Some(PanelId::Media));
+    media::render(f, inner, theme);
 
-        let inner = section_header(
-            f,
-            row3[1],
-            "󰝚 VISUALIZER",
-            theme,
-            focused == Some(PanelId::Visualizer),
-        );
-        music_viz::render(f, inner, theme, _tick);
+    let inner = section_header(
+        f,
+        mid[2],
+        "󰋼 ANALYTICS",
+        theme,
+        focused == Some(PanelId::Cpu),
+    );
+    analytics::render_compact(f, inner, theme, sum);
+
+    // ── STATUS | STORAGE | VISUALIZER ──
+    let row2 = Layout::horizontal([
+        Constraint::Ratio(3, 16),
+        Constraint::Ratio(3, 16),
+        Constraint::Ratio(4, 16),
+        Constraint::Ratio(6, 16),
+    ])
+    .spacing(1)
+    .split(rows[2]);
+    if row2.len() < 4 {
+        return;
     }
+
+    let inner = section_header(
+        f,
+        row2[0],
+        "󰈀 STATUS",
+        theme,
+        focused == Some(PanelId::Network),
+    );
+    status::render(f, inner, theme);
+
+    let inner = section_header(
+        f,
+        row2[1],
+        "󰋊 STORAGE",
+        theme,
+        focused == Some(PanelId::Disk),
+    );
+    storage::render(f, inner, theme);
+
+    let inner = section_header(
+        f,
+        row2[2],
+        "󰈈 GAUGES",
+        theme,
+        focused == Some(PanelId::Memory),
+    );
+    let bat = sum.bat_pct.unwrap_or(0) as f64;
+    let bat_col = if bat < 20.0 {
+        theme.red
+    } else if bat < 40.0 {
+        theme.yellow
+    } else {
+        theme.green
+    };
+    let mem_col = if sum.mem_pct > 90.0 {
+        theme.red
+    } else if sum.mem_pct > 75.0 {
+        theme.yellow
+    } else {
+        theme.accent
+    };
+    let cpu_col = if sum.cpu_pct > 90.0 {
+        theme.red
+    } else if sum.cpu_pct > 75.0 {
+        theme.yellow
+    } else {
+        theme.accent
+    };
+    gauge::render(
+        f,
+        inner,
+        theme,
+        &[
+            ("BAT", bat, format!("{:.0}%", bat), bat_col),
+            ("RAM", sum.mem_pct, format!("{:.0}%", sum.mem_pct), mem_col),
+            (
+                "CPU",
+                sum.cpu_pct as f64,
+                format!("{:.0}%", sum.cpu_pct),
+                cpu_col,
+            ),
+        ],
+    );
+
+    let inner = section_header(
+        f,
+        row2[3],
+        "󰝚 VISUALIZER",
+        theme,
+        focused == Some(PanelId::Visualizer),
+    );
+    music_viz::render(f, inner, theme, _tick);
+
+    // ── Bottom: PROFILE | CALENDAR | MATRIX | COWSAY ──
+    let bot = Layout::horizontal([
+        Constraint::Ratio(2, 7),
+        Constraint::Ratio(1, 7),
+        Constraint::Ratio(2, 7),
+        Constraint::Ratio(2, 7),
+    ])
+    .spacing(1)
+    .split(rows[3]);
+    if bot.len() < 4 {
+        return;
+    }
+
+    let inner = section_header(
+        f,
+        bot[0],
+        " PROFILE",
+        theme,
+        focused == Some(PanelId::Profile),
+    );
+    profile::render(f, inner, theme);
+
+    let inner = section_header(
+        f,
+        bot[1],
+        "󰃭 CALENDAR",
+        theme,
+        focused == Some(PanelId::Calendar),
+    );
+    calendar::render(f, vcenter(inner, 9), theme, states.calendar_month_offset);
+
+    let inner = section_header(
+        f,
+        bot[2],
+        "\u{f0ee0} CORES",
+        theme,
+        focused == Some(PanelId::Cpu),
+    );
+    cores::render(f, inner, theme);
+
+    let inner = section_header(
+        f,
+        bot[3],
+        "\u{f0ee0} CPU HEAT",
+        theme,
+        focused == Some(PanelId::Cpu),
+    );
+    heatmap::render(f, inner, theme);
 }
 
 /// Neofetch-style hero: ASCII logo on the left, key/value rows on the right.
@@ -183,7 +272,12 @@ fn render_neofetch(
     // empty on wide terminals.
     if area.width >= 150 {
         let tip_w = area.width / 4;
-        let tip_area = Rect::new(area.x + area.width - tip_w, area.y, tip_w, area.height);
+        let tip_area = Rect::new(
+            area.x + area.width - tip_w,
+            area.y,
+            tip_w,
+            area.height,
+        );
         crate::widgets::cowsay::render(f, tip_area, theme);
     }
 
