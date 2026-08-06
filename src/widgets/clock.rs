@@ -29,22 +29,22 @@ fn format_uptime() -> String {
     }
 }
 
-/// Heavy 7x6 digit font (peaclock-weight): 2-cell-thick strokes so the glyphs
-/// read as solid slabs rather than thin outlines.
-fn big_glyph(c: char) -> [&'static str; 7] {
+/// Elegant thin-line clock font: much sharper and cleaner than heavy blocks,
+/// aligning perfectly with the btop aesthetic.
+fn big_glyph(c: char) -> [&'static str; 6] {
     match c {
-        '0' => ["██████", "██  ██", "██  ██", "██  ██", "██  ██", "██  ██", "██████"],
-        '1' => ["    ██", "    ██", "    ██", "    ██", "    ██", "    ██", "    ██"],
-        '2' => ["██████", "    ██", "    ██", "██████", "██    ", "██    ", "██████"],
-        '3' => ["██████", "    ██", "    ██", "██████", "    ██", "    ██", "██████"],
-        '4' => ["██  ██", "██  ██", "██  ██", "██████", "    ██", "    ██", "    ██"],
-        '5' => ["██████", "██    ", "██    ", "██████", "    ██", "    ██", "██████"],
-        '6' => ["██████", "██    ", "██    ", "██████", "██  ██", "██  ██", "██████"],
-        '7' => ["██████", "    ██", "    ██", "    ██", "    ██", "    ██", "    ██"],
-        '8' => ["██████", "██  ██", "██  ██", "██████", "██  ██", "██  ██", "██████"],
-        '9' => ["██████", "██  ██", "██  ██", "██████", "    ██", "    ██", "██████"],
-        ':' => ["  ", "██", "██", "  ", "██", "██", "  "],
-        _ => ["      ", "      ", "      ", "      ", "      ", "      ", "      "],
+        '0' => ["╭────╮", "│ ╭╮ │", "│ ││ │", "│ ││ │", "│ ╰╯ │", "╰────╯"],
+        '1' => ["  ╭──╮", "  ╰╮ │", "   │ │", "   │ │", " ╭─┴─╮", " ╰───╯"],
+        '2' => ["╭────╮", "╰──╮ │", "╭──╯ │", "│ ╭──╯", "│ ╰──╮", "╰────╯"],
+        '3' => ["╭────╮", "╰──╮ │", " ╭─╯ │", " ╰─╮ │", "╭──╯ │", "╰────╯"],
+        '4' => ["╭──╮ ╭", "│  │ │", "│  ╰─┤", "╰──╮ │", "   │ │", "   ╰─╯"],
+        '5' => ["╭────╮", "│ ╭──╯", "│ ╰──╮", "╰──╮ │", "╭──╯ │", "╰────╯"],
+        '6' => ["╭────╮", "│ ╭──╯", "│ ╰──╮", "│ ╭╮ │", "│ ╰╯ │", "╰────╯"],
+        '7' => ["╭────╮", "╰──╮ │", "   │ │", "   │ │", "   │ │", "   ╰─╯"],
+        '8' => ["╭────╮", "│ ╭╮ │", "│ ╰╯ │", "│ ╭╮ │", "│ ╰╯ │", "╰────╯"],
+        '9' => ["╭────╮", "│ ╭╮ │", "│ ╰╯ │", "╰──╮ │", "╭──╯ │", "╰────╯"],
+        ':' => ["      ", "  ╭╮  ", "  ╰╯  ", "  ╭╮  ", "  ╰╯  ", "      "],
+        _ => ["      ", "      ", "      ", "      ", "      ", "      "],
     }
 }
 
@@ -103,12 +103,11 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
         return;
     }
 
-    // Pick the heaviest font the panel can hold: 7-row slabs, then 5-row
-    // blocks, then a plain digital readout.
+    // Pick the heaviest font the panel can hold
     let time_str = now.format("%H:%M:%S").to_string();
-    let mut lines: Vec<Line<'static>> = if area.width >= 48 && area.height >= 7 {
+    let mut lines: Vec<Line<'static>> = if area.width >= 48 && area.height >= 6 {
         styled(compose(&time_str, big_glyph), theme)
-    } else if area.width >= 34 && area.height >= 6 {
+    } else if area.width >= 34 && area.height >= 5 {
         styled(compose(&time_str, glyph), theme)
     } else {
         let short = if area.width >= 10 {
