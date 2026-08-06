@@ -22,11 +22,7 @@ fn section_header(
     let title_color = if focused { theme.accent } else { theme.dim };
     let border_color = if focused { theme.accent } else { theme.dim };
 
-    let b_type = if focused {
-        BorderType::Thick
-    } else {
-        BorderType::Rounded
-    };
+    let b_type = BorderType::Rounded;
 
     let block = Block::default()
         .borders(Borders::ALL)
@@ -34,9 +30,13 @@ fn section_header(
         .border_style(Style::default().fg(border_color))
         .title(Span::styled(
             format!(" {} ", label),
-            Style::default()
-                .fg(title_color)
-                .add_modifier(ratatui::style::Modifier::BOLD),
+            if focused {
+                Style::default()
+                    .fg(title_color)
+                    .add_modifier(ratatui::style::Modifier::BOLD)
+            } else {
+                Style::default().fg(title_color)
+            },
         ));
 
     let inner = block.inner(area);

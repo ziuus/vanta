@@ -24,34 +24,60 @@ const INNER: f64 = 0.55;
 /// Uses full blocks rather than braille because braille renders as a visibly
 /// sparse dot-matrix in most terminal fonts, which reads as broken rather than
 /// as a gauge.
+#[derive(Clone, Copy, PartialEq)]
+enum Pxl {
+    Empty,
+    Filled,
+    Dim,
+}
+
+#[allow(clippy::needless_range_loop)]
 fn ring(pct: f64, label: &str, value: &str, col: Color, theme: &Theme) -> Vec<Line<'static>> {
     let sweep = (pct.clamp(0.0, 100.0) / 100.0) * SWEEP;
+
+    let h_px = H * 2;
+    let mut pixels = vec![vec![Pxl::Empty; W]; h_px];
+
+    for py in 0..h_px {
+        for px in 0..W {
+            let dx = (px as f64 - W as f64 / 2.0 + 0.5) / (W as f64 / 2.0);
+            let dy = (py as f64 - h_px as f64 / 2.0 + 0.5) / (h_px as f64 / 2.0);
+            let r = (dx * dx + dy * dy).sqrt();
+
+            if !(INNER..=1.02).contains(&r) {
+                continue;
+            }
+
+            let ang = (dy.atan2(dx) * 180.0 / PI - 135.0).rem_euclid(360.0);
+            if ang > SWEEP {
+                pixels[py][px] = Pxl::Empty;
+            } else if ang <= sweep {
+                pixels[py][px] = Pxl::Filled;
+            } else {
+                pixels[py][px] = Pxl::Dim;
+            }
+        }
+    }
 
     let mut rows: Vec<Line<'static>> = Vec::with_capacity(H);
     for cy in 0..H {
         let mut spans: Vec<Span<'static>> = Vec::with_capacity(W);
         for cx in 0..W {
-            // Normalise the cell centre into a unit circle.
-            let dx = (cx as f64 - W as f64 / 2.0 + 0.5) / (W as f64 / 2.0);
-            let dy = (cy as f64 - H as f64 / 2.0 + 0.5) / (H as f64 / 2.0);
-            let r = (dx * dx + dy * dy).sqrt();
+            let top = pixels[cy * 2][cx];
+            let bot = pixels[cy * 2 + 1][cx];
 
-            if !(INNER..=1.02).contains(&r) {
-                spans.push(Span::raw(" "));
-                continue;
-            }
-
-            // Screen y grows downward, so increasing atan2 runs clockwise.
-            // Offset by 135 deg to start the arc at the bottom-left.
-            let ang = (dy.atan2(dx) * 180.0 / PI - 135.0).rem_euclid(360.0);
-            if ang > SWEEP {
-                // Bottom gap — outside the gauge range entirely.
-                spans.push(Span::raw(" "));
-            } else if ang <= sweep {
-                spans.push(Span::styled("█", Style::default().fg(col)));
-            } else {
-                spans.push(Span::styled("█", Style::default().fg(theme.surface)));
-            }
+            let span = match (top, bot) {
+                (Pxl::Empty, Pxl::Empty) => Span::raw(" "),
+                (Pxl::Filled, Pxl::Filled) => Span::styled("█", Style::default().fg(col)),
+                (Pxl::Dim, Pxl::Dim) => Span::styled("█", Style::default().fg(theme.surface)),
+                (Pxl::Filled, Pxl::Empty) => Span::styled("▀", Style::default().fg(col)),
+                (Pxl::Empty, Pxl::Filled) => Span::styled("▄", Style::default().fg(col)),
+                (Pxl::Dim, Pxl::Empty) => Span::styled("▀", Style::default().fg(theme.surface)),
+                (Pxl::Empty, Pxl::Dim) => Span::styled("▄", Style::default().fg(theme.surface)),
+                (Pxl::Filled, Pxl::Dim) => Span::styled("▀", Style::default().fg(col).bg(theme.surface)),
+                (Pxl::Dim, Pxl::Filled) => Span::styled("▄", Style::default().fg(col).bg(theme.surface)),
+            };
+            spans.push(span);
         }
         rows.push(Line::from(spans));
     }

@@ -30,9 +30,6 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
     let cell_w = area.width as usize / per_row;
     let bar_w = cell_w.saturating_sub(10).max(4);
 
-    // Eighth-block ramp gives sub-cell resolution on short bars.
-    const BLOCKS: [&str; 9] = [" ", "▏", "▎", "▍", "▌", "▋", "▊", "▉", "█"];
-
     let mut lines: Vec<Line> = Vec::with_capacity(rows);
     for r in 0..rows {
         let mut spans: Vec<Span> = Vec::new();
@@ -49,18 +46,17 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
                 theme.accent
             };
 
-            let levels = bar_w * 8;
-            let filled = ((usage / 100.0).clamp(0.0, 1.0) * levels as f32).round() as usize;
-            let mut bar = String::with_capacity(bar_w * 3);
-            for i in 0..bar_w {
-                bar.push_str(BLOCKS[filled.saturating_sub(i * 8).min(8)]);
-            }
+            let filled = ((usage / 100.0).clamp(0.0, 1.0) * bar_w as f32).round() as usize;
 
             spans.push(Span::styled(
-                format!("c{:<2}", idx),
+                format!("c{:<2} ", idx),
                 Style::default().fg(theme.dim),
             ));
-            spans.push(Span::styled(bar, Style::default().fg(col)));
+            spans.push(Span::styled("■".repeat(filled), Style::default().fg(col)));
+            spans.push(Span::styled(
+                "·".repeat(bar_w.saturating_sub(filled)),
+                Style::default().fg(theme.surface),
+            ));
             spans.push(Span::styled(
                 format!("{:>4.0}% ", usage),
                 Style::default().fg(col).add_modifier(Modifier::BOLD),
