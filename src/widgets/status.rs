@@ -210,6 +210,29 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
         ]));
     }
 
+    let core_temps = crate::monitors::cpu::read_core_temps();
+    if !core_temps.is_empty() {
+        let max = core_temps.iter().copied().fold(0.0f64, f64::max);
+        let col = if max > 90.0 {
+            theme.red
+        } else if max > 75.0 {
+            theme.yellow
+        } else {
+            theme.text
+        };
+        let limit = if area.width > 35 { 8 } else { 4 };
+        let mut t_str = core_temps
+            .iter()
+            .take(limit)
+            .map(|t| format!("{:.0}°", t))
+            .collect::<Vec<_>>()
+            .join(" ");
+        if core_temps.len() > limit {
+            t_str.push_str(" ...");
+        }
+        lines.push(Line::from(vec![key("TEMPS"), val(t_str, col)]));
+    }
+
     if lines.is_empty() {
         return;
     }

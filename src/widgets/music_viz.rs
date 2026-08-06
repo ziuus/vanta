@@ -28,13 +28,7 @@ pub fn cycle_style() {
     VIZ_STYLE.fetch_add(1, Ordering::Relaxed);
 }
 
-fn style_name(s: usize) -> &'static str {
-    match s % STYLE_COUNT {
-        0 => "bars",
-        1 => "mirror",
-        _ => "wave",
-    }
-}
+
 
 fn ensure_cava() {
     if CAVA_RUNNING.load(Ordering::Relaxed) {
@@ -293,30 +287,13 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme, _tick: u64) {
     let bg = Style::default().bg(theme.surface);
     let dim = is_silent;
 
-    let mut lines = match style {
+    let lines = match style {
         1 => draw_mirror(&heights, norm_peak, term_cols, term_rows, theme, dim),
         2 => draw_wave(&heights, norm_peak, term_cols, term_rows, theme, dim),
         _ => draw_bars(&heights, norm_peak, term_cols, term_rows, theme, dim),
     };
 
-    // Style indicator in the top-left corner (feedback for the `v` toggle).
-    if let Some(first) = lines.first_mut() {
-        let tag = format!(" {} ", style_name(style));
-        let tag_len = tag.chars().count();
-        if term_cols > tag_len {
-            let mut spans = vec![Span::styled(tag, Style::default().fg(theme.dim))];
-            // Keep the rest of the row that the draw fn produced, minus the width we overwrote.
-            let rest: String = first
-                .spans
-                .iter()
-                .flat_map(|s| s.content.chars())
-                .skip(tag_len)
-                .collect();
-            spans.push(Span::styled(rest, Style::default().fg(theme.surface)));
-            *first = Line::from(spans);
-        }
-    }
-
+    // No text label needed; the visual change when pressing 'v' is obvious enough.
     f.render_widget(Paragraph::new(lines).style(bg), area);
 }
 

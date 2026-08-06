@@ -121,10 +121,10 @@ pub fn render(
 
     // ── STATUS | STORAGE | VISUALIZER ──
     let row2 = Layout::horizontal([
-        Constraint::Ratio(1, 5),
-        Constraint::Ratio(1, 5),
-        Constraint::Ratio(1, 5),
-        Constraint::Ratio(2, 5),
+        Constraint::Ratio(3, 16),
+        Constraint::Ratio(3, 16),
+        Constraint::Ratio(4, 16),
+        Constraint::Ratio(6, 16),
     ])
     .spacing(1)
     .split(rows[2]);

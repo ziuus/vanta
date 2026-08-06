@@ -81,8 +81,8 @@ fn generate_ascii_art(width: u16, height: u16, image_path: &str) -> Vec<Line<'st
         }
     };
 
-    // Braille at 2x4 subpixels per cell — 8x the detail of a char ramp.
-    let art = super::braille_image::render_image(&img, width.max(1), height.max(1));
+    // Half-blocks at 1x2 subpixels per cell — denser and more solid.
+    let art = super::half_block_image::render_image(&img, width.max(1), height.max(1));
     if art.is_empty() {
         fallback_art()
     } else {

@@ -1,5 +1,6 @@
 pub mod block_graph;
 pub mod braille_image;
+pub mod half_block_image;
 pub mod calendar;
 pub mod clock;
 pub mod cmatrix;
