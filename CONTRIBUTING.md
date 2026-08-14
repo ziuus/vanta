@@ -1,61 +1,47 @@
-# Vanta – Contribution Guide
+# Contributing to ziuus Projects
+
+Thank you for your interest in contributing! We welcome contributions from the community.
+
+## Code of Conduct
+This project adheres to a code of conduct. Please be respectful and inclusive.
 
 ## Getting Started
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
+## Development Setup
 ```bash
-git clone https://github.com/ziuus/vanta
-cd vanta
-cargo run
+# Clone your fork
+git clone https://github.com/yourusername/project.git
+cd project
+
+# Install dependencies
+npm install
+
+# Run development server
+npm run dev
+
+# Run tests
+npm test
 ```
 
-Vanta requires Rust 1.96+.
+## Project-Specific Guidelines
+- See project README for specific requirements
+- Follow existing code style and conventions
+- Write tests for new features
+- Update documentation as needed
 
-## Codebase
+## Pull Request Guidelines
+- Ensure tests pass
+- Update documentation
+- Add comments for complex code
+- Reference related issues
 
-```
-src/
-├── main.rs          — entrypoint, terminal init, event loop
-├── app.rs           — Theme, App state, screen routing, render
-├── config.rs        — Config loading (TOML)
-├── screens/
-│   ├── mod.rs       — Screen enum
-│   ├── overview.rs  — system monitoring view
-│   └── widgets.rs   — flex/eye-candy view
-├── monitors/
-│   ├── mod.rs
-│   ├── cpu.rs       — CPU bars + per-core display
-│   └── memory.rs    — RAM + swap gauges
-└── widgets/
-    ├── mod.rs
-    ├── clock.rs     — date/time display
-    └── matrix.rs    — matrix rain animation
-```
+## Questions?
+Open an issue or contact the maintainers.
 
-## Controls
-
-| Key | Action |
-|-----|--------|
-| `1` | Overview (monitoring) |
-| `2` | Widgets (eye candy) |
-| `t` | Toggle theme |
-| `q` | Quit |
-
-## Adding a new widget
-
-1. Create `src/widgets/<name>.rs` with `pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme)`
-2. Add `pub mod <name>;` to `src/widgets/mod.rs`
-3. Render it from `src/screens/widgets.rs`
-
-## Stack
-
-- **Ratatui** 0.29 — TUI framework
-- **Crossterm** 0.28 — terminal backend
-- **sysinfo** 0.33 — system information
-- **chrono** — date/time
-- **rand** — random (matrix rain)
-
-## Code Style
-
-- `cargo fmt` before committing
-- `cargo clippy` — no warnings
-- Keep widget render functions stateless where possible
+## License
+By contributing, you agree that your contributions will be licensed under the MIT License.
