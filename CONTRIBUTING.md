@@ -1,47 +1,48 @@
-# Contributing to ziuus Projects
+# Contributing to vanta
 
-Thank you for your interest in contributing! We welcome contributions from the community.
+## Setup
 
-## Code of Conduct
-This project adheres to a code of conduct. Please be respectful and inclusive.
-
-## Getting Started
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## Development Setup
 ```bash
-# Clone your fork
-git clone https://github.com/yourusername/project.git
-cd project
+# libdbus is needed for MPRIS media control
+sudo pacman -S dbus            # Arch
+sudo apt install libdbus-1-dev # Debian/Ubuntu
 
-# Install dependencies
-npm install
-
-# Run development server
-npm run dev
-
-# Run tests
-npm test
+git clone https://github.com/ziuus/vanta && cd vanta
+cargo run --release
 ```
 
-## Project-Specific Guidelines
-- See project README for specific requirements
-- Follow existing code style and conventions
-- Write tests for new features
-- Update documentation as needed
+Optional runtime tools that light up extra panels: `cava` (visualizer),
+`nmcli` (wifi), `docker`, `checkupdates` (Arch), `nvidia-smi`.
 
-## Pull Request Guidelines
-- Ensure tests pass
-- Update documentation
-- Add comments for complex code
-- Reference related issues
+## Before opening a PR
 
-## Questions?
-Open an issue or contact the maintainers.
+CI runs exactly this; make it pass locally first:
 
-## License
-By contributing, you agree that your contributions will be licensed under the MIT License.
+```bash
+cargo fmt --all -- --check
+cargo clippy --all-targets -- -D warnings
+cargo test
+```
+
+## How the code is organised
+
+- `src/monitors/` — data collection. Each module owns a `static` snapshot and a
+  `sample()` that runs on the **sampler thread** (`monitors/mod.rs`). Never do
+  I/O in a `render()`; read the snapshot instead. Do the slow work *before*
+  taking the lock so the UI never waits on it.
+- `src/widgets/` — pure drawing helpers (clock glyphs, gauges, graphs, meters).
+- `src/screens/` — one file per page; `screens::panel()` is the shared chrome.
+- `src/app.rs` — state, key handling, title/status bars.
+- `src/theme.rs` — palettes. Add a theme by adding a constructor and its name
+  to `THEME_NAMES`.
+
+## Conventions
+
+- Panels must degrade, not overflow: check `area.width/height` and return
+  early or drop detail when tight. Test at 100×34 and 200×50 (`tmux -x -y`).
+- Truncate strings with `meter::ellipsize` (char-safe), never byte slicing.
+- Colours come from the theme (`theme.usage(pct)`, `theme.temp(c)`), not
+  literals.
+- Commit messages: imperative subject, body explains *why*.
+
+By contributing you agree your work is licensed under the MIT License.

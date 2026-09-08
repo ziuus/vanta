@@ -21,6 +21,8 @@ Vanta collapses everything you care about into one terminal pane: CPU, memory, d
 | `3` | **Aesthetic** | Huge clock, calendar, matrix rain, spinning donut, full-width visualizer |
 | `?` | **Help** | Keybind reference overlay |
 
+<img src="docs/aesthetic.png" alt="Aesthetic page" width="800" />
+
 ## Keys
 
 | Key | Action |
