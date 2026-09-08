@@ -3,6 +3,7 @@
   <p><strong>Your machine, one pane.</strong><br/>
   A fast, aesthetic terminal system dashboard in Rust.</p>
   <a href="https://website-pi-seven-nty4ogjp2f.vercel.app"><img src="https://img.shields.io/badge/Landing_Page-030712?style=for-the-badge&logo=vercel&logoColor=white" alt="Landing Page" /></a>
+  <a href="https://github.com/ziuus/vanta/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/ziuus/vanta/ci.yml?style=for-the-badge&label=CI" alt="CI" /></a>
   <a href="https://github.com/ziuus/vanta/releases"><img src="https://img.shields.io/github/v/release/ziuus/vanta?style=for-the-badge&color=4A9E8E" alt="Latest Release" /></a>
   <br /><br />
   <img src="docs/screenshot.png" alt="Vanta Dashboard" width="800" />

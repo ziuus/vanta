@@ -25,18 +25,23 @@ struct Facts {
 struct Cached {
     facts: Facts,
     stamp: Option<Instant>,
+    /// `checkupdates` syncs package databases over the network; poll it far
+    /// less often than the local facts.
+    updates_stamp: Option<Instant>,
 }
 
 static CACHE: LazyLock<Mutex<Cached>> = LazyLock::new(|| {
     Mutex::new(Cached {
         facts: Facts::default(),
         stamp: None,
+        updates_stamp: None,
     })
 });
 
 /// How long collected facts stay fresh. These change on the order of minutes,
 /// not frames.
 const TTL: Duration = Duration::from_secs(30);
+const UPDATES_TTL: Duration = Duration::from_secs(15 * 60);
 
 fn run(cmd: &str, args: &[&str]) -> Option<String> {
     let out = Command::new(cmd).args(args).output().ok()?;
@@ -108,17 +113,25 @@ fn read_docker() -> Option<(usize, usize)> {
 /// Refresh the slow facts if stale. Runs on the sampler thread; the shell-outs
 /// (`checkupdates` alone can take seconds) never touch the render loop.
 pub fn sample() {
-    let stale = CACHE
-        .lock()
-        .unwrap()
-        .stamp
-        .is_none_or(|t| t.elapsed() > TTL);
+    let (stale, updates_stale, prev_updates) = {
+        let c = CACHE.lock().unwrap();
+        (
+            c.stamp.is_none_or(|t| t.elapsed() > TTL),
+            c.updates_stamp.is_none_or(|t| t.elapsed() > UPDATES_TTL),
+            c.facts.updates,
+        )
+    };
     if !stale {
         return;
     }
+    let updates = if updates_stale {
+        count_updates()
+    } else {
+        prev_updates
+    };
     let fresh = Facts {
         packages: count_packages(),
-        updates: count_updates(),
+        updates,
         wifi: read_wifi(),
         ip: read_ip(),
         docker: read_docker(),
@@ -126,6 +139,9 @@ pub fn sample() {
     let mut c = CACHE.lock().unwrap();
     c.facts = fresh;
     c.stamp = Some(Instant::now());
+    if updates_stale {
+        c.updates_stamp = Some(Instant::now());
+    }
 }
 
 fn facts() -> Facts {
