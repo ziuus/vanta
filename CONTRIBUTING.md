@@ -73,10 +73,10 @@ Node shim plus `install.js`; the native binary is downloaded from the release on
 `postinstall`. Scoped packages default to restricted, so the publish needs
 `--access public`.
 
-The shim is installed under two names, `vanta` and `vtui`. Bin names are a
-separate namespace from package names, so the unrelated `vtui` package on the
-registry doesn't block us — but a user who installs both globally will have one
-symlink clobber the other.
+The shim installs one command, `vanta`. A `vtui` alias was tried and reverted:
+`vtui` is already an npm package and already a pip console script, and when a
+stale copy of either shadows ours the user gets someone else's traceback and
+files the bug against us. Bin names are cheap to add and expensive to collide.
 
 `npm/package.json`'s `prepack` script copies `README.md` and `LICENSE` into
 `npm/` and rewrites the screenshot paths to raw.githubusercontent URLs, so both
