@@ -59,3 +59,44 @@ pub fn ellipsize(s: &str, max: usize) -> String {
     out.push('…');
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bar_fills_with_eighth_resolution() {
+        assert_eq!(bar(0.0, 4), "    ");
+        assert_eq!(bar(1.0, 4), "████");
+        assert_eq!(bar(0.5, 4), "██  ");
+        assert_eq!(bar(0.5625, 4), "██▎ "); // 18/32 levels
+        assert_eq!(bar(0.625, 4), "██▌ ");
+        assert_eq!(bar(2.0, 2), "██"); // clamped
+        assert_eq!(bar(0.5, 0), "");
+    }
+
+    #[test]
+    fn track_splits_filled_and_empty() {
+        assert_eq!(track(0.25, 8), ("━━".into(), "──────".into()));
+        assert_eq!(track(1.5, 3), ("━━━".into(), "".into()));
+    }
+
+    #[test]
+    fn ellipsize_is_char_safe() {
+        assert_eq!(ellipsize("hello", 10), "hello");
+        assert_eq!(ellipsize("hello world", 6), "hello…");
+        assert_eq!(ellipsize("héllo wörld", 6), "héllo…");
+        assert_eq!(ellipsize("日本語のプロセス", 4), "日本語…");
+        assert_eq!(ellipsize("abc", 0), "");
+    }
+
+    #[test]
+    fn byte_and_rate_formatting() {
+        assert_eq!(fmt_bytes(512 * 1024), "512K");
+        assert_eq!(fmt_bytes(300 * 1_048_576), "300M");
+        assert_eq!(fmt_bytes(3 * 1_073_741_824 + 1_073_741_824 / 2), "3.5G");
+        assert_eq!(fmt_kbps(0.5), "512 B/s");
+        assert_eq!(fmt_kbps(42.4), "42 KB/s");
+        assert_eq!(fmt_kbps(2048.0), "2.0 MB/s");
+    }
+}

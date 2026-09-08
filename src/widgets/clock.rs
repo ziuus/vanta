@@ -164,3 +164,22 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
         );
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn glyph_widths_and_scale_selection() {
+        // 6 digits × 3 + 2 colons × 1 + 7 gaps = 27 cells at scale 1.
+        assert_eq!(text_width("12:34:56", 1), 27);
+        assert_eq!(text_width("12:34:56", 2), 54);
+        assert_eq!(pick_scale("12:34:56", 60, 5), Some((2, 1)));
+        assert_eq!(pick_scale("12:34:56", 120, 10), Some((4, 2)));
+        assert_eq!(pick_scale("12:34:56", 30, 5), Some((1, 1)));
+        assert_eq!(pick_scale("12:34:56", 20, 5), None);
+        for c in "0123456789:".chars() {
+            assert!(glyph(c).iter().all(|row| row.len() == glyph(c)[0].len()));
+        }
+    }
+}
