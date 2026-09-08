@@ -1,260 +1,292 @@
+use std::fs;
 use std::process::Command;
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::Style;
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
-use crate::app;
+use crate::monitors::history::History;
+use crate::theme::Theme;
+use crate::widgets::block_graph::BlockGraph;
+use crate::widgets::meter;
 
-#[derive(Clone, Copy)]
-struct GpuData {
-    util_pct: f64,
-    temp_c: f64,
-    mem_used_mb: f64,
-    mem_total_mb: f64,
+#[derive(Clone, Debug)]
+pub struct GpuData {
+    pub name: String,
+    pub util_pct: Option<f64>,
+    pub temp_c: Option<f64>,
+    pub mem_used_mb: Option<f64>,
+    pub mem_total_mb: Option<f64>,
+    pub freq_mhz: Option<u64>,
 }
 
-struct CachedGpu {
+struct Cache {
     data: Option<GpuData>,
-    timestamp: Instant,
+    stamp: Option<Instant>,
+    /// Set once nvidia-smi is known to be missing or failing, so we don't
+    /// keep forking it every second on machines without an NVIDIA card.
+    nvidia_dead: bool,
 }
 
-/// Rolling GPU utilisation history, so the panel gets a real graph like btop
-/// instead of a flat gauge. Fed from the same cached read.
-const HIST_LEN: usize = 240;
-static GPU_HISTORY: LazyLock<Mutex<([f64; HIST_LEN], usize)>> =
-    LazyLock::new(|| Mutex::new(([0.0; HIST_LEN], 0)));
-
-static GPU_CACHE: LazyLock<Mutex<CachedGpu>> = LazyLock::new(|| {
-    Mutex::new(CachedGpu {
+static CACHE: LazyLock<Mutex<Cache>> = LazyLock::new(|| {
+    Mutex::new(Cache {
         data: None,
-        timestamp: Instant::now() - Duration::from_secs(2), // start expired
+        stamp: None,
+        nvidia_dead: false,
     })
 });
+static HISTORY: LazyLock<Mutex<History<240>>> = LazyLock::new(|| Mutex::new(History::new()));
 
-fn read_gpu_raw() -> Option<GpuData> {
-    read_nvidia().or_else(read_amd).or_else(read_intel)
+const TTL: Duration = Duration::from_secs(1);
+
+pub fn snapshot() -> Option<GpuData> {
+    CACHE.lock().unwrap().data.clone()
+}
+
+/// Utilisation for the header summary; None when the GPU has no telemetry.
+pub fn util_pct() -> Option<f64> {
+    snapshot().and_then(|g| g.util_pct)
+}
+
+/// Refresh at most once per second — nvidia-smi is a subprocess.
+pub fn sample() {
+    let mut c = CACHE.lock().unwrap();
+    if c.stamp.is_some_and(|t| t.elapsed() < TTL) {
+        return;
+    }
+    let data = if c.nvidia_dead {
+        None
+    } else {
+        let d = read_nvidia();
+        if d.is_none() {
+            c.nvidia_dead = true;
+        }
+        d
+    };
+    let data = data.or_else(read_amd).or_else(read_intel);
+    if let Some(u) = data.as_ref().and_then(|d| d.util_pct) {
+        HISTORY.lock().unwrap().push(u);
+    }
+    c.data = data;
+    c.stamp = Some(Instant::now());
 }
 
 fn read_nvidia() -> Option<GpuData> {
     let out = Command::new("nvidia-smi")
         .args([
-            "--query-gpu=utilization.gpu,temperature.gpu,memory.used,memory.total",
+            "--query-gpu=name,utilization.gpu,temperature.gpu,memory.used,memory.total,clocks.sm",
             "--format=csv,noheader,nounits",
         ])
         .output()
         .ok()?;
-    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    let parts: Vec<f64> = s.split(',').filter_map(|x| x.trim().parse().ok()).collect();
-    if parts.len() == 4 {
-        Some(GpuData {
-            util_pct: parts[0],
-            temp_c: parts[1],
-            mem_used_mb: parts[2],
-            mem_total_mb: parts[3],
-        })
-    } else {
-        None
+    if !out.status.success() {
+        return None;
     }
+    let s = String::from_utf8_lossy(&out.stdout);
+    let line = s.lines().next()?;
+    let parts: Vec<&str> = line.split(',').map(str::trim).collect();
+    if parts.len() < 6 {
+        return None;
+    }
+    let num = |i: usize| parts[i].parse::<f64>().ok();
+    Some(GpuData {
+        name: short_name(parts[0]),
+        util_pct: num(1),
+        temp_c: num(2),
+        mem_used_mb: num(3),
+        mem_total_mb: num(4),
+        freq_mhz: num(5).map(|v| v as u64),
+    })
+}
+
+fn drm_cards() -> Vec<std::path::PathBuf> {
+    let Ok(drm) = fs::read_dir("/sys/class/drm") else {
+        return Vec::new();
+    };
+    let mut cards: Vec<_> = drm
+        .flatten()
+        .filter(|e| {
+            let n = e.file_name().to_string_lossy().to_string();
+            n.starts_with("card") && !n.contains('-')
+        })
+        .map(|e| e.path())
+        .collect();
+    cards.sort();
+    cards
+}
+
+fn read_u64(p: std::path::PathBuf) -> Option<u64> {
+    fs::read_to_string(p).ok()?.trim().parse().ok()
 }
 
 fn read_amd() -> Option<GpuData> {
-    use std::fs;
-    // AMD exposes GPU busy % via sysfs
-    let drm = fs::read_dir("/sys/class/drm").ok()?;
-    for entry in drm.flatten() {
-        let name = entry.file_name().to_string_lossy().to_string();
-        if !name.starts_with("card") || name.contains('-') {
+    for card in drm_cards() {
+        let dev = card.join("device");
+        let Some(util) = read_u64(dev.join("gpu_busy_percent")) else {
             continue;
-        }
-        let dev = entry.path().join("device");
-        let util_path = dev.join("gpu_busy_percent");
-        let util_pct = fs::read_to_string(&util_path)
+        };
+        let temp_c = fs::read_dir(dev.join("hwmon")).ok().and_then(|d| {
+            d.flatten()
+                .find_map(|h| read_u64(h.path().join("temp1_input")))
+                .map(|t| t as f64 / 1000.0)
+        });
+        let mem_used = read_u64(dev.join("mem_info_vram_used")).map(|b| b as f64 / 1_048_576.0);
+        let mem_total = read_u64(dev.join("mem_info_vram_total")).map(|b| b as f64 / 1_048_576.0);
+        let freq = fs::read_to_string(dev.join("pp_dpm_sclk"))
             .ok()
-            .and_then(|s| s.trim().parse::<f64>().ok())?;
-
-        // Temp from hwmon
-        let temp_c = fs::read_dir(dev.join("hwmon"))
-            .ok()?
-            .flatten()
-            .find_map(|hwmon_entry| {
-                fs::read_to_string(hwmon_entry.path().join("temp1_input"))
-                    .ok()
-                    .and_then(|s| s.trim().parse::<f64>().ok())
-                    .map(|t| t / 1000.0) // millidegrees -> degrees
-            })
-            .unwrap_or(0.0);
-
-        // AMD doesn't expose VRAM via sysfs reliably, approximate or leave 0
+            .and_then(|s| {
+                s.lines()
+                    .find(|l| l.ends_with('*'))
+                    .and_then(|l| l.split_whitespace().nth(1))
+                    .and_then(|v| v.trim_end_matches("Mhz").parse().ok())
+            });
         return Some(GpuData {
-            util_pct,
+            name: "AMD Radeon".to_string(),
+            util_pct: Some(util as f64),
             temp_c,
-            mem_used_mb: 0.0,
-            mem_total_mb: 0.0,
+            mem_used_mb: mem_used,
+            mem_total_mb: mem_total,
+            freq_mhz: freq,
         });
     }
     None
 }
 
 fn read_intel() -> Option<GpuData> {
-    use std::fs;
-    // Intel integrated GPUs expose utilization via /sys/class/drm/card*/gt/gt0/rps_cur_freq_mhz
-    // and other metrics, but it's less standardized. Best-effort.
-    let drm = fs::read_dir("/sys/class/drm").ok()?;
-    for entry in drm.flatten() {
-        let name = entry.file_name().to_string_lossy().to_string();
-        if !name.starts_with("card") || name.contains('-') {
+    for card in drm_cards() {
+        let dev = card.join("device");
+        let vendor = fs::read_to_string(dev.join("vendor")).ok()?;
+        if vendor.trim() != "0x8086" {
             continue;
         }
-        let dev = entry.path().join("device");
-        // Intel doesn't expose a direct busy_percent like AMD; skip or return minimal
-        // Just check if it's an Intel GPU and return 0s as fallback
-        if dev.join("vendor").exists() {
-            if let Ok(vendor) = fs::read_to_string(dev.join("vendor")) {
-                if vendor.trim() == "0x8086" {
-                    // It's Intel, but no easy util read
-                    return Some(GpuData {
-                        util_pct: 0.0,
-                        temp_c: 0.0,
-                        mem_used_mb: 0.0,
-                        mem_total_mb: 0.0,
-                    });
-                }
-            }
-        }
+        // i915 exposes the current GT clock; there is no busy% without
+        // perf counters, so utilisation stays None and the panel says so.
+        let freq = read_u64(card.join("gt/gt0/rps_cur_freq_mhz"))
+            .or_else(|| read_u64(card.join("gt_cur_freq_mhz")));
+        return Some(GpuData {
+            name: "Intel iGPU".to_string(),
+            util_pct: None,
+            temp_c: None,
+            mem_used_mb: None,
+            mem_total_mb: None,
+            freq_mhz: freq,
+        });
     }
     None
 }
 
-/// Cached GPU read. The render loop runs at ~125fps but `nvidia-smi` is a
-/// subprocess spawn — without this cache it forks 125×/sec. Refresh at most
-/// once per second; every other caller gets the cached value.
-fn read_gpu() -> Option<GpuData> {
-    let mut cache = GPU_CACHE.lock().unwrap();
-    if cache_is_stale(cache.timestamp, Duration::from_secs(1)) {
-        cache.data = read_gpu_raw();
-        cache.timestamp = Instant::now();
+fn short_name(model: &str) -> String {
+    model
+        .replace("NVIDIA GeForce ", "")
+        .replace("NVIDIA ", "")
+        .replace("AMD Radeon ", "")
+        .replace("Intel Corporation ", "")
+        .replace(" Graphics", "")
+        .trim()
+        .to_string()
+}
+
+/// Human-readable GPU name for the system panel; empty when none is detected.
+pub fn name() -> String {
+    snapshot().map(|g| g.name).unwrap_or_default()
+}
+
+fn centered_note(f: &mut Frame, area: Rect, text: &str, theme: &Theme) {
+    let y = area.y + area.height.saturating_sub(1) / 2;
+    f.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            text,
+            Style::default().fg(theme.dim),
+        )))
+        .alignment(ratatui::layout::Alignment::Center),
+        Rect::new(area.x, y, area.width, 1),
+    );
+}
+
+pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
+    if area.height < 1 {
+        return;
     }
-    cache.data
-}
-
-/// True when a cached value older than `ttl` should be refreshed.
-fn cache_is_stale(timestamp: Instant, ttl: Duration) -> bool {
-    timestamp.elapsed() >= ttl
-}
-
-/// GPU utilization % for the top-bar Summary — reuses the same 1s cache as the
-/// GPU widget, so there's only ever one `nvidia-smi` spawn per second total.
-pub fn util_pct() -> u64 {
-    read_gpu().map(|g| g.util_pct as u64).unwrap_or(0)
-}
-
-pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
-    let gpu_data = read_gpu();
-
-    let gpu = match gpu_data {
-        Some(g) => g,
-        None => {
-            f.render_widget(
-                Paragraph::new(Line::from(Span::styled(
-                    " GPU n/a",
-                    Style::default().fg(theme.dim),
-                ))),
-                area,
-            );
-            return;
-        }
+    let Some(gpu) = snapshot() else {
+        centered_note(f, area, "no GPU detected", theme);
+        return;
     };
 
-    // Record utilisation for the history graph.
-    {
-        let mut h = GPU_HISTORY.lock().unwrap();
-        let idx = h.1;
-        h.0[idx] = gpu.util_pct;
-        h.1 = (idx + 1) % HIST_LEN;
-    }
-
-    let util_color = if gpu.util_pct > 95.0 {
-        theme.red
-    } else if gpu.util_pct > 80.0 {
-        theme.yellow
-    } else {
-        theme.accent
+    let Some(util) = gpu.util_pct else {
+        let freq = gpu
+            .freq_mhz
+            .map(|m| format!(" · {} MHz", m))
+            .unwrap_or_default();
+        centered_note(
+            f,
+            area,
+            &format!("{}{} · no utilisation telemetry", gpu.name, freq),
+            theme,
+        );
+        return;
     };
 
+    let has_vram = gpu.mem_total_mb.is_some_and(|t| t > 0.0);
     let chunks = Layout::vertical([
-        Constraint::Length(1), // info line
-        Constraint::Min(1),    // util history graph
-        Constraint::Length(1), // VRAM bar
+        Constraint::Length(1),
+        Constraint::Min(1),
+        Constraint::Length(if has_vram { 1 } else { 0 }),
     ])
     .split(area);
 
-    let mem_pct = if gpu.mem_total_mb > 0.0 {
-        gpu.mem_used_mb / gpu.mem_total_mb * 100.0
-    } else {
-        0.0
-    };
-
-    f.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled(
-                format!("{:>3.0}% ", gpu.util_pct),
-                Style::default()
-                    .fg(util_color)
-                    .add_modifier(ratatui::style::Modifier::BOLD),
-            ),
-            Span::styled(
-                format!("{}\u{00b0}C  ", gpu.temp_c as u64),
-                Style::default().fg(theme.dim),
-            ),
-            Span::styled(
-                format!("VRAM {:.0}/{:.0} MiB", gpu.mem_used_mb, gpu.mem_total_mb),
-                Style::default().fg(theme.text),
-            ),
-        ])),
-        chunks[0],
-    );
-
-    if chunks[1].height > 0 {
-        let want = (chunks[1].width as usize * 2).min(HIST_LEN);
-        let series: Vec<f64> = {
-            let h = GPU_HISTORY.lock().unwrap();
-            let idx = h.1;
-            (0..want)
-                .map(|i| h.0[(idx + HIST_LEN - 1 - i) % HIST_LEN])
-                .rev()
-                .collect()
-        };
-        let graph = crate::widgets::block_graph::BlockGraph::new(&series)
-            .min(0.0)
-            .max(100.0)
-            .colors(theme.green, theme.yellow, theme.red);
-        f.render_widget(graph, chunks[1]);
+    let mut head = vec![
+        Span::styled(
+            format!("{:>3.0}%", util),
+            Style::default()
+                .fg(theme.usage(util))
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(format!("  {}", gpu.name), Style::default().fg(theme.text)),
+    ];
+    if let Some(t) = gpu.temp_c {
+        head.push(Span::styled(
+            format!("  {:.0}°C", t),
+            Style::default().fg(theme.temp(t)),
+        ));
     }
+    if let Some(m) = gpu.freq_mhz {
+        head.push(Span::styled(
+            format!("  {} MHz", m),
+            Style::default().fg(theme.dim),
+        ));
+    }
+    f.render_widget(Paragraph::new(Line::from(head)), chunks[0]);
 
-    // VRAM as a compact block meter on the last row.
-    let bar_w = chunks[2].width.saturating_sub(16) as usize;
-    let filled = ((mem_pct / 100.0).clamp(0.0, 1.0) * bar_w as f64).round() as usize;
+    let hist = HISTORY.lock().unwrap().recent(chunks[1].width as usize);
     f.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled("VRAM ", Style::default().fg(theme.dim)),
-            Span::styled(
-                "\u{25a0}".repeat(filled),
-                Style::default().fg(theme.secondary),
-            ),
-            Span::styled(
-                "\u{25a0}".repeat(bar_w.saturating_sub(filled)),
-                Style::default().fg(theme.surface),
-            ),
-            Span::styled(
-                format!(" {:>3.0}%", mem_pct),
-                Style::default().fg(theme.secondary),
-            ),
-        ])),
-        chunks[2],
+        BlockGraph::new(&hist)
+            .max(100.0)
+            .colors(theme.accent, theme.yellow, theme.red),
+        chunks[1],
     );
+
+    if has_vram {
+        let used = gpu.mem_used_mb.unwrap_or(0.0);
+        let total = gpu.mem_total_mb.unwrap_or(1.0);
+        let pct = used / total * 100.0;
+        let stats = format!("{:.0}/{:.0} MiB", used, total);
+        let pct_s = format!("{:>3.0}%", pct);
+        let bar_w =
+            (chunks[2].width as usize).saturating_sub(5 + stats.len() + 2 + pct_s.len() + 1);
+        let (on, off) = meter::track(pct / 100.0, bar_w);
+        f.render_widget(
+            Paragraph::new(Line::from(vec![
+                Span::styled("VRAM ", Style::default().fg(theme.dim)),
+                Span::styled(format!("{}  ", stats), Style::default().fg(theme.text)),
+                Span::styled(on, Style::default().fg(theme.secondary)),
+                Span::styled(off, Style::default().fg(theme.surface)),
+                Span::styled(format!(" {}", pct_s), Style::default().fg(theme.secondary)),
+            ])),
+            chunks[2],
+        );
+    }
 }

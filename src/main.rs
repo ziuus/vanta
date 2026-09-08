@@ -1,143 +1,105 @@
 mod app;
 mod config;
-mod layout;
 mod mode;
 mod monitors;
 mod screens;
+mod theme;
 mod widgets;
 
-use std::io::{self, IsTerminal};
+use std::io::{self, IsTerminal, Write};
+use std::time::{Duration, Instant};
 
-use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind},
-    execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+use crossterm::event::{self, Event, KeyEventKind};
+use crossterm::execute;
+use crossterm::terminal::{
+    disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
-use ratatui::{backend::CrosstermBackend, Terminal};
+use ratatui::backend::CrosstermBackend;
+use ratatui::Terminal;
 
 use crate::app::App;
 use crate::config::Config;
 
-pub fn run() -> io::Result<()> {
-    // Guard: crossterm raw mode needs a real TTY
-    if !std::io::stdin().is_terminal() {
-        eprintln!("error: vanta requires a terminal. Run it from your terminal emulator, not from a non-TTY context.");
+fn restore_terminal() {
+    let _ = disable_raw_mode();
+    let _ = execute!(io::stdout(), LeaveAlternateScreen, crossterm::cursor::Show);
+    let _ = io::stdout().flush();
+}
+
+fn print_help() {
+    println!(
+        "vanta {} — aesthetic terminal system dashboard\n\n\
+         usage: vanta [--version] [--help]\n\n\
+         config: {}\n\
+         keys:   1/2/3 pages · ? help · T theme · v visualizer · q quit",
+        env!("CARGO_PKG_VERSION"),
+        config::config_path()
+    );
+}
+
+fn main() -> io::Result<()> {
+    let mut args = std::env::args().skip(1);
+    if let Some(a) = args.next() {
+        match a.as_str() {
+            "-V" | "--version" => println!("vanta {}", env!("CARGO_PKG_VERSION")),
+            _ => print_help(),
+        }
+        return Ok(());
+    }
+
+    if !io::stdout().is_terminal() {
+        eprintln!("error: vanta needs a terminal (stdout is not a tty)");
         std::process::exit(1);
     }
 
     let config = Config::load();
 
+    // Restore the terminal on panic so a bug never leaves the shell in raw mode.
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        restore_terminal();
+        default_hook(info);
+    }));
+
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
+    execute!(stdout, EnterAlternateScreen)?;
+    let mut terminal = Terminal::new(CrosstermBackend::new(stdout))?;
+    terminal.clear()?;
 
     let mut app = App::new(config);
-    let res = run_app(&mut terminal, &mut app);
+    let res = run(&mut terminal, &mut app);
 
-    disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    )?;
-    terminal.show_cursor()?;
-
+    widgets::music_viz::shutdown();
+    restore_terminal();
     res
 }
 
-fn run_app<B: ratatui::backend::Backend>(
-    terminal: &mut Terminal<B>,
-    app: &mut App,
-) -> io::Result<()> {
-    let mut tick_rate = std::time::Duration::from_secs_f64(app.config.ui.refresh_rate);
-    let render_rate = std::time::Duration::from_millis(8); // ~120 FPS for buttery smooth visualizer
-    let mut last_tick = std::time::Instant::now();
-    let mut last_render = std::time::Instant::now();
+fn run<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<()> {
+    let mut frame_time = Duration::from_secs_f64(1.0 / app.config.ui.fps as f64);
+    let mut last_frame = Instant::now();
 
+    terminal.draw(|f| app.render(f))?;
     while app.running {
-        let now = std::time::Instant::now();
-        if now.duration_since(last_render) >= render_rate {
-            terminal.draw(|f| app.render(f))?;
-            last_render = std::time::Instant::now();
-        }
-
-        let time_to_tick = tick_rate.saturating_sub(last_tick.elapsed());
-        let time_to_render = render_rate.saturating_sub(last_render.elapsed());
-        let timeout = time_to_tick.min(time_to_render);
-
+        // Coalesce all pending input, then draw once.
+        let timeout = frame_time.saturating_sub(last_frame.elapsed());
         if event::poll(timeout)? {
-            if let Event::Key(key) = event::read()? {
-                if key.kind == KeyEventKind::Press {
-                    match key.code {
-                        // Global keys
-                        KeyCode::Char('q') | KeyCode::Char('Q') => app.running = false,
-                        KeyCode::Char('T') => app.toggle_theme(),
-                        KeyCode::Char('v') | KeyCode::Char('V') => {
-                            widgets::music_viz::cycle_style();
-                        }
-                        KeyCode::Char('?') => app.toggle_help(),
-                        // Page switches (must be BEFORE panel-focused handler to avoid capture)
-                        KeyCode::Char('1') => {
-                            app.set_mode(mode::DashboardMode::Dashboard);
-                        }
-                        KeyCode::Char('2') => {
-                            app.set_mode(mode::DashboardMode::Monitor);
-                        }
-                        KeyCode::Char('3') => {
-                            app.set_mode(mode::DashboardMode::Aesthetic);
-                        }
-                        KeyCode::Esc => {
-                            if app.show_help {
-                                app.show_help = false;
-                            } else if app.panel_states.process_search_active {
-                                app.panel_states.process_search_active = false;
-                                app.panel_states.process_search.clear();
-                            } else {
-                                app.focused_panel = None;
-                            }
-                        }
-                        KeyCode::Tab => app.cycle_focus(true),
-                        KeyCode::BackTab => app.cycle_focus(false),
-
-                        // When a panel is focused, dispatch key to panel handlers
-                        _ if app.focused_panel.is_some() => {
-                            app.handle_panel_nav(key.code);
-                        }
-
-                        // No focus — arrow keys auto-focus first panel
-                        KeyCode::Up
-                        | KeyCode::Down
-                        | KeyCode::Left
-                        | KeyCode::Right
-                        | KeyCode::Home
-                        | KeyCode::PageUp
-                        | KeyCode::PageDown => {
-                            app.focused_panel = app::PanelId::all(&app.config).first().copied();
-                            app.handle_panel_nav(key.code);
-                        }
-
-                        // Enter on any focused panel
-                        KeyCode::Enter if app.focused_panel == Some(app::PanelId::Calendar) => {
-                            app.panel_states.calendar_month_offset = 0;
-                        }
-
-                        _ => {}
-                    }
+            loop {
+                match event::read()? {
+                    Event::Key(key) if key.kind == KeyEventKind::Press => app.handle_key(key),
+                    Event::Resize(_, _) => {}
+                    _ => {}
+                }
+                if !event::poll(Duration::ZERO)? {
+                    break;
                 }
             }
         }
-
-        if last_tick.elapsed() >= tick_rate {
-            tick_rate = std::time::Duration::from_secs_f64(app.config.ui.refresh_rate);
-            app.tick();
-            last_tick = std::time::Instant::now();
+        if last_frame.elapsed() >= frame_time || !app.running {
+            terminal.draw(|f| app.render(f))?;
+            last_frame = Instant::now();
+            frame_time = Duration::from_secs_f64(1.0 / app.config.ui.fps as f64);
         }
     }
     Ok(())
-}
-
-fn main() -> io::Result<()> {
-    run()
 }

@@ -125,7 +125,6 @@ pub fn render_image(img: &image::DynamicImage, w: u16, h: u16) -> Vec<Line<'stat
 }
 
 /// Load an image from disk and render it as braille. `None` if it can't be read.
-#[allow(dead_code)] // used by media album art (phase 4)
 pub fn render_path(path: &str, w: u16, h: u16) -> Option<Vec<Line<'static>>> {
     let img = image::open(path).ok()?;
     let out = render_image(&img, w, h);

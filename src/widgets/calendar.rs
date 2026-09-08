@@ -6,11 +6,11 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
-use crate::app;
+use crate::theme::Theme;
 
 /// lvsk-style month calendar: ISO week numbers down the left, weekday header,
 /// today marked with a diamond. `month_offset` steps months via Left/Right.
-pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme, month_offset: i32) {
+pub fn render(f: &mut Frame, area: Rect, theme: &Theme, month_offset: i32) {
     let now = Local::now();
 
     let total_months = now.year() * 12 + now.month() as i32 - 1 + month_offset;

@@ -4,6 +4,9 @@
 *.swo
 *~
 .DS_Store
+.claude/
 .hermes/
-docs/HERMES_*
-docs/PRODUCTION_*
+.mimocode/
+graphify-out/
+website/.vercel/
+website/node_modules/

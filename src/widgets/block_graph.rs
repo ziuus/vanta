@@ -33,11 +33,6 @@ impl<'a> BlockGraph<'a> {
         }
     }
 
-    pub fn min(mut self, min: f64) -> Self {
-        self.min = min;
-        self
-    }
-
     pub fn max(mut self, max: f64) -> Self {
         self.max = max;
         self

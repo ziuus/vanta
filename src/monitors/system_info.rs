@@ -1,10 +1,68 @@
-use ratatui::layout::Rect;
-use ratatui::style::Style;
+use std::fs;
+use std::sync::LazyLock;
+
+use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
-use crate::app;
+use crate::monitors::{gpu, Summary};
+use crate::theme::Theme;
+use crate::widgets::meter;
+
+/// Facts that never change for the lifetime of the process.
+pub struct Facts {
+    pub os: String,
+    pub os_id: String,
+    pub host: String,
+    pub kernel: String,
+    pub shell: String,
+    pub cpu: String,
+    pub threads: usize,
+    pub term: String,
+}
+
+pub static FACTS: LazyLock<Facts> = LazyLock::new(|| {
+    let os_release = fs::read_to_string("/etc/os-release").unwrap_or_default();
+    let field = |key: &str| -> Option<String> {
+        os_release.lines().find_map(|l| {
+            l.strip_prefix(key)
+                .and_then(|v| v.strip_prefix('='))
+                .map(|v| v.trim_matches('"').to_string())
+        })
+    };
+    let cpu = fs::read_to_string("/proc/cpuinfo")
+        .ok()
+        .and_then(|c| {
+            c.lines()
+                .find(|l| l.starts_with("model name"))
+                .and_then(|l| l.split_once(':'))
+                .map(|(_, v)| short_cpu(v.trim()))
+        })
+        .unwrap_or_default();
+    Facts {
+        os: field("PRETTY_NAME").unwrap_or_else(|| "Linux".into()),
+        os_id: field("ID").unwrap_or_default().to_lowercase(),
+        host: fs::read_to_string("/etc/hostname")
+            .map(|s| s.trim().to_string())
+            .unwrap_or_else(|_| "?".into()),
+        kernel: fs::read_to_string("/proc/sys/kernel/osrelease")
+            .map(|s| s.trim().to_string())
+            .unwrap_or_default(),
+        shell: std::env::var("SHELL")
+            .ok()
+            .and_then(|s| s.rsplit('/').next().map(str::to_string))
+            .unwrap_or_default(),
+        cpu,
+        threads: std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(1),
+        term: std::env::var("TERM_PROGRAM")
+            .or_else(|_| std::env::var("TERM"))
+            .unwrap_or_default(),
+    }
+});
 
 fn short_cpu(model: &str) -> String {
     let mut s = model
@@ -12,275 +70,230 @@ fn short_cpu(model: &str) -> String {
         .replace("(TM)", "")
         .replace(" CPU", "")
         .replace("Intel Core ", "")
-        .replace("AMD ", "");
+        .replace("AMD ", "")
+        .replace(" Processor", "")
+        .replace("-Core", "c");
     if let Some(idx) = s.find(" @ ") {
         s.truncate(idx);
     }
-    s.trim().to_string()
+    s.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-fn short_gpu(model: &str) -> String {
-    model
-        .replace("NVIDIA GeForce ", "")
-        .replace("AMD Radeon ", "")
-        .replace("Intel Corporation ", "")
-        .replace(" Graphics", "")
-        .trim()
-        .to_string()
-}
-
-pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
-    let os = std::fs::read_to_string("/etc/os-release")
-        .ok()
-        .and_then(|c| {
-            for line in c.lines() {
-                if let Some(val) = line.strip_prefix("PRETTY_NAME=\"") {
-                    return Some(val.trim_end_matches('"').to_string());
-                }
-            }
-            None
-        })
-        .unwrap_or_else(|| "Linux".to_string());
-    let os_short = os.split_whitespace().next().unwrap_or("Linux");
-
-    let hostname = std::fs::read_to_string("/etc/hostname")
-        .ok()
-        .map(|s| s.trim().to_string())
-        .unwrap_or_else(|| "?".to_string());
-
-    let cpu_model = std::fs::read_to_string("/proc/cpuinfo")
-        .ok()
-        .and_then(|c| {
-            for line in c.lines() {
-                if let Some(val) = line.strip_prefix("model name") {
-                    if let Some(val) = val.split(':').nth(1) {
-                        return Some(val.trim().to_string());
-                    }
-                }
-            }
-            None
-        })
-        .unwrap_or_default();
-    let cpu_short = short_cpu(&cpu_model);
-
-    let gpu_full = std::fs::read_dir("/proc/driver/nvidia/gpus")
-        .ok()
-        .and_then(|entries| {
-            entries.flatten().find_map(|entry| {
-                let info = std::fs::read_to_string(entry.path().join("information")).ok()?;
-                info.lines()
-                    .find_map(|line| line.strip_prefix("Model:").map(|v| v.trim().to_string()))
-            })
-        })
-        .unwrap_or_default();
-    let gpu = short_gpu(&gpu_full);
-
-    let shell = std::env::var("SHELL")
-        .ok()
-        .and_then(|s| s.rsplit('/').next().map(|s| s.to_string()))
-        .unwrap_or_default();
-
-    let uptime = std::fs::read_to_string("/proc/uptime")
-        .ok()
-        .and_then(|c| {
-            let secs: f64 = c.split_whitespace().next()?.parse().ok()?;
-            let days = (secs / 86400.0) as u64;
-            let hours = ((secs % 86400.0) / 3600.0) as u64;
-            let mins = ((secs % 3600.0) / 60.0) as u64;
-            let mut s = String::new();
-            if days > 0 {
-                s.push_str(&format!("{}d ", days));
-            }
-            if hours > 0 {
-                s.push_str(&format!("{}h ", hours));
-            }
-            s.push_str(&format!("{}m", mins));
-            Some(s)
-        })
-        .unwrap_or_else(|| "?".to_string());
-
-    let battery = read_battery_pct()
-        .map(|pct| format!("{}%", pct))
-        .unwrap_or_else(|| "AC".to_string());
-
-    let key_style = Style::default().fg(theme.dim);
-    let val_style = Style::default()
-        .fg(theme.text)
-        .add_modifier(ratatui::style::Modifier::BOLD);
-
-    let mut left_lines = Vec::new();
-    left_lines.push(Line::from(vec![
-        Span::styled(format!("{:>7} ", "OS"), key_style),
-        Span::styled(os_short, val_style),
-    ]));
-    left_lines.push(Line::from(vec![
-        Span::styled(format!("{:>7} ", "Host"), key_style),
-        Span::styled(hostname, val_style),
-    ]));
-    left_lines.push(Line::from(vec![
-        Span::styled(format!("{:>7} ", "CPU"), key_style),
-        Span::styled(cpu_short, val_style),
-    ]));
-    if !gpu.is_empty() {
-        left_lines.push(Line::from(vec![
-            Span::styled(format!("{:>7} ", "GPU"), key_style),
-            Span::styled(gpu, val_style),
-        ]));
-    }
-
-    let mut right_lines = Vec::new();
-    right_lines.push(Line::from(vec![
-        Span::styled(format!("{:>7} ", "Uptime"), key_style),
-        Span::styled(uptime, val_style),
-    ]));
-    right_lines.push(Line::from(vec![
-        Span::styled(format!("{:>7} ", "Battery"), key_style),
-        Span::styled(battery, val_style),
-    ]));
-    right_lines.push(Line::from(vec![
-        Span::styled(format!("{:>7} ", "Shell"), key_style),
-        Span::styled(shell, val_style),
-    ]));
-
-    let chunks = ratatui::layout::Layout::horizontal([
-        ratatui::layout::Constraint::Ratio(1, 2),
-        ratatui::layout::Constraint::Ratio(1, 2),
-    ])
-    .split(area);
-
-    f.render_widget(
-        Paragraph::new(left_lines).alignment(ratatui::layout::Alignment::Right),
-        chunks[0],
-    );
-    f.render_widget(
-        Paragraph::new(right_lines).alignment(ratatui::layout::Alignment::Left),
-        chunks[1],
-    );
-}
-
-/// Collected data for the Overview neofetch hero.
-pub(crate) struct NeoData {
-    pub os: String,
-    pub host: String,
-    pub kernel: String,
-    pub uptime: String,
-    pub shell: String,
-    pub resolution: String,
-    pub cpu: String,
-    pub gpu: String,
-    pub memory: String,
-    pub bat: String,
-}
-
-fn read_os_pretty() -> String {
-    std::fs::read_to_string("/etc/os-release")
-        .ok()
-        .and_then(|c| {
-            for line in c.lines() {
-                if let Some(val) = line.strip_prefix("PRETTY_NAME=\"") {
-                    return Some(val.trim_end_matches('"').to_string());
-                }
-            }
-            None
-        })
-        .unwrap_or_else(|| "Linux".to_string())
-}
-
-fn read_cpu_short() -> String {
-    let model = std::fs::read_to_string("/proc/cpuinfo")
-        .ok()
-        .and_then(|c| {
-            for line in c.lines() {
-                if let Some(val) = line.strip_prefix("model name") {
-                    if let Some(val) = val.split(':').nth(1) {
-                        return Some(val.trim().to_string());
-                    }
-                }
-            }
-            None
-        })
-        .unwrap_or_default();
-    short_cpu(&model)
-}
-
-fn read_gpu_short() -> String {
-    let gpu_full = std::fs::read_dir("/proc/driver/nvidia/gpus")
-        .ok()
-        .and_then(|entries| {
-            entries.flatten().find_map(|entry| {
-                let info = std::fs::read_to_string(entry.path().join("information")).ok()?;
-                info.lines()
-                    .find_map(|line| line.strip_prefix("Model:").map(|v| v.trim().to_string()))
-            })
-        })
-        .unwrap_or_default();
-    short_gpu(&gpu_full)
-}
-
-fn fmt_ram(bytes: u64) -> String {
-    if bytes >= 1024 * 1024 * 1024 {
-        format!("{:.1}G", bytes as f64 / (1024.0 * 1024.0 * 1024.0))
-    } else if bytes >= 1024 * 1024 {
-        format!("{:.0}M", bytes as f64 / (1024.0 * 1024.0))
-    } else {
-        format!("{}K", bytes / 1024)
-    }
-}
-
-pub(crate) fn collect_neofetch(sum: &app::Summary, w: usize, h: usize) -> NeoData {
-    let host = std::fs::read_to_string("/etc/hostname")
-        .ok()
-        .map(|s| s.trim().to_string())
-        .unwrap_or_else(|| "?".to_string());
-
-    let kernel = std::fs::read_to_string("/proc/sys/kernel/osrelease")
-        .ok()
-        .map(|s| s.trim().to_string())
-        .unwrap_or_default();
-
-    let shell = std::env::var("SHELL")
-        .ok()
-        .and_then(|s| s.rsplit('/').next().map(|s| s.to_string()))
-        .unwrap_or_default();
-
-    let sys = crate::app::SYS.lock().unwrap();
-    let total_b = sys.total_memory();
-    let used_b = sys.used_memory();
-    drop(sys);
-
-    let bat = match sum.bat_pct {
-        Some(p) => format!("{}%", p),
-        None => "AC".to_string(),
-    };
-
-    NeoData {
-        os: read_os_pretty(),
-        host,
-        kernel,
-        uptime: sum.uptime.clone(),
-        shell,
-        resolution: format!("{}x{}", w, h),
-        cpu: read_cpu_short(),
-        gpu: read_gpu_short(),
-        memory: format!("{} / {}", fmt_ram(used_b), fmt_ram(total_b)),
-        bat,
-    }
-}
-
-/// Scan /sys/class/power_supply/BAT* for the first available battery capacity.
-/// Returns None if no battery found (desktop/AC-only).
-pub fn read_battery_pct() -> Option<u8> {
-    use std::fs;
-    let power_supply = fs::read_dir("/sys/class/power_supply").ok()?;
-    for entry in power_supply.flatten() {
-        let name = entry.file_name().to_string_lossy().to_string();
-        if name.starts_with("BAT") {
-            if let Ok(content) = fs::read_to_string(entry.path().join("capacity")) {
-                if let Ok(pct) = content.trim().parse::<u8>() {
-                    return Some(pct);
-                }
-            }
+/// First BAT* capacity under /sys/class/power_supply, or None on AC-only machines.
+pub fn read_battery() -> Option<(u8, bool)> {
+    let dir = fs::read_dir("/sys/class/power_supply").ok()?;
+    for entry in dir.flatten() {
+        if !entry.file_name().to_string_lossy().starts_with("BAT") {
+            continue;
         }
+        let pct = fs::read_to_string(entry.path().join("capacity"))
+            .ok()?
+            .trim()
+            .parse::<u8>()
+            .ok()?;
+        let charging = fs::read_to_string(entry.path().join("status"))
+            .map(|s| matches!(s.trim(), "Charging" | "Full"))
+            .unwrap_or(false);
+        return Some((pct, charging));
     }
     None
+}
+
+pub fn fmt_uptime(secs: u64) -> String {
+    let d = secs / 86400;
+    let h = (secs % 86400) / 3600;
+    let m = (secs % 3600) / 60;
+    if d > 0 {
+        format!("{}d {}h", d, h)
+    } else if h > 0 {
+        format!("{}h {}m", h, m)
+    } else {
+        format!("{}m", m)
+    }
+}
+
+// ── Distro logo ────────────────────────────────────────────────
+
+fn logo_lines(id: &str) -> Vec<&'static str> {
+    match id {
+        "arch" | "archarm" | "endeavouros" | "manjaro" | "cachyos" => vec![
+            "     ▄     ",
+            "    ▟█▙    ",
+            "   ▟███▙   ",
+            "  ▟█████▙  ",
+            " ▟███▀▀███▙",
+            "▟██▀    ▀██▙",
+        ],
+        "ubuntu" | "pop" | "linuxmint" => vec![
+            "   ▄▄▄▄▄   ",
+            " ▄█▀   ▀█▄ ",
+            "██   ●   ██",
+            "██  ●  ●  ██",
+            " ▀█▄   ▄█▀ ",
+            "   ▀▀▀▀▀   ",
+        ],
+        "fedora" | "nobara" => vec![
+            "   ▄▄▄▄▄▄  ",
+            "  █    ██  ",
+            "  █  ▄▄▄▄  ",
+            "▄▄█▄▄█     ",
+            "█    █     ",
+            "▀▀▀▀▀      ",
+        ],
+        "debian" | "raspbian" => vec![
+            "  ▄▄▄▄▄    ",
+            " █    ▀█   ",
+            " █  ▄▄ █   ",
+            " █  ▀▀▀    ",
+            " ▀█▄       ",
+            "   ▀▀      ",
+        ],
+        "nixos" => vec![
+            " ▚▖   ▗▞  ▗",
+            "  ▚▖ ▗▞▀▀▀▀",
+            "▀▀▀▚▖▞▘    ",
+            "    ▞▚▖▀▀▀▀",
+            "▄▄▄▄▘ ▚▖   ",
+            "  ▞▘   ▚▖  ",
+        ],
+        "gentoo" => vec![
+            "   ▄▄▄▄▄   ",
+            " ▄█▀   ▀█▄ ",
+            "██  ▄▄▄  ██",
+            " ▀▀▀  ▄▄█▀ ",
+            "   ▄██▀    ",
+            "  ▀▀       ",
+        ],
+        "opensuse" | "opensuse-tumbleweed" | "opensuse-leap" => vec![
+            "  ▄▄▄▄▄▄▄  ",
+            " █  ▄▄▄▄▄█ ",
+            "█  █ ▀█    ",
+            "█  █▄▄█  ▄█",
+            " █▄▄▄▄▄▄▄█ ",
+            "           ",
+        ],
+        _ => vec![
+            "   ▄▄▄▄▄   ",
+            "  █ ▀ ▀ █  ",
+            "  █  ▄  █  ",
+            " ▄█▄▄▄▄▄█▄ ",
+            " █▄▄▄▄▄▄▄█ ",
+            "           ",
+        ],
+    }
+}
+
+/// Dashboard SYSTEM panel: distro logo left, neofetch-style facts right.
+pub fn render_neofetch(f: &mut Frame, area: Rect, theme: &Theme, sum: &Summary, term: (u16, u16)) {
+    if area.height < 3 || area.width < 20 {
+        return;
+    }
+    let facts = &*FACTS;
+    let logo = logo_lines(&facts.os_id);
+    let logo_w: u16 = if area.width >= 44 { 13 } else { 0 };
+
+    if logo_w > 0 {
+        let pad = area.height.saturating_sub(logo.len() as u16) / 2;
+        let mut lines: Vec<Line> = (0..pad).map(|_| Line::from("")).collect();
+        lines.extend(logo.iter().map(|l| {
+            Line::from(Span::styled(
+                *l,
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            ))
+        }));
+        f.render_widget(
+            Paragraph::new(lines),
+            Rect::new(area.x + 1, area.y, logo_w, area.height),
+        );
+    }
+
+    let kv_area = Rect::new(
+        area.x + logo_w,
+        area.y,
+        area.width.saturating_sub(logo_w),
+        area.height,
+    );
+    let mem = crate::monitors::memory::snapshot();
+    let gpu_name = gpu::name();
+    let bat = match sum.battery {
+        Some((p, true)) => format!("{}% ⚡", p),
+        Some((p, false)) => format!("{}%", p),
+        None => "AC".to_string(),
+    };
+    let mut kv: Vec<(&str, String)> = vec![
+        ("os", facts.os.clone()),
+        ("host", facts.host.clone()),
+        ("kernel", facts.kernel.clone()),
+        ("uptime", sum.uptime.clone()),
+        ("shell", facts.shell.clone()),
+        ("term", format!("{} {}×{}", facts.term, term.0, term.1)),
+        ("cpu", format!("{} ({}t)", facts.cpu, facts.threads)),
+    ];
+    if !gpu_name.is_empty() {
+        kv.push(("gpu", gpu_name));
+    }
+    kv.push((
+        "memory",
+        format!(
+            "{} / {}",
+            meter::fmt_bytes(mem.used),
+            meter::fmt_bytes(mem.total)
+        ),
+    ));
+    kv.push(("battery", bat));
+
+    let max_rows = kv_area.height as usize;
+    let kv: Vec<_> = kv.into_iter().take(max_rows).collect();
+    let vpad = kv_area.height.saturating_sub(kv.len() as u16) / 2;
+    let max_v = (kv_area.width as usize).saturating_sub(9);
+    let mut rows: Vec<Line> = (0..vpad).map(|_| Line::from("")).collect();
+    for (k, v) in kv {
+        rows.push(Line::from(vec![
+            Span::styled(format!("{:>7} ", k), Style::default().fg(theme.dim)),
+            Span::styled(
+                meter::ellipsize(&v, max_v),
+                Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+            ),
+        ]));
+    }
+    f.render_widget(Paragraph::new(rows), kv_area);
+}
+
+/// Monitor page: compact two-column facts.
+pub fn render(f: &mut Frame, area: Rect, theme: &Theme, sum: &Summary) {
+    if area.height < 1 {
+        return;
+    }
+    let facts = &*FACTS;
+    let k = Style::default().fg(theme.dim);
+    let v = Style::default().fg(theme.text).add_modifier(Modifier::BOLD);
+    let row = |key: &str, val: String| {
+        Line::from(vec![
+            Span::styled(format!("{:>7} ", key), k),
+            Span::styled(val, v),
+        ])
+    };
+    let bat = match sum.battery {
+        Some((p, true)) => format!("{}% ⚡", p),
+        Some((p, false)) => format!("{}%", p),
+        None => "AC".to_string(),
+    };
+    let left = vec![
+        row(
+            "os",
+            facts.os.split_whitespace().next().unwrap_or("Linux").into(),
+        ),
+        row("host", facts.host.clone()),
+        row("kernel", facts.kernel.clone()),
+    ];
+    let right = vec![
+        row("uptime", sum.uptime.clone()),
+        row("battery", bat),
+        row("procs", crate::monitors::processes::count().to_string()),
+    ];
+    let cols = Layout::horizontal([Constraint::Ratio(3, 5), Constraint::Ratio(2, 5)]).split(area);
+    f.render_widget(Paragraph::new(left), cols[0]);
+    f.render_widget(Paragraph::new(right), cols[1]);
 }

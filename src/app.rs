@@ -1,155 +1,37 @@
-use std::sync::{LazyLock, Mutex};
+use std::collections::HashSet;
+use std::time::{Duration, Instant};
 
-use ratatui::layout::{Constraint, Layout};
-use ratatui::style::{Color, Style};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
-pub static SYS: LazyLock<Mutex<sysinfo::System>> = LazyLock::new(|| {
-    let mut s = sysinfo::System::new_all();
-    s.refresh_all();
-    Mutex::new(s)
-});
-
-use std::collections::HashSet;
-use std::fs;
-use std::process;
-
 use crate::config::Config;
-use crate::layout;
 use crate::mode::DashboardMode;
-use crate::monitors::processes;
-use crate::screens::overview;
-use crate::widgets::widget;
+use crate::monitors::{self, processes, Summary};
+use crate::screens;
+use crate::theme::Theme;
+use crate::widgets::media::{self, Action};
+use crate::widgets::music_viz;
 
-/// Summary metrics collected once per render for the top bar and the analytics panel
-pub(crate) struct Summary {
-    pub cpu_pct: f32,
-    pub mem_pct: f64,
-    pub gpu_pct: u64,
-    pub disk_pct: f64,
-    pub net_dl: String,
-    pub net_ul: String,
-    pub bat_pct: Option<u8>,
-    pub uptime: String,
-    pub temp_c: f64,
-}
-
-fn collect_summary() -> Summary {
-    let mut sys = SYS.lock().unwrap();
-    sys.refresh_cpu_all();
-    let cpu_pct = sys.global_cpu_usage();
-
-    // Memory
-    sys.refresh_memory();
-    let mem_pct = if sys.total_memory() > 0 {
-        (sys.used_memory() as f64 / sys.total_memory() as f64) * 100.0
-    } else {
-        0.0
-    };
-
-    // GPU via shared 1s cache (single nvidia-smi spawn/sec across the whole app)
-    let gpu_pct = crate::monitors::gpu::util_pct();
-
-    // Disk usage: root filesystem via sysinfo (no subprocess)
-    let disk_pct = {
-        let disks = sysinfo::Disks::new_with_refreshed_list();
-        disks
-            .iter()
-            .find(|d| d.mount_point() == std::path::Path::new("/"))
-            .and_then(|d| {
-                let total = d.total_space();
-                if total > 0 {
-                    Some(((total - d.available_space()) as f64 / total as f64) * 100.0)
-                } else {
-                    None
-                }
-            })
-            .unwrap_or(0.0)
-    };
-
-    // Network (aggregate dl/ul from /sys/class/net)
-    let (mut rx_total, mut tx_total) = (0u64, 0u64);
-    if let Ok(dir) = fs::read_dir("/sys/class/net/") {
-        for entry in dir.flatten() {
-            let name = entry.file_name().to_string_lossy().to_string();
-            if name == "lo" {
-                continue;
-            }
-            if let Ok(v) = fs::read_to_string(entry.path().join("statistics").join("rx_bytes")) {
-                rx_total += v.trim().parse::<u64>().unwrap_or(0);
-            }
-            if let Ok(v) = fs::read_to_string(entry.path().join("statistics").join("tx_bytes")) {
-                tx_total += v.trim().parse::<u64>().unwrap_or(0);
-            }
-        }
-    }
-    fn fmt_bytes(b: u64) -> String {
-        if b > 1_000_000_000 {
-            format!("{:.1}GB", b as f64 / 1_000_000_000.0)
-        } else if b > 1_000_000 {
-            format!("{:.1}MB", b as f64 / 1_000_000.0)
-        } else if b > 1_000 {
-            format!("{}KB", b / 1_000)
-        } else {
-            format!("{}B", b)
-        }
-    }
-
-    // Battery (scan for any BAT*, not just BAT0)
-    let bat_pct = crate::monitors::system_info::read_battery_pct();
-
-    // Uptime
-    let uptime_secs = sysinfo::System::uptime();
-    let h = uptime_secs / 3600;
-    let m = (uptime_secs % 3600) / 60;
-    let uptime_s = if h > 24 {
-        format!("{}d{}h", h / 24, h % 24)
-    } else {
-        format!("{}h{}m", h, m)
-    };
-
-    // Temp
-    let core_temps = crate::monitors::cpu::read_core_temps();
-    let max_temp = core_temps
-        .iter()
-        .skip(1)
-        .copied()
-        .fold(f64::NEG_INFINITY, f64::max);
-    let temp_c = if max_temp.is_finite() { max_temp } else { 0.0 };
-
-    Summary {
-        cpu_pct,
-        mem_pct,
-        gpu_pct,
-        disk_pct,
-        net_dl: fmt_bytes(rx_total),
-        net_ul: fmt_bytes(tx_total),
-        bat_pct,
-        uptime: uptime_s,
-        temp_c,
-    }
-}
-
-/// Sort field for the processes panel
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// Sort field for the processes panel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SortField {
+    Cpu,
     Mem,
     Pid,
     Name,
-    Cpu,
-    Rss,
 }
 
 impl SortField {
     pub fn label(&self) -> &'static str {
         match self {
-            SortField::Cpu => "CPU",
-            SortField::Mem => "MEM",
-            SortField::Pid => "PID",
-            SortField::Name => "NAME",
-            SortField::Rss => "RSS",
+            SortField::Cpu => "cpu",
+            SortField::Mem => "mem",
+            SortField::Pid => "pid",
+            SortField::Name => "name",
         }
     }
     pub fn next(&self) -> Self {
@@ -157,76 +39,97 @@ impl SortField {
             SortField::Cpu => SortField::Mem,
             SortField::Mem => SortField::Pid,
             SortField::Pid => SortField::Name,
-            SortField::Name => SortField::Rss,
-            SortField::Rss => SortField::Cpu,
+            SortField::Name => SortField::Cpu,
         }
     }
 }
 
-/// Panels in Tab-cycle order (row-major: left→right, top→bottom)
+/// Every focusable panel across all pages.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PanelId {
-    Cpu,
-    Clock,
-    Memory,
-    Calendar,
-    Visualizer,
-    Network,
-    Disk,
-    Gpu,
-    Processes,
-    Media,
     System,
-    Profile,
+    Gauges,
+    Cpu,
+    Memory,
+    Disk,
+    Storage,
+    Network,
+    Gpu,
+    Clock,
+    Media,
+    Visualizer,
+    Processes,
+    Status,
+    Calendar,
+    Matrix,
     Video,
 }
 
 impl PanelId {
-    /// Ordered list for Tab-cycle, excluding disabled widgets
-    pub fn all(config: &Config) -> Vec<PanelId> {
-        let mut v = Vec::with_capacity(12);
-        if config.widgets.cpu {
-            v.push(PanelId::Cpu);
+    /// Tab order for a page, honouring widget toggles.
+    pub fn for_mode(mode: DashboardMode, cfg: &Config) -> Vec<PanelId> {
+        let w = &cfg.widgets;
+        let list: Vec<(PanelId, bool)> = match mode {
+            DashboardMode::Dashboard => vec![
+                (PanelId::System, true),
+                (PanelId::Gauges, true),
+                (PanelId::Cpu, w.cpu),
+                (PanelId::Storage, w.disk),
+                (PanelId::Clock, w.clock),
+                (PanelId::Media, w.media),
+                (PanelId::Visualizer, w.music_viz),
+                (PanelId::Processes, w.processes),
+                (PanelId::Status, true),
+                (PanelId::Memory, w.memory),
+                (PanelId::Network, w.network),
+                (PanelId::Calendar, w.calendar),
+            ],
+            DashboardMode::Monitor => vec![
+                (PanelId::Cpu, true),
+                (PanelId::Memory, true),
+                (PanelId::Disk, true),
+                (PanelId::Network, true),
+                (PanelId::Gpu, w.gpu),
+                (PanelId::System, true),
+                (PanelId::Processes, true),
+            ],
+            DashboardMode::Aesthetic => vec![
+                (PanelId::Clock, true),
+                (PanelId::Calendar, true),
+                (PanelId::Matrix, w.matrix),
+                (PanelId::Video, w.video),
+                (PanelId::Visualizer, w.music_viz),
+            ],
+        };
+        list.into_iter()
+            .filter(|(_, on)| *on)
+            .map(|(p, _)| p)
+            .collect()
+    }
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            PanelId::System => "system",
+            PanelId::Gauges => "gauges",
+            PanelId::Cpu => "cpu",
+            PanelId::Memory => "memory",
+            PanelId::Disk => "disk",
+            PanelId::Storage => "storage",
+            PanelId::Network => "network",
+            PanelId::Gpu => "gpu",
+            PanelId::Clock => "clock",
+            PanelId::Media => "media",
+            PanelId::Visualizer => "visualizer",
+            PanelId::Processes => "processes",
+            PanelId::Status => "status",
+            PanelId::Calendar => "calendar",
+            PanelId::Matrix => "matrix",
+            PanelId::Video => "donut",
         }
-        if config.widgets.clock {
-            v.push(PanelId::Clock);
-        }
-        if config.widgets.memory {
-            v.push(PanelId::Memory);
-        }
-        if config.widgets.gpu {
-            v.push(PanelId::Gpu);
-        }
-        if config.widgets.calendar {
-            v.push(PanelId::Calendar);
-        }
-        if config.widgets.music_viz {
-            v.push(PanelId::Visualizer);
-        }
-        if config.widgets.network {
-            v.push(PanelId::Network);
-        }
-        if config.widgets.disk {
-            v.push(PanelId::Disk);
-        }
-        if config.widgets.processes {
-            v.push(PanelId::Processes);
-        }
-        if config.widgets.media {
-            v.push(PanelId::Media);
-        }
-        if config.widgets.profile {
-            v.push(PanelId::Profile);
-        }
-        if config.widgets.video {
-            v.push(PanelId::Video);
-        }
-        v.push(PanelId::System);
-        v
     }
 }
 
-/// Per-panel interactive state
+/// Per-panel interactive state.
 #[derive(Debug, Clone)]
 pub struct PanelStates {
     pub calendar_month_offset: i32,
@@ -238,105 +141,22 @@ pub struct PanelStates {
     pub process_tree_mode: bool,
     pub process_compact_cmd: bool,
     pub process_selected_pid: Option<u32>,
-    pub process_show_detail: bool,
     pub process_collapsed: HashSet<u32>,
 }
 
-impl PanelStates {
-    fn new() -> Self {
+impl Default for PanelStates {
+    fn default() -> Self {
         Self {
             calendar_month_offset: 0,
             process_scroll_offset: 0,
-            process_sort_field: SortField::Mem,
+            process_sort_field: SortField::Cpu,
             process_sort_asc: false,
             process_search: String::new(),
             process_search_active: false,
             process_tree_mode: false,
-            process_collapsed: HashSet::new(),
             process_compact_cmd: true,
             process_selected_pid: None,
-            process_show_detail: false,
-        }
-    }
-}
-
-#[derive(Clone)]
-pub struct Theme {
-    pub bg: Color,
-    pub accent: Color,
-    pub secondary: Color,
-    pub surface: Color,
-    pub text: Color,
-    pub dim: Color,
-    pub green: Color,
-    pub yellow: Color,
-    pub red: Color,
-}
-
-impl Theme {
-    pub fn from_name(name: &str) -> Self {
-        match name {
-            "dark" => Self::dark(),
-            "light" => Self::light(),
-            "dracula" => Self::dracula(),
-            "solarized-light" => Self::solarized_light(),
-            _ => Self::dark(),
-        }
-    }
-
-    pub fn dracula() -> Self {
-        Self {
-            bg: Color::Rgb(40, 42, 54),
-            accent: Color::Rgb(189, 147, 249),
-            secondary: Color::Rgb(98, 114, 164),
-            surface: Color::Rgb(68, 71, 90),
-            text: Color::Rgb(248, 248, 242),
-            dim: Color::Rgb(98, 114, 164),
-            green: Color::Rgb(80, 250, 123),
-            yellow: Color::Rgb(255, 203, 107),
-            red: Color::Rgb(255, 121, 198),
-        }
-    }
-
-    pub fn solarized_light() -> Self {
-        Self {
-            bg: Color::Rgb(253, 246, 227),
-            accent: Color::Rgb(42, 161, 152),
-            secondary: Color::Rgb(108, 113, 196),
-            surface: Color::Rgb(238, 232, 213),
-            text: Color::Rgb(101, 123, 131),
-            dim: Color::Rgb(147, 161, 161),
-            green: Color::Rgb(133, 153, 0),
-            yellow: Color::Rgb(181, 137, 0),
-            red: Color::Rgb(220, 50, 47),
-        }
-    }
-
-    pub fn dark() -> Self {
-        Self {
-            bg: Color::Rgb(10, 10, 15),
-            accent: Color::Rgb(120, 220, 150),
-            secondary: Color::Rgb(100, 120, 200),
-            surface: Color::Rgb(20, 20, 30),
-            text: Color::Rgb(220, 220, 230),
-            dim: Color::Rgb(80, 80, 95),
-            green: Color::Rgb(80, 200, 120),
-            yellow: Color::Rgb(220, 200, 60),
-            red: Color::Rgb(220, 80, 80),
-        }
-    }
-
-    pub fn light() -> Self {
-        Self {
-            bg: Color::Rgb(245, 245, 240),
-            accent: Color::Rgb(0, 100, 200),
-            secondary: Color::Rgb(60, 80, 180),
-            surface: Color::Rgb(230, 230, 225),
-            text: Color::Rgb(20, 20, 30),
-            dim: Color::Rgb(140, 140, 145),
-            green: Color::Rgb(40, 160, 80),
-            yellow: Color::Rgb(180, 160, 20),
-            red: Color::Rgb(200, 50, 50),
+            process_collapsed: HashSet::new(),
         }
     }
 }
@@ -346,90 +166,64 @@ pub struct App {
     pub config: Config,
     pub theme: Theme,
     pub mode: DashboardMode,
-    pub tick_count: u64,
+    pub frame: u64,
     pub focused_panel: Option<PanelId>,
     pub panel_states: PanelStates,
     pub show_help: bool,
-    summary: Summary,
+    pub summary: Summary,
+    /// Short transient message shown in the status bar (theme changed, killed pid …).
+    toast: Option<(String, Instant)>,
+    sampler_interval: std::sync::Arc<std::sync::atomic::AtomicU64>,
 }
 
 impl App {
     pub fn new(config: Config) -> Self {
-        // Initialize theme based on saved config theme name
-        let init_theme = Theme::from_name(&config.ui.theme);
-        // Initialize mode from saved startup mode, fall back to Dashboard
-        let init_mode = DashboardMode::from_str(&config.ui.startup_mode);
+        let theme = Theme::from_name(&config.ui.theme);
+        let mode = DashboardMode::from_str(&config.ui.startup_mode);
+        let sampler_interval = monitors::start(Duration::from_secs_f64(config.ui.refresh_rate));
         let mut app = Self {
             running: true,
-            theme: init_theme,
+            theme,
             config,
-            mode: init_mode,
-            tick_count: 0,
+            mode,
+            frame: 0,
             focused_panel: None,
-            panel_states: PanelStates::new(),
+            panel_states: PanelStates::default(),
             show_help: false,
-            summary: collect_summary(),
+            summary: Summary::default(),
+            toast: None,
+            sampler_interval,
         };
-        // Ensure mode is persisted on first run
-        app.persist_mode();
+        if mode == DashboardMode::Monitor {
+            app.focused_panel = Some(PanelId::Processes);
+        }
         app
     }
 
-    /// Persist the current mode to config and save.
-    pub fn persist_mode(&mut self) {
-        self.config.ui.startup_mode = self.mode.as_str().to_string();
-        self.config.save();
+    fn toast(&mut self, msg: impl Into<String>) {
+        self.toast = Some((msg.into(), Instant::now()));
     }
 
-    /// Switch page and persist to config.
     pub fn set_mode(&mut self, mode: DashboardMode) {
+        if self.mode == mode {
+            return;
+        }
         self.mode = mode;
-        // The Monitor page is keyboard-driven around its process table, so
-        // auto-focus it there; other pages start unfocused.
-        self.focused_panel = if mode == DashboardMode::Monitor {
-            Some(PanelId::Processes)
-        } else {
-            None
-        };
-        if mode == DashboardMode::Monitor {
-            self.sync_selected_pid();
-        }
-        self.persist_mode();
-    }
-
-    /// Toggle the help/settings overlay.
-    pub fn toggle_help(&mut self) {
-        self.show_help = !self.show_help;
-    }
-
-    /// Cycle through available themes (used by UI hotkey).
-    pub fn toggle_theme(&mut self) {
-        const THEME_ORDER: [&str; 4] = ["dark", "light", "dracula", "solarized-light"];
-        let current = &self.config.ui.theme;
-        let idx = THEME_ORDER.iter().position(|&n| n == current).unwrap_or(0);
-        let next_idx = (idx + 1) % THEME_ORDER.len();
-        let next_name = THEME_ORDER[next_idx];
-        self.set_theme(next_name);
-    }
-
-    /// Set theme by name (validates and persists).
-    pub fn set_theme(&mut self, name: &str) {
-        const THEME_ORDER: [&str; 4] = ["dark", "light", "dracula", "solarized-light"];
-        if !THEME_ORDER.contains(&name) {
-            // fallback to dark if unknown
-            self.config.ui.theme = "dark".to_string();
-            self.theme = Theme::dark();
-        } else {
-            self.config.ui.theme = name.to_string();
-            self.theme = Theme::from_name(name);
-        }
-        // Persist the chosen theme
+        self.focused_panel = (mode == DashboardMode::Monitor).then_some(PanelId::Processes);
+        self.config.ui.startup_mode = mode.as_str().to_string();
         self.config.save();
     }
 
-    /// Cycle focus to the next/previous panel in Tab order
-    pub fn cycle_focus(&mut self, forward: bool) {
-        let panels = PanelId::all(&self.config);
+    pub fn cycle_theme(&mut self) {
+        let next = Theme::next_name(&self.config.ui.theme);
+        self.config.ui.theme = next.to_string();
+        self.theme = Theme::from_name(next);
+        self.config.save();
+        self.toast(format!("theme · {}", next));
+    }
+
+    fn cycle_focus(&mut self, forward: bool) {
+        let panels = PanelId::for_mode(self.mode, &self.config);
         if panels.is_empty() {
             return;
         }
@@ -437,497 +231,514 @@ impl App {
             .focused_panel
             .and_then(|p| panels.iter().position(|&x| x == p));
         let next = match idx {
-            Some(i) => {
-                if forward {
-                    (i + 1) % panels.len()
-                } else {
-                    (i + panels.len() - 1) % panels.len()
-                }
-            }
-            None => 0,
+            Some(i) if forward => (i + 1) % panels.len(),
+            Some(i) => (i + panels.len() - 1) % panels.len(),
+            None if forward => 0,
+            None => panels.len() - 1,
         };
         self.focused_panel = Some(panels[next]);
     }
 
-    /// Handle keys for the currently focused panel
-    pub fn handle_panel_nav(&mut self, key: crossterm::event::KeyCode) {
-        use crossterm::event::KeyCode;
+    fn adjust_refresh(&mut self, faster: bool) {
+        let cur = self.config.ui.refresh_rate;
+        let next = if faster { cur / 2.0 } else { cur * 2.0 }.clamp(0.1, 10.0);
+        self.config.ui.refresh_rate = next;
+        self.sampler_interval
+            .store((next * 1000.0) as u64, std::sync::atomic::Ordering::Relaxed);
+        self.config.save();
+        self.toast(format!("refresh · {:.2}s", next));
+    }
 
-        let Some(panel) = self.focused_panel else {
+    // ── Input ─────────────────────────────────────────────────
+
+    pub fn handle_key(&mut self, key: KeyEvent) {
+        let ps = &mut self.panel_states;
+
+        // Text entry captures everything first.
+        if ps.process_search_active {
+            match key.code {
+                KeyCode::Esc => {
+                    ps.process_search_active = false;
+                    ps.process_search.clear();
+                    ps.process_scroll_offset = 0;
+                }
+                KeyCode::Enter => ps.process_search_active = false,
+                KeyCode::Backspace => {
+                    ps.process_search.pop();
+                    ps.process_scroll_offset = 0;
+                }
+                KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    ps.process_search.push(c);
+                    ps.process_scroll_offset = 0;
+                }
+                KeyCode::Up | KeyCode::Down | KeyCode::PageUp | KeyCode::PageDown => {
+                    self.process_nav(key.code);
+                    return;
+                }
+                _ => {}
+            }
+            self.sync_selected_pid();
             return;
-        };
-        match panel {
-            PanelId::Calendar => match key {
-                KeyCode::Left => {
-                    self.panel_states.calendar_month_offset -= 1;
-                }
-                KeyCode::Right => {
-                    self.panel_states.calendar_month_offset += 1;
-                }
-                KeyCode::Home => {
-                    self.panel_states.calendar_month_offset = 0;
-                }
-                _ => {}
-            },
-            PanelId::Processes => match key {
-                // Tree mode toggle
-                KeyCode::Char('t') | KeyCode::Char('T') => {
-                    if !self.panel_states.process_search_active {
-                        self.panel_states.process_tree_mode = !self.panel_states.process_tree_mode;
-                        self.panel_states.process_scroll_offset = 0;
-                        self.sync_selected_pid();
+        }
+
+        if self.show_help {
+            match key.code {
+                KeyCode::Char('q') | KeyCode::Char('Q') => self.running = false,
+                KeyCode::Char('T') => self.cycle_theme(),
+                _ => self.show_help = false,
+            }
+            return;
+        }
+
+        match key.code {
+            KeyCode::Char('q') | KeyCode::Char('Q') => self.running = false,
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.running = false
+            }
+            KeyCode::Char('?') | KeyCode::F(1) => self.show_help = true,
+            KeyCode::Char('1') => self.set_mode(DashboardMode::Dashboard),
+            KeyCode::Char('2') => self.set_mode(DashboardMode::Monitor),
+            KeyCode::Char('3') => self.set_mode(DashboardMode::Aesthetic),
+            KeyCode::Char('T') => self.cycle_theme(),
+            KeyCode::Char('v') | KeyCode::Char('V') => {
+                music_viz::cycle_style();
+                self.toast(format!("visualizer · {}", music_viz::style_name()));
+            }
+            KeyCode::Char('+') | KeyCode::Char('=') => self.adjust_refresh(true),
+            KeyCode::Char('-') | KeyCode::Char('_') => self.adjust_refresh(false),
+            KeyCode::Tab => self.cycle_focus(true),
+            KeyCode::BackTab => self.cycle_focus(false),
+            KeyCode::Esc => self.focused_panel = None,
+
+            // Media transport is global: it's the whole point of a dashboard.
+            KeyCode::Char(' ') => media::control(Action::PlayPause),
+            KeyCode::Char('n') | KeyCode::Char('N') => media::control(Action::Next),
+            KeyCode::Char('p') | KeyCode::Char('P') => media::control(Action::Previous),
+            KeyCode::Char('>') | KeyCode::Char('.') => media::control(Action::VolumeUp),
+            KeyCode::Char('<') | KeyCode::Char(',') => media::control(Action::VolumeDown),
+
+            _ => self.handle_panel_key(key.code),
+        }
+    }
+
+    fn handle_panel_key(&mut self, key: KeyCode) {
+        // Arrow keys with nothing focused grab the page's primary panel.
+        if self.focused_panel.is_none()
+            && matches!(
+                key,
+                KeyCode::Up
+                    | KeyCode::Down
+                    | KeyCode::Left
+                    | KeyCode::Right
+                    | KeyCode::PageUp
+                    | KeyCode::PageDown
+                    | KeyCode::Home
+                    | KeyCode::End
+            )
+        {
+            let panels = PanelId::for_mode(self.mode, &self.config);
+            self.focused_panel = if panels.contains(&PanelId::Processes) {
+                Some(PanelId::Processes)
+            } else {
+                panels.first().copied()
+            };
+        }
+        // Process hotkeys work from anywhere on the Monitor page.
+        let process_hotkey = matches!(
+            key,
+            KeyCode::Char('/')
+                | KeyCode::Char('s')
+                | KeyCode::Char('S')
+                | KeyCode::Char('r')
+                | KeyCode::Char('t')
+                | KeyCode::Char('c')
+                | KeyCode::Char('k')
+                | KeyCode::Char('K')
+        );
+        if self.mode == DashboardMode::Monitor && process_hotkey {
+            self.focused_panel = Some(PanelId::Processes);
+        }
+
+        match self.focused_panel {
+            Some(PanelId::Calendar) => {
+                let ps = &mut self.panel_states;
+                match key {
+                    KeyCode::Left | KeyCode::Char('h') => ps.calendar_month_offset -= 1,
+                    KeyCode::Right | KeyCode::Char('l') => ps.calendar_month_offset += 1,
+                    KeyCode::Up | KeyCode::Char('k') => ps.calendar_month_offset -= 12,
+                    KeyCode::Down | KeyCode::Char('j') => ps.calendar_month_offset += 12,
+                    KeyCode::Home | KeyCode::Enter | KeyCode::Char('t') => {
+                        ps.calendar_month_offset = 0
                     }
+                    _ => {}
                 }
-                // Compact/full command toggle
-                KeyCode::Char('c') | KeyCode::Char('C') => {
-                    self.panel_states.process_compact_cmd = !self.panel_states.process_compact_cmd;
-                }
-                // Info/detail toggle
-                KeyCode::Char('i') | KeyCode::Char('I') => {
-                    self.panel_states.process_show_detail = !self.panel_states.process_show_detail;
-                }
-                // Collapse/expand in tree mode
-                KeyCode::Right if self.panel_states.process_tree_mode => {
-                    self.expand_collapse_tree(false);
-                    self.sync_selected_pid();
-                }
-                KeyCode::Left if self.panel_states.process_tree_mode => {
-                    self.expand_collapse_tree(true);
-                    self.sync_selected_pid();
-                }
-                // Scrolling
-                KeyCode::Up => {
-                    self.panel_states.process_scroll_offset =
-                        self.panel_states.process_scroll_offset.saturating_sub(1);
-                    self.sync_selected_pid();
-                }
-                KeyCode::Down => {
-                    self.panel_states.process_scroll_offset =
-                        self.panel_states.process_scroll_offset.saturating_add(1);
-                    self.sync_selected_pid();
-                }
-                KeyCode::PageUp => {
-                    self.panel_states.process_scroll_offset =
-                        self.panel_states.process_scroll_offset.saturating_sub(6);
-                    self.sync_selected_pid();
-                }
-                KeyCode::PageDown => {
-                    self.panel_states.process_scroll_offset =
-                        self.panel_states.process_scroll_offset.saturating_add(6);
-                    self.sync_selected_pid();
-                }
-                // Sort cycling
-                KeyCode::Char('s') | KeyCode::Char('S') => {
-                    if !self.panel_states.process_search_active {
-                        let old = self.panel_states.process_sort_field;
-                        self.panel_states.process_sort_field = old.next();
-                        self.panel_states.process_scroll_offset = 0;
-                        self.sync_selected_pid();
-                    }
-                }
-                // Enter search mode
-                KeyCode::Char('/') => {
-                    self.panel_states.process_search_active = true;
-                    self.panel_states.process_search.clear();
-                }
-                // Kill selected process
-                KeyCode::Char('k') | KeyCode::Char('K') => {
-                    if !self.panel_states.process_search_active {
-                        self.kill_selected_process();
-                    }
-                }
-                // When search is active, capture character input
-                KeyCode::Char(c) if self.panel_states.process_search_active => {
-                    self.panel_states.process_search.push(c);
-                    self.panel_states.process_scroll_offset = 0;
-                    self.sync_selected_pid();
-                }
-                KeyCode::Backspace if self.panel_states.process_search_active => {
-                    self.panel_states.process_search.pop();
-                    self.panel_states.process_scroll_offset = 0;
-                }
-                _ => {}
-            },
-            PanelId::Media => match key {
-                KeyCode::Char(' ') => {
-                    let _ = std::process::Command::new("playerctl")
-                        .arg("play-pause")
-                        .status();
-                }
-                KeyCode::Char('n') | KeyCode::Char('N') => {
-                    let _ = std::process::Command::new("playerctl").arg("next").status();
-                }
-                KeyCode::Char('p') | KeyCode::Char('P') => {
-                    let _ = std::process::Command::new("playerctl")
-                        .arg("previous")
-                        .status();
-                }
-                _ => {}
-            },
+            }
+            Some(PanelId::Processes) => self.process_key(key),
             _ => {}
         }
     }
 
-    /// Collapse or expand the process at the current scroll offset in tree mode.
-    pub fn expand_collapse_tree(&mut self, collapse: bool) {
-        if !self.panel_states.process_tree_mode {
-            return;
+    fn process_nav(&mut self, key: KeyCode) {
+        let ps = &mut self.panel_states;
+        let page = 10;
+        match key {
+            KeyCode::Up => ps.process_scroll_offset = ps.process_scroll_offset.saturating_sub(1),
+            KeyCode::Down => ps.process_scroll_offset = ps.process_scroll_offset.saturating_add(1),
+            KeyCode::PageUp => {
+                ps.process_scroll_offset = ps.process_scroll_offset.saturating_sub(page)
+            }
+            KeyCode::PageDown => {
+                ps.process_scroll_offset = ps.process_scroll_offset.saturating_add(page)
+            }
+            KeyCode::Home => ps.process_scroll_offset = 0,
+            KeyCode::End => ps.process_scroll_offset = processes::count().saturating_sub(1),
+            _ => {}
         }
-        let pid = processes::get_pid_at(
-            self.panel_states.process_scroll_offset,
-            self.panel_states.process_sort_field,
-            self.panel_states.process_sort_asc,
-            &self.panel_states.process_search,
-            true,
-            &self.panel_states.process_collapsed,
-        );
-        if let Some(pid) = pid {
+        self.sync_selected_pid();
+    }
+
+    fn process_key(&mut self, key: KeyCode) {
+        match key {
+            KeyCode::Up
+            | KeyCode::Down
+            | KeyCode::PageUp
+            | KeyCode::PageDown
+            | KeyCode::Home
+            | KeyCode::End => self.process_nav(key),
+            KeyCode::Char('t') => {
+                let ps = &mut self.panel_states;
+                ps.process_tree_mode = !ps.process_tree_mode;
+                ps.process_scroll_offset = 0;
+                self.sync_selected_pid();
+            }
+            KeyCode::Char('c') => {
+                self.panel_states.process_compact_cmd = !self.panel_states.process_compact_cmd
+            }
+            KeyCode::Right if self.panel_states.process_tree_mode => self.set_collapsed(false),
+            KeyCode::Left if self.panel_states.process_tree_mode => self.set_collapsed(true),
+            KeyCode::Char('s') | KeyCode::Char('S') => {
+                let ps = &mut self.panel_states;
+                ps.process_sort_field = ps.process_sort_field.next();
+                ps.process_scroll_offset = 0;
+                self.sync_selected_pid();
+            }
+            KeyCode::Char('r') => {
+                let ps = &mut self.panel_states;
+                ps.process_sort_asc = !ps.process_sort_asc;
+                ps.process_scroll_offset = 0;
+                self.sync_selected_pid();
+            }
+            KeyCode::Char('/') => {
+                let ps = &mut self.panel_states;
+                ps.process_search_active = true;
+                ps.process_search.clear();
+                ps.process_scroll_offset = 0;
+            }
+            KeyCode::Char('k') => self.signal_selected("TERM"),
+            KeyCode::Char('K') => self.signal_selected("KILL"),
+            _ => {}
+        }
+    }
+
+    fn selected_pid(&self) -> Option<u32> {
+        let ps = &self.panel_states;
+        processes::get_pid_at(
+            ps.process_scroll_offset,
+            ps.process_sort_field,
+            ps.process_sort_asc,
+            &ps.process_search,
+            ps.process_tree_mode,
+            &ps.process_collapsed,
+        )
+    }
+
+    fn set_collapsed(&mut self, collapse: bool) {
+        if let Some(pid) = self.selected_pid() {
             if collapse {
                 self.panel_states.process_collapsed.insert(pid);
             } else {
                 self.panel_states.process_collapsed.remove(&pid);
             }
+            self.sync_selected_pid();
         }
     }
 
-    /// Kill the process at the current scroll offset in the processes panel.
-    pub fn kill_selected_process(&mut self) {
-        let pid = processes::get_pid_at(
-            self.panel_states.process_scroll_offset,
-            self.panel_states.process_sort_field,
-            self.panel_states.process_sort_asc,
-            &self.panel_states.process_search,
-            self.panel_states.process_tree_mode,
-            &self.panel_states.process_collapsed,
-        );
-        if let Some(pid) = pid {
-            // Send SIGTERM
-            let _ = process::Command::new("kill").arg(pid.to_string()).status();
+    fn signal_selected(&mut self, sig: &str) {
+        let Some(pid) = self.selected_pid() else {
+            return;
+        };
+        if pid == std::process::id() {
+            self.toast("not killing myself — press q to quit");
+            return;
         }
+        let ok = std::process::Command::new("kill")
+            .args([&format!("-{}", sig), &pid.to_string()])
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        self.toast(if ok {
+            format!("sent SIG{} to {}", sig, pid)
+        } else {
+            format!("failed to signal {} (permission?)", pid)
+        });
     }
 
-    /// Refresh the tracked selection PID for the processes panel.
     pub fn sync_selected_pid(&mut self) {
-        self.panel_states.process_selected_pid = processes::get_pid_at(
-            self.panel_states.process_scroll_offset,
-            self.panel_states.process_sort_field,
-            self.panel_states.process_sort_asc,
-            &self.panel_states.process_search,
-            self.panel_states.process_tree_mode,
-            &self.panel_states.process_collapsed,
-        );
+        self.panel_states.process_selected_pid = self.selected_pid();
     }
 
-    /// Called on every refresh tick — advances animations, refreshes system data
-    pub fn tick(&mut self) {
-        self.tick_count = self.tick_count.wrapping_add(1);
-        SYS.lock().unwrap().refresh_all();
-        // Refresh the summary only on tick, not every frame. GPU/disk reads are
-        // cheap here — GPU is served from a 1s cache, disk from sysinfo (no forks).
-        self.summary = collect_summary();
-    }
+    // ── Render ────────────────────────────────────────────────
 
     pub fn render(&mut self, f: &mut Frame) {
+        self.frame = self.frame.wrapping_add(1);
+        self.summary = monitors::summary();
+        if self
+            .toast
+            .as_ref()
+            .is_some_and(|(_, t)| t.elapsed() > Duration::from_secs(3))
+        {
+            self.toast = None;
+        }
+
         let area = f.area();
         f.render_widget(
             ratatui::widgets::Block::default().style(Style::default().bg(self.theme.bg)),
             area,
         );
-
-        let layouts = Layout::vertical([
+        let [title_bar, main, status_bar] = Layout::vertical([
             Constraint::Length(1),
             Constraint::Min(0),
             Constraint::Length(1),
-        ]);
-        let [title_bar, main_area, status_bar] = layouts.areas(area);
+        ])
+        .areas(area);
 
-        // ── Collect summary for top bar ──
-        let sum = &self.summary;
+        self.render_title(f, title_bar);
 
-        // ── Title bar: health summary bar with semantic colors ──
-        let dim = self.theme.dim;
-        let bg = self.theme.bg;
-        let text = self.theme.text;
-        let yellow = self.theme.yellow;
-        let red = self.theme.red;
-        let secondary = self.theme.secondary;
-        let accent = self.theme.accent;
-        let green = self.theme.green;
+        match self.mode {
+            DashboardMode::Dashboard => screens::dashboard::render(f, main, self),
+            DashboardMode::Monitor => screens::monitor::render(f, main, self),
+            DashboardMode::Aesthetic => screens::aesthetic::render(f, main, self),
+        }
 
-        // Semantic coloring helpers
-        let cpu_col = if sum.cpu_pct > 95.0 {
-            red
-        } else if sum.cpu_pct > 80.0 {
-            yellow
-        } else {
-            accent
-        };
-        let mem_col = if sum.mem_pct > 95.0 {
-            red
-        } else if sum.mem_pct > 80.0 {
-            yellow
-        } else {
-            accent
-        };
-        let gpu_col = if sum.gpu_pct > 95 {
-            red
-        } else if sum.gpu_pct > 80 {
-            yellow
-        } else {
-            accent
-        };
-        let disk_col = if sum.disk_pct > 95.0 {
-            red
-        } else if sum.disk_pct > 80.0 {
-            yellow
-        } else {
-            accent
-        };
-        let temp_col = if sum.temp_c > 90.0 {
-            red
-        } else if sum.temp_c > 75.0 {
-            yellow
-        } else {
-            accent
-        };
-        let bat_col = match sum.bat_pct {
-            Some(p) if p < 10 => red,
-            Some(p) if p < 20 => yellow,
-            _ => accent,
-        };
+        self.render_status(f, status_bar);
 
-        // Determine global health state
-        let is_critical = cpu_col == red
-            || mem_col == red
-            || gpu_col == red
-            || disk_col == red
-            || temp_col == red
-            || bat_col == red;
-        let is_warning = cpu_col == yellow
-            || mem_col == yellow
-            || gpu_col == yellow
-            || disk_col == yellow
-            || temp_col == yellow
-            || bat_col == yellow;
+        if self.show_help {
+            screens::help::render(f, area, &self.theme, &self.config);
+        }
+    }
 
-        // Clean status line: brand + status dot + metrics, nav pinned right.
-        let dot_col = if is_critical {
-            red
-        } else if is_warning {
-            yellow
-        } else {
-            green
-        };
+    fn render_title(&self, f: &mut Frame, area: Rect) {
+        let t = &self.theme;
+        let s = &self.summary;
+        let base = Style::default().bg(t.bg);
+        let dim = base.fg(t.dim);
+        let sep = Span::styled("  ·  ", dim);
 
-        let sep = Span::styled(" · ", Style::default().fg(dim).bg(bg));
-
-        let mut bar: Vec<Span> = Vec::with_capacity(24);
-
-        // Brand
-        bar.push(Span::styled(
-            " vanta ",
-            Style::default()
-                .fg(accent)
-                .add_modifier(ratatui::style::Modifier::BOLD),
-        ));
-        // Status dot
-        bar.push(Span::styled(
-            "●",
-            Style::default()
-                .fg(dot_col)
-                .add_modifier(ratatui::style::Modifier::BOLD),
-        ));
-        bar.push(Span::styled("   ", Style::default().bg(bg)));
-
-        // Metric helper: label + value
-        let metric = |label: &str, value: String, col: Color| -> Vec<Span> {
-            vec![
-                Span::styled(format!("{} ", label), Style::default().fg(dim).bg(bg)),
-                Span::styled(value, Style::default().fg(col).bg(bg)),
-            ]
-        };
-
-        for (label, value, col, leading) in [
-            ("CPU", format!("{:.0}%", sum.cpu_pct), cpu_col, true),
-            ("RAM", format!("{:.0}%", sum.mem_pct), mem_col, false),
-            ("DSK", format!("{:.0}%", sum.disk_pct), disk_col, false),
-            ("GPU", format!("{}%", sum.gpu_pct), gpu_col, false),
-            ("TEMP", format!("{:.0}°C", sum.temp_c), temp_col, false),
-        ] {
-            if !leading {
-                bar.push(sep.clone());
+        let mut worst = 0u8; // 0 ok, 1 warn, 2 crit
+        let mut level = |pct: f64| {
+            let l = if pct >= 90.0 {
+                2
+            } else if pct >= 75.0 {
+                1
+            } else {
+                0
+            };
+            worst = worst.max(l);
+            match l {
+                2 => t.red,
+                1 => t.yellow,
+                _ => t.accent,
             }
-            bar.extend(metric(label, value, col));
+        };
+
+        let mut metrics: Vec<(&str, String, ratatui::style::Color)> = vec![
+            (
+                "cpu",
+                format!("{:>3.0}%", s.cpu_pct),
+                level(s.cpu_pct as f64),
+            ),
+            ("mem", format!("{:>3.0}%", s.mem_pct), level(s.mem_pct)),
+        ];
+        if let Some(g) = s.gpu_pct {
+            metrics.push(("gpu", format!("{:>3.0}%", g), level(g)));
         }
-
-        if sum.temp_c <= 0.0 {
-            bar.push(sep.clone());
-            bar.push(Span::styled("TEMP –", Style::default().fg(dim).bg(bg)));
+        if let Some(d) = s.disk_pct {
+            metrics.push(("disk", format!("{:>3.0}%", d), level(d)));
         }
-
-        // Network
-        bar.push(sep.clone());
-        bar.push(Span::styled("NET ", Style::default().fg(dim).bg(bg)));
-        bar.push(Span::styled(
-            format!("↓{}", sum.net_dl),
-            Style::default().fg(secondary).bg(bg),
+        if let Some(c) = s.temp_c {
+            metrics.push(("temp", format!("{:.0}°", c), level(c)));
+        }
+        metrics.push((
+            "net",
+            format!(
+                "↓{} ↑{}",
+                crate::widgets::meter::fmt_kbps(s.rx_kbps),
+                crate::widgets::meter::fmt_kbps(s.tx_kbps)
+            ),
+            t.secondary,
         ));
-        bar.push(Span::styled(
-            format!(" ↑{}", sum.net_ul),
-            Style::default().fg(secondary).bg(bg),
-        ));
-
-        // Battery & uptime
-        if let Some(p) = sum.bat_pct {
-            bar.push(sep.clone());
-            bar.push(Span::styled("BAT ", Style::default().fg(dim).bg(bg)));
-            bar.push(Span::styled(
-                format!("{}%", p),
-                Style::default().fg(bat_col).bg(bg),
+        if let Some((p, charging)) = s.battery {
+            let col = if charging || p > 20 {
+                t.accent
+            } else if p > 10 {
+                worst = worst.max(1);
+                t.yellow
+            } else {
+                worst = 2;
+                t.red
+            };
+            metrics.push((
+                "bat",
+                format!("{}%{}", p, if charging { "⚡" } else { "" }),
+                col,
             ));
         }
-        bar.push(sep.clone());
-        bar.push(Span::styled("UP ", Style::default().fg(dim).bg(bg)));
-        bar.push(Span::styled(
-            sum.uptime.clone(),
-            Style::default().fg(text).bg(bg),
-        ));
+        metrics.push(("up", s.uptime.clone(), t.text));
 
-        // Nav — the three pages
-        let nav_modes = [
+        let dot = match worst {
+            2 => t.red,
+            1 => t.yellow,
+            _ => t.green,
+        };
+        let mut left: Vec<Span> = vec![
+            Span::styled(" vanta", base.fg(t.accent).add_modifier(Modifier::BOLD)),
+            Span::styled(" ● ", base.fg(dot)),
+            Span::styled(" ", base),
+        ];
+        for (i, (k, v, c)) in metrics.iter().enumerate() {
+            if i > 0 {
+                left.push(sep.clone());
+            }
+            left.push(Span::styled(format!("{} ", k), dim));
+            left.push(Span::styled(v.clone(), base.fg(*c)));
+        }
+
+        let mut right: Vec<Span> = Vec::new();
+        for m in [
             DashboardMode::Dashboard,
             DashboardMode::Monitor,
             DashboardMode::Aesthetic,
-        ];
-        let mut nav_spans = vec![Span::styled(" ", Style::default().bg(bg))];
-        for (i, m) in nav_modes.iter().enumerate() {
-            if i > 0 {
-                nav_spans.push(Span::styled(" ", Style::default().bg(bg)));
-            }
-            let is_current = self.mode == *m;
-            let style = if is_current {
+        ] {
+            let style = if m == self.mode {
                 Style::default()
-                    .fg(bg)
-                    .bg(accent)
-                    .add_modifier(ratatui::style::Modifier::BOLD)
+                    .fg(t.bg)
+                    .bg(t.accent)
+                    .add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(dim).bg(bg)
+                dim
             };
-            nav_spans.push(Span::styled(
-                format!(" {}·{} ", m.hotkey(), m.label()),
+            right.push(Span::styled(
+                format!(" {} {} ", m.hotkey(), m.label()),
                 style,
             ));
+            right.push(Span::styled(" ", base));
         }
-        nav_spans.push(Span::styled("  ?Help", Style::default().fg(dim).bg(bg)));
-        nav_spans.push(Span::styled(" T↑", Style::default().fg(dim).bg(bg)));
-        nav_spans.push(Span::styled(" Q←", Style::default().fg(dim).bg(bg)));
-        let nav_display = nav_spans
-            .iter()
-            .map(|s| s.content.clone())
-            .collect::<String>();
-        let nav_len = nav_display.len();
+        right.push(Span::styled("? help ", dim));
 
-        // Push stats to the left, nav to the right
-        let stats_len: usize = bar.iter().map(|s| s.content.len()).sum();
-        let avail = title_bar.width as usize;
-        let gap = if stats_len + nav_len + 2 < avail {
-            avail.saturating_sub(stats_len + nav_len)
-        } else {
-            2
+        let width = |v: &[Span]| -> usize { v.iter().map(|s| s.content.chars().count()).sum() };
+        let (rw, avail) = (width(&right), area.width as usize);
+        // Narrow terminal: shed metrics from the right (least important last)
+        // until the page nav fits. Each metric is 3 spans (sep, key, value).
+        while width(&left) + rw >= avail && left.len() > 3 + 3 {
+            left.truncate(left.len() - 3);
+        }
+        let lw = width(&left);
+        let mut spans = left;
+        if lw + rw < avail {
+            spans.push(Span::styled(" ".repeat(avail - lw - rw), base));
+            spans.extend(right);
+        } else if lw < avail {
+            spans.push(Span::styled(" ".repeat(avail - lw), base));
+        }
+        f.render_widget(Paragraph::new(Line::from(spans)).style(base), area);
+    }
+
+    fn render_status(&self, f: &mut Frame, area: Rect) {
+        let t = &self.theme;
+        let base = Style::default().bg(t.surface);
+        let key = base.fg(t.accent).add_modifier(Modifier::BOLD);
+        let txt = base.fg(t.dim);
+
+        let mut spans: Vec<Span> = vec![Span::styled(" ", base)];
+        let mut hint = |k: &str, d: &str| {
+            spans.push(Span::styled(k.to_string(), key));
+            spans.push(Span::styled(format!(" {}   ", d), txt));
         };
 
-        bar.push(Span::styled(" ".repeat(gap), Style::default().bg(bg)));
-        bar.extend(nav_spans);
-        // Fill remainder
-        let used: usize = bar.iter().map(|s| s.content.len()).sum();
-        if used < avail {
-            bar.push(Span::styled(
-                " ".repeat(avail - used),
-                Style::default().bg(bg),
+        if let Some((msg, _)) = &self.toast {
+            spans.push(Span::styled(
+                format!("{}   ", msg),
+                base.fg(t.text).add_modifier(Modifier::BOLD),
             ));
-        }
-
-        f.render_widget(
-            Paragraph::new(Line::from(bar)).style(Style::default().bg(bg)),
-            title_bar,
-        );
-
-        // Main content — dispatch by page
-        match self.mode {
-            DashboardMode::Dashboard => {
-                overview::render(
-                    f,
-                    main_area,
-                    &self.theme,
-                    &self.config,
-                    self.tick_count,
-                    self.focused_panel,
-                    &self.panel_states,
-                    &self.summary,
-                );
-            }
-            DashboardMode::Monitor | DashboardMode::Aesthetic => {
-                // Themed background
-                f.render_widget(
-                    Paragraph::new("").style(Style::default().bg(self.theme.bg)),
-                    main_area,
-                );
-
-                let placements = layout::layout_for_mode(self.mode, main_area, &self.config);
-                let widgets = widget::widgets_for_mode(self.mode);
-
-                for placement in placements {
-                    if let Some(w) = widgets.iter().find(|w| w.id() == placement.id) {
-                        w.render(
-                            f,
-                            placement.area,
-                            &self.theme,
-                            &self.config,
-                            &self.panel_states,
-                            self.tick_count,
-                        );
+        } else if self.panel_states.process_search_active {
+            hint("type", "to filter");
+            hint("enter", "keep filter");
+            hint("esc", "clear");
+        } else {
+            match self.focused_panel {
+                Some(PanelId::Processes) => {
+                    hint("↑↓", "select");
+                    hint("/", "search");
+                    hint("s", "sort");
+                    hint("r", "reverse");
+                    hint("t", "tree");
+                    if self.panel_states.process_tree_mode {
+                        hint("←→", "fold");
                     }
+                    hint("c", "cmd");
+                    hint("k", "term");
+                    hint("K", "kill");
+                }
+                Some(PanelId::Calendar) => {
+                    hint("←→", "month");
+                    hint("↑↓", "year");
+                    hint("home", "today");
+                }
+                _ => {
+                    hint("tab", "focus");
+                    hint("space", "play/pause");
+                    hint("n/p", "track");
+                    hint("<>", "volume");
+                    hint("v", "visualizer");
+                    hint("T", "theme");
+                    hint("+/-", "refresh");
                 }
             }
+            hint("q", "quit");
         }
 
-        // ── Status bar ──
-        let focus_status = match self.focused_panel {
-            Some(p) => format!("  Focus: {:?}", p),
-            None => String::new(),
-        };
-        let in_processes =
-            self.mode == DashboardMode::Monitor || self.focused_panel == Some(PanelId::Processes);
-        let process_status = if in_processes {
-            let sort = format!(" Sort:{}", self.panel_states.process_sort_field.label());
-            if self.panel_states.process_search_active {
-                format!("{} | Search: [{}]", sort, self.panel_states.process_search)
-            } else if self.panel_states.process_tree_mode {
-                format!("{} | Tree", sort)
-            } else {
-                sort
-            }
-        } else {
-            String::new()
-        };
-        let status_style = Style::default().fg(self.theme.dim).bg(self.theme.surface);
-        f.render_widget(
-            Paragraph::new(Line::from(Span::styled(
+        let mut right: Vec<Span> = Vec::new();
+        if let Some(p) = self.focused_panel {
+            right.push(Span::styled(format!("[{}] ", p.label()), base.fg(t.accent)));
+        }
+        if self.mode == DashboardMode::Monitor {
+            let ps = &self.panel_states;
+            right.push(Span::styled(
                 format!(
-                    " vanta v0.1.0 [{}]{}{}",
-                    self.mode.label(),
-                    focus_status,
-                    process_status,
+                    "sort {}{} ",
+                    ps.process_sort_field.label(),
+                    if ps.process_sort_asc { "▴" } else { "▾" }
                 ),
-                status_style,
-            )))
-            .style(Style::default().bg(self.theme.surface)),
-            status_bar,
-        );
-
-        // Help/settings overlay — drawn last so it floats over any page.
-        if self.show_help {
-            crate::screens::settings::render_overlay(f, area, &self.theme, &self.config);
+                txt,
+            ));
         }
+        right.push(Span::styled(
+            format!(
+                "{} · {}fps · {:.1}s · v{} ",
+                self.config.ui.theme,
+                self.config.ui.fps,
+                self.config.ui.refresh_rate,
+                env!("CARGO_PKG_VERSION")
+            ),
+            txt,
+        ));
+
+        let width = |v: &[Span]| -> usize { v.iter().map(|s| s.content.chars().count()).sum() };
+        let (lw, rw, avail) = (width(&spans), width(&right), area.width as usize);
+        if lw + rw < avail {
+            spans.push(Span::styled(" ".repeat(avail - lw - rw), base));
+            spans.extend(right);
+        }
+        f.render_widget(Paragraph::new(Line::from(spans)).style(base), area);
     }
 }

@@ -9,7 +9,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
-use crate::app;
+use crate::theme::Theme;
 
 // ── Cava backend ──
 const CAVA_N_BARS: usize = 64;
@@ -17,6 +17,9 @@ const CAVA_N_BARS: usize = 64;
 static CAVA_BARS: Mutex<Vec<f32>> = Mutex::new(Vec::new());
 static CAVA_RUNNING: AtomicBool = AtomicBool::new(false);
 static CAVA_CHILD: Mutex<Option<u32>> = Mutex::new(None);
+/// Last spawn attempt, so a missing `cava` binary is retried every few
+/// seconds instead of on every frame (the old path slept 100ms per frame).
+static LAST_SPAWN: Mutex<Option<std::time::Instant>> = Mutex::new(None);
 
 // ── Visualizer style ──
 // 0 = bars (bottom-up), 1 = mirror (center-out), 2 = wave (midline).
@@ -32,15 +35,21 @@ fn ensure_cava() {
     if CAVA_RUNNING.load(Ordering::Relaxed) {
         return;
     }
+    {
+        let mut last = LAST_SPAWN.lock().unwrap_or_else(|e| e.into_inner());
+        if last.is_some_and(|t| t.elapsed() < std::time::Duration::from_secs(5)) {
+            return;
+        }
+        *last = Some(std::time::Instant::now());
+    }
 
     // Reap our own previous cava child (if any) so we don't leak processes.
     // Never touch cava instances we didn't spawn — the user may run their own.
     if let Ok(mut child) = CAVA_CHILD.lock() {
         if let Some(pid) = child.take() {
-            let _ = Command::new("kill").arg(pid.to_string()).status();
+            let _ = Command::new("kill").arg(pid.to_string()).spawn();
         }
     }
-    std::thread::sleep(std::time::Duration::from_millis(100));
 
     let source = detect_monitor_source().unwrap_or_else(|| String::from("auto"));
 
@@ -112,7 +121,9 @@ gravity = 30
             match stdout.read_exact(&mut buf) {
                 Ok(()) => {
                     let values: Vec<f32> = buf
-                        .as_chunks::<2>().0.iter()
+                        .as_chunks::<2>()
+                        .0
+                        .iter()
                         .map(|c| {
                             let val = u16::from_le_bytes([c[0], c[1]]);
                             val as f32 / 65535.0
@@ -145,6 +156,26 @@ gravity = 30
         let _ = child_proc.kill();
         let _ = child_proc.wait();
     });
+}
+
+/// Terminate the cava we spawned. Called on shutdown.
+pub fn shutdown() {
+    CAVA_RUNNING.store(false, Ordering::Relaxed);
+    if let Ok(mut child) = CAVA_CHILD.lock() {
+        if let Some(pid) = child.take() {
+            let _ = Command::new("kill").arg(pid.to_string()).status();
+        }
+    }
+    let _ = std::fs::remove_file(format!("/tmp/vanta-cava-{}.conf", std::process::id()));
+}
+
+/// Human label for the active style, for the status bar.
+pub fn style_name() -> &'static str {
+    match VIZ_STYLE.load(Ordering::Relaxed) % STYLE_COUNT {
+        1 => "mirror",
+        2 => "wave",
+        _ => "bars",
+    }
 }
 
 fn detect_monitor_source() -> Option<String> {
@@ -231,7 +262,7 @@ static PEAK: Mutex<f32> = Mutex::new(0.001);
 static SILENCE_FRAMES: Mutex<u32> = Mutex::new(0);
 
 // ── Public entry ──
-pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme, _tick: u64) {
+pub fn render(f: &mut Frame, area: Rect, theme: &Theme, _tick: u64) {
     let term_cols = area.width as usize;
     let term_rows = area.height as usize;
     if term_cols < 4 || term_rows < 2 {
@@ -244,12 +275,19 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme, _tick: u64) {
     let raw = if CAVA_RUNNING.load(Ordering::Relaxed) {
         read_cava_bars()
     } else {
-        let blank = Paragraph::new(Line::from(Span::styled(
-            format!("{:^w$}", "  cava unavailable  ", w = term_cols),
-            Style::default().fg(theme.dim),
-        )))
-        .style(Style::default().bg(theme.surface));
-        f.render_widget(blank, area);
+        // No cava: fall back to the idle wave so the panel never looks dead,
+        // and say why in the corner.
+        let heights = idle_wave(term_cols, _tick);
+        let lines = draw_bars(&heights, 1.0, term_cols, term_rows, theme, true);
+        f.render_widget(Paragraph::new(lines), area);
+        f.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                " install cava for live audio ",
+                Style::default().fg(theme.dim),
+            )))
+            .alignment(ratatui::layout::Alignment::Right),
+            Rect::new(area.x, area.y, area.width, 1),
+        );
         return;
     };
 
@@ -282,7 +320,6 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme, _tick: u64) {
     };
 
     let style = VIZ_STYLE.load(Ordering::Relaxed) % STYLE_COUNT;
-    let bg = Style::default().bg(theme.surface);
     let dim = is_silent;
 
     let lines = match style {
@@ -291,8 +328,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme, _tick: u64) {
         _ => draw_bars(&heights, norm_peak, term_cols, term_rows, theme, dim),
     };
 
-    // No text label needed; the visual change when pressing 'v' is obvious enough.
-    f.render_widget(Paragraph::new(lines).style(bg), area);
+    f.render_widget(Paragraph::new(lines), area);
 }
 
 /// A slow sine "breathing" pattern for the idle state, normalized 0..1.
@@ -308,14 +344,9 @@ fn idle_wave(cols: usize, tick: u64) -> Vec<f32> {
         .collect()
 }
 
-fn bar_color(
-    theme: &app::Theme,
-    height_frac: f32,
-    filled: bool,
-    dim: bool,
-) -> ratatui::style::Color {
+fn bar_color(theme: &Theme, height_frac: f32, filled: bool, dim: bool) -> ratatui::style::Color {
     if !filled {
-        theme.surface
+        theme.bg
     } else if dim {
         theme.dim
     } else if height_frac > 0.6 {
@@ -331,7 +362,7 @@ fn draw_bars(
     norm_peak: f32,
     cols: usize,
     rows: usize,
-    theme: &app::Theme,
+    theme: &Theme,
     dim: bool,
 ) -> Vec<Line<'static>> {
     let display_rows = rows as f32;
@@ -366,7 +397,7 @@ fn draw_mirror(
     norm_peak: f32,
     cols: usize,
     rows: usize,
-    theme: &app::Theme,
+    theme: &Theme,
     dim: bool,
 ) -> Vec<Line<'static>> {
     let half = (rows / 2).max(1) as f32;
@@ -401,7 +432,7 @@ fn draw_wave(
     norm_peak: f32,
     cols: usize,
     rows: usize,
-    theme: &app::Theme,
+    theme: &Theme,
     dim: bool,
 ) -> Vec<Line<'static>> {
     let mid = rows / 2;
@@ -426,7 +457,7 @@ fn draw_wave(
             } else {
                 ' '
             };
-            let c = if ch == '│' { theme.surface } else { color };
+            let c = if ch == '│' { theme.dim } else { color };
             spans.push(Span::styled(ch.to_string(), Style::default().fg(c)));
         }
         lines.push(Line::from(spans));

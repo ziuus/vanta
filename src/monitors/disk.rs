@@ -1,301 +1,351 @@
+use std::collections::HashMap;
+use std::sync::{LazyLock, Mutex};
+use std::time::{Duration, Instant};
+
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Color, Style};
+use ratatui::style::{Modifier, Style};
+use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
-use crate::app;
+use crate::monitors::history::History;
+use crate::theme::Theme;
+use crate::widgets::block_graph::BlockGraph;
+use crate::widgets::meter;
 
-use std::collections::HashMap;
-use std::sync::{LazyLock, Mutex};
-use std::time::Instant;
+const HIST: usize = 120;
+const MOUNT_TTL: Duration = Duration::from_secs(5);
 
-const HISTORY_LEN: usize = 40;
-
-struct DiskState {
-    prev_io: Option<DiskIoState>,
-    prev_time: Option<Instant>,
-    io_history: HashMap<String, Vec<(f64, f64)>>,
+#[derive(Clone, Debug)]
+pub struct Mount {
+    pub path: String,
+    pub device: String,
+    pub used: u64,
+    pub total: u64,
 }
 
-static DISK: LazyLock<Mutex<DiskState>> = LazyLock::new(|| {
-    Mutex::new(DiskState {
-        prev_io: None,
-        prev_time: None,
-        io_history: HashMap::new(),
+impl Mount {
+    pub fn pct(&self) -> f64 {
+        if self.total == 0 {
+            0.0
+        } else {
+            self.used as f64 / self.total as f64 * 100.0
+        }
+    }
+}
+
+struct DevIo {
+    read: u64,
+    write: u64,
+    read_kbps: f64,
+    write_kbps: f64,
+    hist: History<HIST>,
+}
+
+struct State {
+    mounts: Vec<Mount>,
+    mounts_stamp: Option<Instant>,
+    io: HashMap<String, DevIo>,
+    io_stamp: Option<Instant>,
+}
+
+static STATE: LazyLock<Mutex<State>> = LazyLock::new(|| {
+    Mutex::new(State {
+        mounts: Vec::new(),
+        mounts_stamp: None,
+        io: HashMap::new(),
+        io_stamp: None,
     })
 });
 
-struct DiskIoState {
-    reads: HashMap<String, u64>,
-    writes: HashMap<String, u64>,
+pub fn mounts() -> Vec<Mount> {
+    STATE.lock().unwrap().mounts.clone()
 }
 
-fn gauge_color(usage: f64, theme: &app::Theme) -> Color {
-    if usage < 80.0 {
-        theme.accent
-    } else if usage < 95.0 {
-        theme.yellow
-    } else {
-        theme.red
-    }
+/// Used % of the root filesystem for the header summary.
+pub fn root_pct() -> Option<f64> {
+    STATE
+        .lock()
+        .unwrap()
+        .mounts
+        .iter()
+        .find(|m| m.path == "/")
+        .map(Mount::pct)
 }
 
-fn read_disk_io() -> HashMap<String, (u64, u64)> {
-    let content = std::fs::read_to_string("/proc/diskstats").unwrap_or_default();
-    let mut result = HashMap::new();
-    for line in content.lines() {
-        let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() >= 14 {
-            let name = parts[2].to_string();
-            if name.starts_with("loop")
-                || name.starts_with("ram")
-                || name.starts_with("sr")
-                || name.contains("dm-")
-                || name.starts_with("fd")
-                || name.starts_with("zram")
-            {
-                continue;
+fn is_real_mount(fs: &str, dev: &str, mount: &str) -> bool {
+    !fs.is_empty()
+        && !matches!(
+            fs,
+            "tmpfs" | "devtmpfs" | "squashfs" | "overlay" | "efivarfs" | "fuse.portal"
+        )
+        && !dev.contains("loop")
+        && !mount.starts_with("/run")
+        && !mount.starts_with("/snap")
+        && !mount.starts_with("/tmp/.mount")
+        && !mount.starts_with("/var/lib/docker")
+        && !mount.contains("/waydroid")
+        && !mount.contains("/efivars")
+}
+
+fn collect_mounts() -> Vec<Mount> {
+    let devices = mount_devices();
+    let disks = sysinfo::Disks::new_with_refreshed_list();
+    let mut list: Vec<Mount> = disks
+        .iter()
+        .filter_map(|d| {
+            let fs = d.file_system().to_str().unwrap_or("");
+            let dev = d.name().to_str().unwrap_or("");
+            let path = d.mount_point().to_string_lossy().to_string();
+            if !is_real_mount(fs, dev, &path) || d.total_space() == 0 {
+                return None;
             }
-            if let (Ok(sectors_read), Ok(sectors_written)) =
-                (parts[5].parse::<u64>(), parts[9].parse::<u64>())
-            {
-                result.insert(name, (sectors_read * 512, sectors_written * 512));
-            }
-        }
-    }
-    result
+            Some(Mount {
+                device: devices.get(&path).cloned().unwrap_or_default(),
+                path,
+                used: d.total_space().saturating_sub(d.available_space()),
+                total: d.total_space(),
+            })
+        })
+        .collect();
+    list.sort_by(|a, b| a.path.cmp(&b.path));
+    list.dedup_by(|a, b| a.path == b.path);
+    list
 }
 
-/// Map mountpoint → block device name (e.g. "/" → "nvme0n1p2") from /proc/mounts.
-fn read_mount_devices() -> HashMap<String, String> {
+/// mountpoint → block device (e.g. "/" → "nvme0n1p2"), from /proc/mounts.
+fn mount_devices() -> HashMap<String, String> {
     let mut map = HashMap::new();
-    if let Ok(content) = std::fs::read_to_string("/proc/mounts") {
-        for line in content.lines() {
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() >= 2 {
-                let dev = parts[0];
-                let base = dev.rsplit('/').next().unwrap_or(dev);
-                if base.starts_with("sd")
-                    || base.starts_with("nvme")
-                    || base.starts_with("hd")
-                    || base.starts_with("vd")
-                    || base.starts_with("xvd")
-                    || base.starts_with("mmcblk")
-                    || base.contains("dm-")
-                {
-                    map.insert(parts[1].to_string(), base.to_string());
-                }
-            }
+    let Ok(content) = std::fs::read_to_string("/proc/mounts") else {
+        return map;
+    };
+    for line in content.lines() {
+        let mut p = line.split_whitespace();
+        let (Some(dev), Some(mount)) = (p.next(), p.next()) else {
+            continue;
+        };
+        let base = dev.rsplit('/').next().unwrap_or(dev);
+        if ["sd", "nvme", "hd", "vd", "xvd", "mmcblk", "dm-"]
+            .iter()
+            .any(|pre| base.starts_with(pre))
+        {
+            map.insert(mount.to_string(), base.to_string());
         }
     }
     map
 }
 
-fn update_io_history() {
-    let now = Instant::now();
-    let current = read_disk_io();
-
-    let mut disk = DISK.lock().unwrap();
-    let elapsed = disk
-        .prev_time
-        .map(|t| now.duration_since(t).as_secs_f64())
-        .unwrap_or(1.0);
-    let elapsed = elapsed.max(0.1);
-
-    let mut read_kbps = HashMap::new();
-    let mut write_kbps = HashMap::new();
-
-    if let Some(ref prev) = disk.prev_io {
-        for (dev, &(cur_read, cur_write)) in &current {
-            if let Some(&prev_read) = prev.reads.get(dev) {
-                if cur_read >= prev_read {
-                    read_kbps.insert(
-                        dev.clone(),
-                        (cur_read - prev_read) as f64 / 1024.0 / elapsed,
-                    );
-                }
-            }
-            if let Some(&prev_write) = prev.writes.get(dev) {
-                if cur_write >= prev_write {
-                    write_kbps.insert(
-                        dev.clone(),
-                        (cur_write - prev_write) as f64 / 1024.0 / elapsed,
-                    );
-                }
-            }
-        }
-    }
-
-    disk.prev_io = Some(DiskIoState {
-        reads: current.iter().map(|(k, v)| (k.clone(), v.0)).collect(),
-        writes: current.iter().map(|(k, v)| (k.clone(), v.1)).collect(),
-    });
-    disk.prev_time = Some(now);
-
-    for (dev, &r) in &read_kbps {
-        if let Some(w) = write_kbps.get(dev) {
-            let entry = disk.io_history.entry(dev.clone()).or_default();
-            entry.push((r, *w));
-            if entry.len() > HISTORY_LEN {
-                entry.remove(0);
-            }
-        }
-    }
-}
-
-fn fmt_rate(kbps: f64) -> String {
-    if kbps > 1024.0 {
-        format!("{:.1} MB/s", kbps / 1024.0)
-    } else {
-        format!("{:.1} KB/s", kbps)
-    }
-}
-
-/// Combined read+write rate history for a mount, oldest first. Used to draw
-/// the per-disk IO graph.
-fn io_series(mount: &str, want: usize) -> Vec<f64> {
-    let devices = read_mount_devices();
-    let Some(device) = devices.get(mount) else {
-        return Vec::new();
-    };
-    let disk = DISK.lock().unwrap();
-    let Some(entries) = disk.io_history.get(device) else {
-        return Vec::new();
-    };
-    let start = entries.len().saturating_sub(want);
-    entries[start..].iter().map(|(r, w)| r + w).collect()
-}
-
-fn get_current_rates(mount: &str) -> Option<(f64, f64)> {
-    let devices = read_mount_devices();
-    let device = devices.get(mount)?;
-    let disk = DISK.lock().unwrap();
-    if let Some(entries) = disk.io_history.get(device) {
-        if let Some(&(r, w)) = entries.last() {
-            return Some((r, w));
-        }
-    }
-    None
-}
-
-pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
-    let entries: Vec<_> = {
-        let disks = sysinfo::Disks::new_with_refreshed_list();
-        let physical: Vec<_> = disks
-            .iter()
-            .filter(|d| {
-                let fs = d.file_system().to_str().unwrap_or("");
-                let name = d.name().to_str().unwrap_or("");
-                !fs.is_empty()
-                    && !name.contains("loop")
-                    && !name.contains("squashfs")
-                    && !name.contains("tmpfs")
-                    && !name.contains("devtmpfs")
-                    && !name.contains("overlay")
-            })
-            .collect();
-
-        if physical.is_empty() {
-            f.render_widget(
-                Paragraph::new("  —").style(Style::default().bg(theme.surface)),
-                area,
-            );
-            return;
-        }
-
-        let shown = physical.len().min(2);
-        update_io_history();
-
-        physical
-            .iter()
-            .take(shown)
-            .map(|disk| {
-                let total = disk.total_space();
-                let available = disk.available_space();
-                let used = total - available;
-                let pct = if total > 0 {
-                    (used as f64 / total as f64) * 100.0
-                } else {
-                    0.0
-                };
-                let mount = disk.mount_point().to_str().unwrap_or("?").to_string();
-                let rates = get_current_rates(&mount);
-                (mount, pct, rates)
-            })
-            .collect()
-    };
-
-    // Each disk gets a header (mount + rates + used%), a usage meter, and an
-    // IO history graph — btop-style, instead of a single dotted line.
-    if entries.is_empty() {
-        return;
-    }
-    let slots = Layout::vertical(
-        std::iter::repeat_n(Constraint::Ratio(1, entries.len() as u32), entries.len())
-            .collect::<Vec<_>>(),
-    )
-    .split(area);
-
-    for (slot, (mount, pct, rates)) in slots.iter().zip(entries.iter()) {
-        if slot.height == 0 {
+/// Whole-device (not partition) counters from /proc/diskstats, in bytes.
+fn read_diskstats() -> HashMap<String, (u64, u64)> {
+    let content = std::fs::read_to_string("/proc/diskstats").unwrap_or_default();
+    let mut out = HashMap::new();
+    for line in content.lines() {
+        let p: Vec<&str> = line.split_whitespace().collect();
+        if p.len() < 14 {
             continue;
         }
-        let color = gauge_color(*pct, theme);
+        let name = p[2];
+        if ["loop", "ram", "sr", "fd", "zram", "dm-"]
+            .iter()
+            .any(|pre| name.starts_with(pre))
+        {
+            continue;
+        }
+        if let (Ok(r), Ok(w)) = (p[5].parse::<u64>(), p[9].parse::<u64>()) {
+            out.insert(name.to_string(), (r * 512, w * 512));
+        }
+    }
+    out
+}
 
+pub fn sample() {
+    // Everything slow (statvfs on every mount, /proc reads) happens before
+    // the lock so renders never stall behind it.
+    let stale = STATE
+        .lock()
+        .unwrap()
+        .mounts_stamp
+        .is_none_or(|t| t.elapsed() > MOUNT_TTL);
+    let fresh_mounts = stale.then(collect_mounts);
+    let cur = read_diskstats();
+    let now = Instant::now();
+
+    let mut st = STATE.lock().unwrap();
+    if let Some(m) = fresh_mounts {
+        st.mounts = m;
+        st.mounts_stamp = Some(now);
+    }
+    let dt = st
+        .io_stamp
+        .map(|t| now.duration_since(t).as_secs_f64())
+        .unwrap_or(0.0);
+    for (dev, (r, w)) in cur {
+        let e = st.io.entry(dev).or_insert(DevIo {
+            read: r,
+            write: w,
+            read_kbps: 0.0,
+            write_kbps: 0.0,
+            hist: History::new(),
+        });
+        if dt > 0.05 {
+            e.read_kbps = r.saturating_sub(e.read) as f64 / 1024.0 / dt;
+            e.write_kbps = w.saturating_sub(e.write) as f64 / 1024.0 / dt;
+            let sum = e.read_kbps + e.write_kbps;
+            e.hist.push(sum);
+        }
+        e.read = r;
+        e.write = w;
+    }
+    st.io_stamp = Some(now);
+}
+
+/// Strip the partition suffix so "nvme0n1p2" → "nvme0n1", "sda3" → "sda".
+fn parent_device(part: &str) -> String {
+    if let Some(idx) = part.rfind('p') {
+        if part.starts_with("nvme") || part.starts_with("mmcblk") {
+            return part[..idx].to_string();
+        }
+    }
+    part.trim_end_matches(|c: char| c.is_ascii_digit())
+        .to_string()
+}
+
+fn io_for(st: &State, mount: &Mount) -> Option<(f64, f64, Vec<f64>, usize)> {
+    let dev = st
+        .io
+        .get(&mount.device)
+        .or_else(|| st.io.get(&parent_device(&mount.device)))?;
+    Some((
+        dev.read_kbps,
+        dev.write_kbps,
+        dev.hist.recent(HIST),
+        dev.hist.recent(HIST).len(),
+    ))
+}
+
+/// Monitor page: per-mount header, IO history graph, capacity meter.
+pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
+    if area.height < 2 {
+        return;
+    }
+    let st = STATE.lock().unwrap();
+    if st.mounts.is_empty() {
+        return;
+    }
+    // Each mount needs header + meter (2 rows) plus at least one graph row.
+    let shown = st.mounts.len().min((area.height as usize / 3).max(1));
+    let slots = Layout::vertical(vec![Constraint::Ratio(1, shown as u32); shown]).split(area);
+
+    for (slot, m) in slots.iter().zip(st.mounts.iter()) {
+        if slot.height < 2 {
+            continue;
+        }
         let rows = Layout::vertical([
-            Constraint::Length(1), // header
-            Constraint::Min(0),    // io graph
-            Constraint::Length(1), // usage meter
+            Constraint::Length(1),
+            Constraint::Min(0),
+            Constraint::Length(1),
         ])
         .split(*slot);
 
-        let stats = match rates {
-            Some((r, w)) => format!("\u{2193}{:>9}  \u{2191}{:>9}", fmt_rate(*r), fmt_rate(*w)),
-            None => format!("\u{2193}{:>9}  \u{2191}{:>9}", "--", "--"),
+        let io = io_for(&st, m);
+        let stats = match &io {
+            Some((r, w, _, _)) => {
+                format!("↓ {:>9}  ↑ {:>9}", meter::fmt_kbps(*r), meter::fmt_kbps(*w))
+            }
+            None => String::from("↓        --  ↑        --"),
         };
         f.render_widget(
-            Paragraph::new(ratatui::text::Line::from(vec![
-                ratatui::text::Span::styled(
-                    format!("{:<6}", mount.chars().take(6).collect::<String>()),
-                    Style::default().fg(theme.dim),
+            Paragraph::new(Line::from(vec![
+                Span::styled(
+                    format!("{:<8}", meter::ellipsize(&m.path, 8)),
+                    Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
                 ),
-                ratatui::text::Span::styled(stats, Style::default().fg(theme.text)),
+                Span::styled(stats, Style::default().fg(theme.dim)),
             ])),
             rows[0],
         );
 
-        // IO history graph, scaled to its own window peak (no fixed ceiling).
         if rows[1].height > 0 {
-            let want = rows[1].width as usize * 2;
-            let series = io_series(mount, want);
-            if !series.is_empty() {
-                let peak = series.iter().copied().fold(1.0f64, f64::max);
-                let graph = crate::widgets::block_graph::BlockGraph::new(&series)
-                    .min(0.0)
-                    .max(peak)
-                    .colors(theme.secondary, theme.yellow, theme.red);
-                f.render_widget(graph, rows[1]);
+            if let Some((_, _, series, n)) = &io {
+                if *n > 0 {
+                    let peak = series.iter().copied().fold(1.0f64, f64::max);
+                    let want = series.len().saturating_sub(rows[1].width as usize);
+                    f.render_widget(
+                        BlockGraph::new(&series[want..]).max(peak).colors(
+                            theme.secondary,
+                            theme.secondary,
+                            theme.secondary,
+                        ),
+                        rows[1],
+                    );
+                }
             }
         }
 
-        // Capacity meter on the bottom row.
-        let bar_w = rows[2].width.saturating_sub(12) as usize;
-        let filled = ((pct / 100.0).clamp(0.0, 1.0) * bar_w as f64).round() as usize;
+        let pct = m.pct();
+        let c = theme.usage(pct);
+        let tail = format!(
+            " {:>3.0}%  {} / {}",
+            pct,
+            meter::fmt_bytes(m.used),
+            meter::fmt_bytes(m.total)
+        );
+        let bar_w = (rows[2].width as usize).saturating_sub(tail.len());
+        let (on, off) = meter::track(pct / 100.0, bar_w);
         f.render_widget(
-            Paragraph::new(ratatui::text::Line::from(vec![
-                ratatui::text::Span::styled("\u{25a0}".repeat(filled), Style::default().fg(color)),
-                ratatui::text::Span::styled(
-                    "\u{25a0}".repeat(bar_w.saturating_sub(filled)),
-                    Style::default().fg(theme.surface),
-                ),
-                ratatui::text::Span::styled(
-                    format!(" {:>3.0}% used", pct),
-                    Style::default()
-                        .fg(color)
-                        .add_modifier(ratatui::style::Modifier::BOLD),
-                ),
+            Paragraph::new(Line::from(vec![
+                Span::styled(on, Style::default().fg(c)),
+                Span::styled(off, Style::default().fg(theme.surface)),
+                Span::styled(tail, Style::default().fg(c).add_modifier(Modifier::BOLD)),
             ])),
             rows[2],
         );
     }
+}
+
+/// Dashboard: one compact capacity row per mount.
+pub fn render_storage(f: &mut Frame, area: Rect, theme: &Theme) {
+    if area.height < 1 || area.width < 24 {
+        return;
+    }
+    let mounts = mounts();
+    if mounts.is_empty() {
+        return;
+    }
+    let wide = area.width >= 44;
+    let lines: Vec<Line> = mounts
+        .iter()
+        .take(area.height as usize)
+        .map(|m| {
+            let pct = m.pct();
+            let c = theme.usage(pct);
+            let label = format!("{:<9}", meter::ellipsize(&m.path, 9));
+            let pct_s = format!(" {:>3.0}%", pct);
+            let size = if wide {
+                format!(
+                    "  {:>6} / {:<6}",
+                    meter::fmt_bytes(m.used),
+                    meter::fmt_bytes(m.total)
+                )
+            } else {
+                String::new()
+            };
+            let bar_w = (area.width as usize)
+                .saturating_sub(label.len() + pct_s.len() + size.len())
+                .max(4);
+            let (on, off) = meter::track(pct / 100.0, bar_w);
+            Line::from(vec![
+                Span::styled(label, Style::default().fg(theme.dim)),
+                Span::styled(on, Style::default().fg(c)),
+                Span::styled(off, Style::default().fg(theme.surface)),
+                Span::styled(pct_s, Style::default().fg(c).add_modifier(Modifier::BOLD)),
+                Span::styled(size, Style::default().fg(theme.dim)),
+            ])
+        })
+        .collect();
+    let top = area.height.saturating_sub(lines.len() as u16) / 2;
+    f.render_widget(
+        Paragraph::new(lines),
+        Rect::new(area.x, area.y + top, area.width, area.height - top),
+    );
 }

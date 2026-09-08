@@ -2,189 +2,180 @@ use std::fs;
 use std::sync::{LazyLock, Mutex};
 
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Color, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
-const HIST_LEN: usize = 240;
-static CPU_HISTORY: LazyLock<Mutex<([f64; HIST_LEN], usize)>> =
-    LazyLock::new(|| Mutex::new(([0.0; HIST_LEN], 0)));
+use crate::monitors::history::History;
+use crate::theme::Theme;
+use crate::widgets::block_graph::BlockGraph;
+use crate::widgets::meter;
 
-use crate::app;
+#[derive(Clone, Default)]
+pub struct CpuSnapshot {
+    pub usage: f32,
+    pub cores: Vec<f32>,
+    pub load: (f64, f64, f64),
+    pub freq_mhz: u64,
+    /// Per-sensor temps from hwmon (package first when the driver reports one).
+    pub temps: Vec<f64>,
+}
 
-fn usage_color(usage: f32, theme: &app::Theme) -> Color {
-    if usage < 80.0 {
-        theme.accent
-    } else if usage < 95.0 {
-        theme.yellow
-    } else {
-        theme.red
+impl CpuSnapshot {
+    /// Hottest sensor, or None when no sensor is available.
+    pub fn max_temp(&self) -> Option<f64> {
+        self.temps.iter().copied().reduce(f64::max)
     }
 }
 
-pub fn read_core_temps() -> Vec<f64> {
-    // Scan /sys/class/hwmon/hwmon*/ for Intel (coretemp) or AMD (k10temp, zenpower)
-    if let Ok(hwmon_dir) = fs::read_dir("/sys/class/hwmon/") {
-        for hwmon_entry in hwmon_dir.flatten() {
-            let name_path = hwmon_entry.path().join("name");
-            if let Ok(name) = fs::read_to_string(&name_path) {
-                let name = name.trim();
-                if name == "coretemp" || name == "k10temp" || name == "zenpower" {
-                    let mut temps: Vec<(usize, f64)> = Vec::new();
-                    if let Ok(temp_dir) = fs::read_dir(hwmon_entry.path()) {
-                        for te in temp_dir.flatten() {
-                            let fname = te.file_name().to_string_lossy().to_string();
-                            if fname.starts_with("temp") && fname.ends_with("_input") {
-                                let num_part: usize = fname
-                                    .strip_prefix("temp")
-                                    .and_then(|s| s.strip_suffix("_input"))
-                                    .and_then(|s| s.parse().ok())
-                                    .unwrap_or(0);
-                                if let Ok(val) = fs::read_to_string(te.path()) {
-                                    if let Ok(millideg) = val.trim().parse::<f64>() {
-                                        temps.push((num_part, millideg / 1000.0));
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    temps.sort_by_key(|(idx, _)| *idx);
-                    return temps.into_iter().map(|(_, t)| t).collect();
+static SNAP: LazyLock<Mutex<CpuSnapshot>> = LazyLock::new(|| Mutex::new(CpuSnapshot::default()));
+static HISTORY: LazyLock<Mutex<History<240>>> = LazyLock::new(|| Mutex::new(History::new()));
+
+pub fn snapshot() -> CpuSnapshot {
+    SNAP.lock().unwrap().clone()
+}
+
+/// Called once per tick with a freshly refreshed sysinfo handle.
+pub fn sample(sys: &sysinfo::System) {
+    let la = sysinfo::System::load_average();
+    let snap = CpuSnapshot {
+        usage: sys.global_cpu_usage(),
+        cores: sys.cpus().iter().map(|c| c.cpu_usage()).collect(),
+        load: (la.one, la.five, la.fifteen),
+        freq_mhz: sys.cpus().iter().map(|c| c.frequency()).max().unwrap_or(0),
+        temps: read_core_temps(),
+    };
+    HISTORY.lock().unwrap().push(snap.usage as f64);
+    *SNAP.lock().unwrap() = snap;
+}
+
+fn read_core_temps() -> Vec<f64> {
+    let Ok(hwmon_dir) = fs::read_dir("/sys/class/hwmon/") else {
+        return Vec::new();
+    };
+    for hwmon_entry in hwmon_dir.flatten() {
+        let Ok(name) = fs::read_to_string(hwmon_entry.path().join("name")) else {
+            continue;
+        };
+        if !matches!(name.trim(), "coretemp" | "k10temp" | "zenpower") {
+            continue;
+        }
+        let mut temps: Vec<(usize, f64)> = Vec::new();
+        if let Ok(temp_dir) = fs::read_dir(hwmon_entry.path()) {
+            for te in temp_dir.flatten() {
+                let fname = te.file_name().to_string_lossy().to_string();
+                let Some(num) = fname
+                    .strip_prefix("temp")
+                    .and_then(|s| s.strip_suffix("_input"))
+                    .and_then(|s| s.parse::<usize>().ok())
+                else {
+                    continue;
+                };
+                if let Some(v) = fs::read_to_string(te.path())
+                    .ok()
+                    .and_then(|v| v.trim().parse::<f64>().ok())
+                {
+                    temps.push((num, v / 1000.0));
                 }
             }
         }
+        temps.sort_by_key(|(idx, _)| *idx);
+        return temps.into_iter().map(|(_, t)| t).collect();
     }
     Vec::new()
 }
 
-pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
-    // ── Collect data ──
-    let sys = crate::app::SYS.lock().unwrap();
-    // sys.refresh_cpu_all();
-    let cores: Vec<_> = sys.cpus().iter().map(|c| c.cpu_usage()).collect();
-    let la = sysinfo::System::load_average();
-    let cpu_usage = sys.global_cpu_usage();
-    {
-        let mut cpu = CPU_HISTORY.lock().unwrap();
-        let idx = cpu.1;
-        cpu.0[idx] = cpu_usage as f64;
-        cpu.1 = (idx + 1) % HIST_LEN;
+/// Monitor-page CPU panel: header, big history graph, per-core meters.
+pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
+    if area.height < 3 || area.width < 20 {
+        return;
     }
-    let (load_vals, core_count, freq_mhz) = (
-        (la.one, la.five, la.fifteen),
-        sys.cpus().len(),
-        sys.cpus().first().map(|c| c.frequency()).unwrap_or(0),
-    );
+    let snap = snapshot();
+    let core_count = snap.cores.len();
 
-    let core_temps = read_core_temps();
-    let max_core_temp = core_temps
-        .iter()
-        .skip(1)
-        .copied()
-        .fold(f64::NEG_INFINITY, f64::max);
-    let has_temp = max_core_temp.is_finite();
+    // Two cores per line when wide enough, otherwise one.
+    let per_line = if area.width >= 36 { 2 } else { 1 };
+    let core_rows = core_count.div_ceil(per_line) as u16;
+    // Cap the core block so the graph always keeps at least 2 rows.
+    let core_rows = core_rows.min(area.height.saturating_sub(4));
 
-    // ── Layout ──
-    let core_rows = core_count.div_ceil(2);
-    let mut constraints: Vec<ratatui::layout::Constraint> = Vec::with_capacity(3 + core_rows);
-    constraints.push(Constraint::Length(1)); // header line
-    constraints.push(Constraint::Min(2)); // sparkline (expands to fill vertical space)
-    constraints.push(Constraint::Length(1)); // blank spacer
-    for _ in 0..core_rows {
-        constraints.push(Constraint::Length(1)); // per-core row
+    let mut constraints = vec![Constraint::Length(1), Constraint::Min(2)];
+    if core_rows > 0 {
+        constraints.push(Constraint::Length(1));
+        constraints.push(Constraint::Length(core_rows));
     }
     let chunks = Layout::vertical(constraints).split(area);
 
-    // ── Header: CPU % · load · freq · temp ──
-    let header_color = usage_color(cpu_usage, theme);
-    let mut parts = vec![
-        format!("{:.0}%", cpu_usage),
-        format!("{:.2}/{:.2}/{:.2}", load_vals.0, load_vals.1, load_vals.2),
+    let color = theme.usage(snap.usage as f64);
+    let mut header = vec![
+        Span::styled(
+            format!("{:>3.0}%", snap.usage),
+            Style::default().fg(color).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            format!(
+                "  load {:.2} {:.2} {:.2}",
+                snap.load.0, snap.load.1, snap.load.2
+            ),
+            Style::default().fg(theme.dim),
+        ),
     ];
-    if freq_mhz > 0 {
-        parts.push(format!("{:.1}GHz", freq_mhz as f64 / 1000.0));
+    if snap.freq_mhz > 0 {
+        header.push(Span::styled(
+            format!("  {:.1}GHz", snap.freq_mhz as f64 / 1000.0),
+            Style::default().fg(theme.text),
+        ));
     }
-    if has_temp {
-        parts.push(format!("{}°C", max_core_temp as u64));
+    if let Some(t) = snap.max_temp() {
+        header.push(Span::styled(
+            format!("  {:.0}°C", t),
+            Style::default().fg(theme.temp(t)),
+        ));
     }
-    parts.push(format!("{}c", core_count));
-    let header = parts.join(" · ");
+    if area.width >= 56 {
+        header.push(Span::styled(
+            format!("  {} threads", core_count),
+            Style::default().fg(theme.dim),
+        ));
+    }
+    f.render_widget(Paragraph::new(Line::from(header)), chunks[0]);
 
+    let hist = HISTORY.lock().unwrap().recent(chunks[1].width as usize);
     f.render_widget(
-        Paragraph::new(Line::from(Span::styled(
-            &header,
-            Style::default().fg(header_color),
-        ))),
-        chunks[0],
+        BlockGraph::new(&hist)
+            .max(100.0)
+            .colors(theme.accent, theme.yellow, theme.red),
+        chunks[1],
     );
 
-    // ── Sparkline (Braille Graph) ──
-    let max_w = (chunks[1].width as usize * 2).min(HIST_LEN);
-    let hist: Vec<f64> = {
-        let cpu = CPU_HISTORY.lock().unwrap();
-        let idx = cpu.1;
-        (0..max_w)
-            .map(|i| cpu.0[(idx + HIST_LEN - 1 - i) % HIST_LEN])
-            .rev()
-            .collect()
-    };
-
-    let braille = crate::widgets::block_graph::BlockGraph::new(&hist)
-        .min(0.0)
-        .max(100.0)
-        .colors(theme.green, theme.yellow, theme.red);
-
-    f.render_widget(braille, chunks[1]);
-
-    // ── Per-core rows (2 per line, compact gauges) ──
-    for (i, row_area) in chunks[3..].iter().enumerate() {
-        let col_chunks =
-            Layout::horizontal([Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)]).split(*row_area);
-
-        for &(col_idx, gauge_area) in &[(0, col_chunks[0]), (1, col_chunks[1])] {
-            let idx = i * 2 + col_idx;
-            if idx >= cores.len() {
-                continue;
-            }
-
-            let usage = cores[idx];
-            let c = usage_color(usage, theme);
-
-            // Format exact strings first
-            let label = format!("c{:<2} ", idx);
-            let pct_str = format!("{:>4.0}%", usage);
-
-            // Create the block meter exactly fitting the remaining space
-            let bar_len = gauge_area
-                .width
-                .saturating_sub((label.len() + pct_str.len()) as u16)
-                as usize;
-            let mut bar = String::new();
-            if bar_len > 0 {
-                let blocks = [" ", "▏", "▎", "▍", "▌", "▋", "▊", "▉", "█"];
-                let total_levels = bar_len * 8;
-                let filled_levels =
-                    ((usage / 100.0).clamp(0.0, 1.0) * total_levels as f32).round() as usize;
-
-                for i in 0..bar_len {
-                    let cell_level = filled_levels.saturating_sub(i * 8).min(8);
-                    bar.push_str(blocks[cell_level]);
-                }
-            }
-
-            let line = Line::from(vec![
-                Span::styled(label, Style::default().fg(theme.dim)),
-                Span::styled(bar, Style::default().fg(c)),
-                Span::styled(
-                    pct_str,
-                    Style::default()
-                        .fg(c)
-                        .add_modifier(ratatui::style::Modifier::BOLD),
-                ),
-            ]);
-
-            f.render_widget(Paragraph::new(line), gauge_area);
+    if core_rows == 0 {
+        return;
+    }
+    let cols = Layout::horizontal(vec![Constraint::Ratio(1, per_line as u32); per_line])
+        .spacing(2)
+        .split(chunks[3]);
+    for (i, &usage) in snap.cores.iter().enumerate() {
+        let row = (i / per_line) as u16;
+        if row >= core_rows {
+            break;
         }
+        let col = cols[i % per_line];
+        let cell = Rect::new(col.x, col.y + row, col.width, 1);
+        let c = theme.usage(usage as f64);
+        let label = format!("c{:<2} ", i);
+        let pct = format!("{:>4.0}%", usage);
+        let bar_w = cell.width.saturating_sub((label.len() + pct.len()) as u16) as usize;
+        f.render_widget(
+            Paragraph::new(Line::from(vec![
+                Span::styled(label, Style::default().fg(theme.dim)),
+                Span::styled(
+                    meter::bar(usage as f64 / 100.0, bar_w),
+                    Style::default().fg(c),
+                ),
+                Span::styled(pct, Style::default().fg(c).add_modifier(Modifier::BOLD)),
+            ])),
+            cell,
+        );
     }
 }

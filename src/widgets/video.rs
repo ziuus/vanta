@@ -6,11 +6,11 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
-use crate::app;
+use crate::theme::Theme;
 
 /// Render a rotating 3D torus (donut) as an ASCII "video" demo.
 #[allow(non_snake_case)]
-pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme, _tick: u64) {
+pub fn render(f: &mut Frame, area: Rect, theme: &Theme, _tick: u64) {
     if area.width < 10 || area.height < 5 {
         return;
     }

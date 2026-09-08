@@ -1,104 +1,59 @@
 <div align="center">
-  <br />
   <h1>vanta</h1>
-  <p>
-    <strong>Your machine, one pane.</strong><br/>
-    A blazingly fast, highly aesthetic terminal system dashboard built in Rust.
-  </p>
-  <a href="https://website-pi-seven-nty4ogjp2f.vercel.app">
-    <img src="https://img.shields.io/badge/Live_Landing_Page-030712?style=for-the-badge&logo=vercel&logoColor=white" alt="Live Landing Page" />
-  </a>
-  <a href="https://github.com/ziuus/vanta/releases">
-    <img src="https://img.shields.io/github/v/release/ziuus/vanta?style=for-the-badge&color=4A9E8E" alt="Latest Release" />
-  </a>
-  <a href="https://crates.io/crates/vanta">
-    <img src="https://img.shields.io/crates/v/vanta?style=for-the-badge&color=28c840" alt="Crates.io" />
-  </a>
+  <p><strong>Your machine, one pane.</strong><br/>
+  A fast, aesthetic terminal system dashboard in Rust.</p>
+  <a href="https://website-pi-seven-nty4ogjp2f.vercel.app"><img src="https://img.shields.io/badge/Landing_Page-030712?style=for-the-badge&logo=vercel&logoColor=white" alt="Landing Page" /></a>
+  <a href="https://github.com/ziuus/vanta/releases"><img src="https://img.shields.io/github/v/release/ziuus/vanta?style=for-the-badge&color=4A9E8E" alt="Latest Release" /></a>
   <br /><br />
-  <img src="docs/screenshot.png" alt="Vanta Dashboard Screenshot" width="800" />
+  <img src="docs/screenshot.png" alt="Vanta Dashboard" width="800" />
 </div>
 
-<hr />
-
-## 🚀 The Ultimate Terminal Cockpit
-
-**Vanta** collapses all the system metrics you care about into a single, beautiful terminal pane. It's fully keyboard-driven with zero mouse dependency and no floating tabs.
-
-With three focused pages plus an on-demand help overlay, Vanta transforms from a dense technical monitor to pure terminal eye-candy with a single keystroke.
-
-## ⚡ Pages
-
-| Key | Page | Description |
-|-----|------|-------------|
-| `1` | **Dashboard** | All-in-one: CPU, Memory, Disk, Network, GPU, Clock, Calendar, Media Player, System Info, live Processes, and the visualizer. |
-| `2` | **Monitor** | btop-style detail: large CPU/Mem/Net/Disk/GPU graphs on top, full interactive process table below (sort, search, tree, kill). |
-| `3` | **Aesthetic** | Pure eye candy: Matrix Rain, Calendar, Visualizer, Clock, and a rotating 3D donut demo. |
-| `?` | **Help** | Floating overlay: keybinds, active theme, and config path. Toggle over any page. |
-
 ---
 
-## 🎹 Keyboard Mastery
+Vanta collapses everything you care about into one terminal pane: CPU, memory, disk, network, GPU, processes, now-playing, a block-digit clock, a calendar, and an audio visualizer. Keyboard only. ~3 MB binary, ~2–5% CPU at the default 30 fps.
 
-No mouse. No touch. Just keys.
+## Pages
 
-### Global Actions
+| Key | Page | What's on it |
+|-----|------|--------------|
+| `1` | **Dashboard** | System facts + distro logo, semicircle gauges, CPU graph & cores, storage, big clock, now playing, visualizer, top processes, status, memory, network, calendar |
+| `2` | **Monitor** | btop-style: CPU / memory / disk I/O / network / GPU graphs on top, full process table below (sort, filter, tree, kill) |
+| `3` | **Aesthetic** | Huge clock, calendar, matrix rain, spinning donut, full-width visualizer |
+| `?` | **Help** | Keybind reference overlay |
+
+## Keys
+
 | Key | Action |
 |-----|--------|
-| `1`–`3` | Switch pages (Dashboard / Monitor / Aesthetic) |
-| `?` | Toggle help & settings overlay |
-| `T` | Cycle themes (changes persist to config) |
-| `v` | Cycle visualizer style (bars / mirror / wave) |
-| `Tab` / `Shift‑Tab` | Cycle panel focus |
-| `↑` `↓` `←` `→` | Navigate the active panel |
-| `Esc` | Clear panel focus / close overlay |
+| `1` `2` `3` | Switch page (persisted as startup page) |
+| `Tab` / `Shift-Tab` | Cycle panel focus · `Esc` clears |
+| `T` | Next theme (persisted) |
+| `v` | Visualizer style: bars / mirror / wave |
+| `+` / `-` | Sample faster / slower |
+| `Space` `n` `p` | Play/pause · next · previous (MPRIS, any page) |
+| `<` `>` | Volume down / up |
 | `q` | Quit |
 
-### Process Explorer (Monitor page)
-| Key | Action |
-|-----|--------|
-| `s` | Cycle sort fields (PID, CPU, Mem, Name, RSS) |
-| `/` | Enter search mode |
-| `t` | Toggle tree view |
-| `←` `→` | Collapse / Expand tree node |
-| `i` | View process details |
-| `c` | Toggle compact command view |
-| `k` | Send Kill signal (SIGTERM) |
+**Processes (Monitor):** `↑↓ PgUp PgDn Home End` select · `/` filter (`Enter` keeps, `Esc` clears) · `s` sort field · `r` reverse · `t` tree · `←→` fold · `c` full command · `k` SIGTERM · `K` SIGKILL
 
-### Media Player (Dashboard page)
-| Key | Action |
-|-----|--------|
-| `Space` | Play / Pause |
-| `n` / `p` | Next / Previous track |
-| `+` / `-` | Volume Up / Down |
+**Calendar (focused):** `←→` month · `↑↓` year · `Home` today
 
----
+## Themes
 
-## 🎨 Professional Themes
+`dark` · `catppuccin` · `tokyo-night` · `nord` · `gruvbox` · `dracula` · `light` · `solarized-light`
 
-Cycle through four meticulously designed color palettes using `T`:
+## Configuration
 
-1. **Dark** (Default) — Deep, immersive terminal blacks.
-2. **Light** — High-contrast, clean paper white.
-3. **Dracula** — Classic purple-accented dark theme.
-4. **Solarized Light** — Warm, easy-on-the-eyes daylight theme.
-
-Your selection is automatically persisted to `~/.config/vanta/config.toml`.
-
----
-
-## ⚙️ Configuration
-
-Vanta is fully modular. Configure widgets, refresh rates, and your default theme via `~/.config/vanta/config.toml`:
+`~/.config/vanta/config.toml` (respects `XDG_CONFIG_HOME`). Every key is optional.
 
 ```toml
 [ui]
-refresh_rate = 0.5
+refresh_rate = 0.5      # seconds between samples
+fps = 30                # render rate (animations)
 theme = "dark"
-# Optional: render any image as ASCII art in the profile widget.
-# Leave unset to use the built-in vanta logo. Supports ~ expansion.
-image_path = "~/Pictures/avatar.png"
+startup_mode = "dashboard"
 
-[widgets]
+[widgets]               # all default to true
 cpu = true
 memory = true
 disk = true
@@ -109,43 +64,30 @@ calendar = true
 music_viz = true
 processes = true
 media = true
-cmatrix = true
+matrix = true
+video = true
 ```
 
----
+## Install
 
-## 📥 Installation
+Needs a Rust toolchain and `libdbus-1-dev` (for MPRIS). Optional runtime tools: `cava` (visualizer), `nmcli`, `docker`, `checkupdates` (status panel), `nvidia-smi`.
 
-You will need the Rust toolchain installed.
-
-**From Cargo:**
 ```bash
 cargo install --git https://github.com/ziuus/vanta
+# or
+git clone https://github.com/ziuus/vanta && cd vanta && cargo run --release
 ```
 
-**From Source:**
-```bash
-git clone https://github.com/ziuus/vanta.git
-cd vanta
-cargo run --release            # Live hardware monitoring
-```
+## Architecture
 
----
-
-## 🏗️ Architecture
+All telemetry is collected on a single background sampler thread (`/proc`, `/sys`, sysinfo, D-Bus) into lock-guarded snapshots; the render loop only reads snapshots and never blocks on I/O.
 
 | Layer | Technology |
 |-------|------------|
-| **Core Framework** | Rust + Ratatui `0.29` |
-| **Terminal IO** | Crossterm |
-| **Telemetry** | `sysinfo`, `/proc`, `/sys` (NVIDIA/AMD/Intel GPU) |
-| **Media Sync** | MPRIS (DBus / `playerctl`) |
-| **Audio Viz** | `cava` + PulseAudio |
-| **Time** | `chrono` |
+| TUI | Ratatui 0.29 + Crossterm |
+| Telemetry | `sysinfo`, `/proc`, `/sys/class/{hwmon,drm,power_supply}` |
+| GPU | NVIDIA (`nvidia-smi`), AMD (sysfs), Intel (clock only) |
+| Media | MPRIS over D-Bus (`dbus` crate) |
+| Audio viz | `cava` raw output, idle wave fallback |
 
----
-
-<div align="center">
-  <p>Built with 🖤 by <a href="https://github.com/ziuus">zius</a></p>
-  <p>Released under the MIT License.</p>
-</div>
+MIT · built by [zius](https://github.com/ziuus)

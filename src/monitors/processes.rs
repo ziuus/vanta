@@ -9,1030 +9,705 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
-use crate::app::{self, SortField};
-
-/// Tracks previous I/O counters for rate calculation.
-struct IoPrev {
-    read: u64,
-    write: u64,
-    time: Instant,
-}
-
-struct CpuPrev {
-    jiffies: u64,
-    total_jiffies: f64,
-}
-
-static PREV_CPU: LazyLock<Mutex<HashMap<u32, CpuPrev>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
-
-static PREV_IO: LazyLock<Mutex<HashMap<u32, IoPrev>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
+use crate::app::SortField;
+use crate::theme::Theme;
+use crate::widgets::meter;
 
 #[derive(Debug, Clone)]
-struct ProcInfo {
-    name: String,
+pub struct ProcInfo {
+    pub name: String,
+    pub cmdline: String,
+    pub pid: u32,
+    pub ppid: u32,
+    pub mem_kb: u64,
+    pub cpu_pct: f64,
+    pub state: char,
+    pub threads: u64,
+    pub uid: u32,
+    pub read_bps: f64,
+    pub write_bps: f64,
+}
+
+struct Prev {
+    jiffies: u64,
+    read: u64,
+    write: u64,
+    /// argv never changes for a live PID, so read it once.
     cmdline: String,
-    pid: u32,
-    ppid: u32,
-    mem_kb: u64,
-    cpu_pct: f64,
-    state: String,
-    threads: u64,
-    uid: u32,
-    read_bps: f64,  // bytes/sec (delta from /proc/[pid]/io)
-    write_bps: f64, // bytes/sec
 }
 
-fn read_proc_name(pid: u32) -> String {
-    let path = format!("/proc/{}/comm", pid);
-    fs::read_to_string(&path)
-        .ok()
-        .map(|s| s.trim().to_string())
-        .unwrap_or_else(|| "?".to_string())
+struct State {
+    snapshot: Vec<ProcInfo>,
+    prev: HashMap<u32, Prev>,
+    prev_total_jiffies: f64,
+    prev_time: Option<Instant>,
+    total_mem_kb: f64,
 }
 
-fn read_proc_state(pid: u32) -> String {
-    let path = format!("/proc/{}/status", pid);
-    if let Ok(content) = fs::read_to_string(&path) {
-        for line in content.lines() {
-            if let Some(state) = line.strip_prefix("State:") {
-                let trimmed = state.trim();
-                return trimmed.chars().next().unwrap_or('?').to_string();
-            }
-        }
-    }
-    "?".to_string()
-}
+static STATE: LazyLock<Mutex<State>> = LazyLock::new(|| {
+    Mutex::new(State {
+        snapshot: Vec::new(),
+        prev: HashMap::new(),
+        prev_total_jiffies: 0.0,
+        prev_time: None,
+        total_mem_kb: 1.0,
+    })
+});
 
-fn read_proc_vmrss(pid: u32) -> u64 {
-    let path = format!("/proc/{}/status", pid);
-    if let Ok(content) = fs::read_to_string(&path) {
-        for line in content.lines() {
-            if let Some(rss) = line.strip_prefix("VmRSS:") {
-                let val: String = rss.chars().filter(|c| c.is_ascii_digit()).collect();
-                return val.parse::<u64>().unwrap_or(0);
-            }
-        }
-    }
-    0
-}
-
-fn read_proc_threads(pid: u32) -> u64 {
-    let path = format!("/proc/{}/status", pid);
-    if let Ok(content) = fs::read_to_string(&path) {
-        for line in content.lines() {
-            if let Some(threads) = line.strip_prefix("Threads:") {
-                return threads.trim().parse::<u64>().unwrap_or(0);
-            }
-        }
-    }
-    0
-}
-
-fn read_proc_uid(pid: u32) -> u32 {
-    let path = format!("/proc/{}/status", pid);
-    if let Ok(content) = fs::read_to_string(&path) {
-        for line in content.lines() {
-            if let Some(uid_line) = line.strip_prefix("Uid:") {
-                return uid_line
-                    .split_whitespace()
-                    .next()
-                    .and_then(|s| s.parse::<u32>().ok())
-                    .unwrap_or(0);
-            }
-        }
-    }
-    0
-}
-
-fn read_proc_cpu(pid: u32, total_jiffies: f64) -> f64 {
-    let path = format!("/proc/{}/stat", pid);
-    if let Ok(content) = fs::read_to_string(&path) {
-        let parts: Vec<&str> = content.split_whitespace().collect();
-        if parts.len() > 21 {
-            if let (Ok(utime), Ok(stime)) = (parts[13].parse::<u64>(), parts[14].parse::<u64>()) {
-                let proc_jiffies = utime + stime;
-                let mut prev_map = PREV_CPU.lock().unwrap();
-                let pct = if let Some(prev) = prev_map.get(&pid) {
-                    let d_proc = proc_jiffies.saturating_sub(prev.jiffies) as f64;
-                    let d_total = total_jiffies - prev.total_jiffies;
-                    if d_total > 0.0 {
-                        let num_cores = std::thread::available_parallelism()
-                            .map(|n| n.get())
-                            .unwrap_or(1) as f64;
-                        (d_proc / d_total) * 100.0 * num_cores
-                    } else {
-                        0.0
-                    }
-                } else {
-                    0.0
-                };
-                prev_map.insert(
-                    pid,
-                    CpuPrev {
-                        jiffies: proc_jiffies,
-                        total_jiffies,
-                    },
-                );
-                return pct;
-            }
-        }
-    }
-    0.0
-}
-
-fn read_proc_ppid(pid: u32) -> u32 {
-    let path = format!("/proc/{}/stat", pid);
-    if let Ok(content) = fs::read_to_string(&path) {
-        let rest = content.split(')').next_back().unwrap_or("");
-        let parts: Vec<&str> = rest.split_whitespace().collect();
-        if parts.len() > 2 {
-            return parts[1].parse::<u32>().unwrap_or(0);
-        }
-    }
-    0
-}
+// ── /proc readers ──────────────────────────────────────────────
 
 fn read_total_jiffies() -> f64 {
-    if let Ok(content) = fs::read_to_string("/proc/stat") {
-        for line in content.lines() {
-            if line.starts_with("cpu ") {
-                let sum: u64 = line
-                    .split_whitespace()
+    fs::read_to_string("/proc/stat")
+        .ok()
+        .and_then(|c| {
+            c.lines().find(|l| l.starts_with("cpu ")).map(|l| {
+                l.split_whitespace()
                     .skip(1)
                     .filter_map(|s| s.parse::<u64>().ok())
-                    .sum();
-                return sum as f64;
-            }
-        }
-    }
-    1.0
+                    .sum::<u64>() as f64
+            })
+        })
+        .unwrap_or(1.0)
 }
 
-/// Per-process I/O rates from /proc/[pid]/io (read_bytes / write_bytes delta).
-fn read_proc_io_rates(pid: u32) -> (f64, f64) {
-    let path = format!("/proc/{}/io", pid);
-    let content = match fs::read_to_string(&path) {
-        Ok(c) => c,
-        Err(_) => return (0.0, 0.0),
-    };
-
-    let mut read_bytes = 0u64;
-    let mut write_bytes = 0u64;
+/// Parse /proc/[pid]/status once for the fields we need.
+fn read_status(pid: u32) -> Option<(String, char, u64, u64, u32)> {
+    let content = fs::read_to_string(format!("/proc/{}/status", pid)).ok()?;
+    let (mut name, mut state, mut rss, mut threads, mut uid) =
+        (String::new(), '?', 0u64, 0u64, 0u32);
     for line in content.lines() {
-        if let Some(val) = line.strip_prefix("read_bytes:") {
-            read_bytes = val.trim().parse().unwrap_or(0);
-        } else if let Some(val) = line.strip_prefix("write_bytes:") {
-            write_bytes = val.trim().parse().unwrap_or(0);
+        if let Some(v) = line.strip_prefix("Name:") {
+            name = v.trim().to_string();
+        } else if let Some(v) = line.strip_prefix("State:") {
+            state = v.trim().chars().next().unwrap_or('?');
+        } else if let Some(v) = line.strip_prefix("VmRSS:") {
+            rss = v.split_whitespace().next()?.parse().ok()?;
+        } else if let Some(v) = line.strip_prefix("Threads:") {
+            threads = v.trim().parse().unwrap_or(0);
+        } else if let Some(v) = line.strip_prefix("Uid:") {
+            uid = v.split_whitespace().next()?.parse().unwrap_or(0);
         }
     }
+    Some((name, state, rss, threads, uid))
+}
 
-    let now = Instant::now();
-    let mut prev_map = PREV_IO.lock().unwrap();
-    let (rb, wb) = if let Some(prev) = prev_map.get(&pid) {
-        let dt = now.saturating_duration_since(prev.time);
-        let secs = dt.as_secs_f64();
-        if secs > 0.0 {
-            let r = (read_bytes.saturating_sub(prev.read)) as f64 / secs;
-            let w = (write_bytes.saturating_sub(prev.write)) as f64 / secs;
-            (r, w)
-        } else {
-            (0.0, 0.0)
-        }
-    } else {
-        (0.0, 0.0)
+/// (ppid, utime+stime) from /proc/[pid]/stat. The comm field can contain
+/// spaces, so split after the closing paren.
+fn read_stat(pid: u32) -> Option<(u32, u64)> {
+    let content = fs::read_to_string(format!("/proc/{}/stat", pid)).ok()?;
+    let rest = content.rsplit_once(')')?.1;
+    let p: Vec<&str> = rest.split_whitespace().collect();
+    // rest[0]=state rest[1]=ppid ... rest[11]=utime rest[12]=stime
+    if p.len() < 13 {
+        return None;
+    }
+    let ppid = p[1].parse().ok()?;
+    let ut: u64 = p[11].parse().ok()?;
+    let st: u64 = p[12].parse().ok()?;
+    Some((ppid, ut + st))
+}
+
+fn read_io(pid: u32) -> (u64, u64) {
+    let Ok(content) = fs::read_to_string(format!("/proc/{}/io", pid)) else {
+        return (0, 0);
     };
-
-    prev_map.insert(
-        pid,
-        IoPrev {
-            read: read_bytes,
-            write: write_bytes,
-            time: now,
-        },
-    );
-    (rb, wb)
-}
-
-/// Read full command line from /proc/[pid]/cmdline (null-byte separated).
-fn read_proc_cmdline(pid: u32) -> String {
-    let path = format!("/proc/{}/cmdline", pid);
-    match fs::read(&path) {
-        Ok(bytes) => {
-            // cmdline is NUL-separated: join with spaces, trim trailing NUL
-            let s = String::from_utf8_lossy(&bytes)
-                .trim_end_matches('\0')
-                .to_string();
-            let s = s.replace('\0', " ");
-            if s.is_empty() {
-                "?".to_string()
-            } else {
-                s
-            }
+    let (mut r, mut w) = (0, 0);
+    for line in content.lines() {
+        if let Some(v) = line.strip_prefix("read_bytes:") {
+            r = v.trim().parse().unwrap_or(0);
+        } else if let Some(v) = line.strip_prefix("write_bytes:") {
+            w = v.trim().parse().unwrap_or(0);
         }
-        Err(_) => "?".to_string(),
     }
+    (r, w)
 }
 
-fn collect_processes(sort_field: SortField, sort_asc: bool, search: &str) -> Vec<ProcInfo> {
+fn read_cmdline(pid: u32) -> String {
+    fs::read(format!("/proc/{}/cmdline", pid))
+        .ok()
+        .map(|b| {
+            String::from_utf8_lossy(&b)
+                .split('\0')
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .unwrap_or_default()
+}
+
+/// Walk /proc once and rebuild the snapshot. Called on the tick, never per frame.
+pub fn sample(total_mem_bytes: u64) {
+    let now = Instant::now();
     let total_jiffies = read_total_jiffies();
-    let mut procs: Vec<ProcInfo> = Vec::new();
+    let ncpu = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1) as f64;
 
-    if let Ok(entries) = fs::read_dir("/proc") {
-        for entry in entries.flatten() {
-            let name = entry.file_name();
-            let name_str = name.to_string_lossy();
-            if let Ok(pid) = name_str.parse::<u32>() {
-                let mem = read_proc_vmrss(pid);
-                if mem > 0 {
-                    let (rb, wb) = read_proc_io_rates(pid);
-                    procs.push(ProcInfo {
-                        name: read_proc_name(pid),
-                        cmdline: read_proc_cmdline(pid),
-                        pid,
-                        ppid: read_proc_ppid(pid),
-                        mem_kb: mem,
-                        cpu_pct: read_proc_cpu(pid, total_jiffies),
-                        state: read_proc_state(pid),
-                        threads: read_proc_threads(pid),
-                        uid: read_proc_uid(pid),
-                        read_bps: rb,
-                        write_bps: wb,
-                    });
-                }
-            }
+    // Pull the previous counters out and drop the lock: the /proc walk below
+    // takes tens of milliseconds and the render thread must not wait on it.
+    let (prev, prev_total, prev_time, cap) = {
+        let mut st = STATE.lock().unwrap();
+        (
+            std::mem::take(&mut st.prev),
+            st.prev_total_jiffies,
+            st.prev_time,
+            st.snapshot.len(),
+        )
+    };
+    let dt = prev_time
+        .map(|t| now.duration_since(t).as_secs_f64())
+        .unwrap_or(0.0);
+    let d_total = total_jiffies - prev_total;
+
+    let mut procs = Vec::with_capacity(cap + 64);
+    let mut next_prev: HashMap<u32, Prev> = HashMap::with_capacity(prev.len() + 64);
+
+    let Ok(entries) = fs::read_dir("/proc") else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let Ok(pid) = entry.file_name().to_string_lossy().parse::<u32>() else {
+            continue;
+        };
+        let Some((name, state, mem_kb, threads, uid)) = read_status(pid) else {
+            continue;
+        };
+        if mem_kb == 0 {
+            continue; // kernel threads
         }
+        let Some((ppid, jiffies)) = read_stat(pid) else {
+            continue;
+        };
+        let (read, write) = read_io(pid);
+
+        let (cpu_pct, read_bps, write_bps) = match prev.get(&pid) {
+            Some(p) if d_total > 0.0 && dt > 0.0 => (
+                jiffies.saturating_sub(p.jiffies) as f64 / d_total * 100.0 * ncpu,
+                read.saturating_sub(p.read) as f64 / dt,
+                write.saturating_sub(p.write) as f64 / dt,
+            ),
+            _ => (0.0, 0.0, 0.0),
+        };
+        let cmdline = match prev.get(&pid) {
+            Some(p) if !p.cmdline.is_empty() => p.cmdline.clone(),
+            _ => read_cmdline(pid),
+        };
+        next_prev.insert(
+            pid,
+            Prev {
+                jiffies,
+                read,
+                write,
+                cmdline: cmdline.clone(),
+            },
+        );
+        procs.push(ProcInfo {
+            cmdline,
+            name,
+            pid,
+            ppid,
+            mem_kb,
+            cpu_pct,
+            state,
+            threads,
+            uid,
+            read_bps,
+            write_bps,
+        });
     }
 
-    {
-        let mut prev_io = PREV_IO.lock().unwrap();
-        prev_io.retain(|&pid, _| procs.iter().any(|p| p.pid == pid));
-        let mut prev_cpu = PREV_CPU.lock().unwrap();
-        prev_cpu.retain(|&pid, _| procs.iter().any(|p| p.pid == pid));
-    }
-
-    if !search.is_empty() {
-        let lower = search.to_lowercase();
-        procs.retain(|p| p.name.to_lowercase().contains(&lower));
-    }
-
-    match sort_field {
-        SortField::Mem => {
-            procs.sort_by(|a, b| {
-                if sort_asc {
-                    a.mem_kb.cmp(&b.mem_kb)
-                } else {
-                    b.mem_kb.cmp(&a.mem_kb)
-                }
-            });
-        }
-        SortField::Pid => {
-            procs.sort_by(|a, b| {
-                if sort_asc {
-                    a.pid.cmp(&b.pid)
-                } else {
-                    b.pid.cmp(&a.pid)
-                }
-            });
-        }
-        SortField::Name => {
-            procs.sort_by(|a, b| {
-                if sort_asc {
-                    a.name.cmp(&b.name)
-                } else {
-                    b.name.cmp(&a.name)
-                }
-            });
-        }
-        SortField::Cpu => {
-            procs.sort_by(|a, b| {
-                if sort_asc {
-                    a.cpu_pct.total_cmp(&b.cpu_pct)
-                } else {
-                    b.cpu_pct.total_cmp(&a.cpu_pct)
-                }
-            });
-        }
-        SortField::Rss => {
-            procs.sort_by(|a, b| {
-                if sort_asc {
-                    a.mem_kb.cmp(&b.mem_kb)
-                } else {
-                    b.mem_kb.cmp(&a.mem_kb)
-                }
-            });
-        }
-    }
-
-    procs
+    let mut st = STATE.lock().unwrap();
+    st.snapshot = procs;
+    st.prev = next_prev;
+    st.prev_total_jiffies = total_jiffies;
+    st.prev_time = Some(now);
+    st.total_mem_kb = (total_mem_bytes as f64 / 1024.0).max(1.0);
 }
 
-// ── Tree building ──────────────────────────────────────────────
+pub fn count() -> usize {
+    STATE.lock().unwrap().snapshot.len()
+}
 
-#[derive(Debug)]
-struct ProcNode {
+/// Top `n` by CPU for the dashboard preview.
+pub fn top_by_cpu(n: usize) -> Vec<ProcInfo> {
+    let st = STATE.lock().unwrap();
+    let mut v: Vec<&ProcInfo> = st.snapshot.iter().collect();
+    v.sort_by(|a, b| {
+        b.cpu_pct
+            .total_cmp(&a.cpu_pct)
+            .then(b.mem_kb.cmp(&a.mem_kb))
+    });
+    v.into_iter().take(n).cloned().collect()
+}
+
+fn cmp(a: &ProcInfo, b: &ProcInfo, by: SortField, asc: bool) -> std::cmp::Ordering {
+    let o = match by {
+        SortField::Mem => a.mem_kb.cmp(&b.mem_kb),
+        SortField::Pid => a.pid.cmp(&b.pid),
+        SortField::Name => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+        SortField::Cpu => a.cpu_pct.total_cmp(&b.cpu_pct),
+    };
+    if asc {
+        o
+    } else {
+        o.reverse()
+    }
+}
+
+/// Filtered + sorted view of the current snapshot.
+fn view(sort_field: SortField, sort_asc: bool, search: &str) -> (Vec<ProcInfo>, f64) {
+    let st = STATE.lock().unwrap();
+    let lower = search.to_lowercase();
+    let mut procs: Vec<ProcInfo> = st
+        .snapshot
+        .iter()
+        .filter(|p| {
+            lower.is_empty()
+                || p.name.to_lowercase().contains(&lower)
+                || p.cmdline.to_lowercase().contains(&lower)
+                || p.pid.to_string() == lower
+        })
+        .cloned()
+        .collect();
+    procs.sort_by(|a, b| cmp(a, b, sort_field, sort_asc));
+    (procs, st.total_mem_kb)
+}
+
+// ── Tree ───────────────────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+struct Row {
     info: ProcInfo,
-    children: Vec<ProcNode>,
     depth: usize,
+    has_children: bool,
+    expanded: bool,
 }
 
-fn build_tree(procs: &[ProcInfo]) -> Vec<ProcNode> {
+/// Depth-first flatten of the parent/child graph, children sorted like the
+/// flat list. Processes whose parent isn't in the (possibly filtered) set
+/// become roots.
+fn tree_rows(procs: &[ProcInfo], by: SortField, asc: bool, collapsed: &HashSet<u32>) -> Vec<Row> {
+    let pids: HashSet<u32> = procs.iter().map(|p| p.pid).collect();
     let mut children: HashMap<u32, Vec<usize>> = HashMap::new();
-    let pid_set: HashSet<u32> = procs.iter().map(|p| p.pid).collect();
-
-    let mut roots: Vec<&ProcInfo> = Vec::new();
+    let mut roots: Vec<usize> = Vec::new();
     for (i, p) in procs.iter().enumerate() {
-        if p.ppid == 0 || !pid_set.contains(&p.ppid) {
-            roots.push(p);
+        if p.ppid == 0 || p.ppid == p.pid || !pids.contains(&p.ppid) {
+            roots.push(i);
         } else {
             children.entry(p.ppid).or_default().push(i);
         }
     }
-
-    fn build_subtree(
-        procs: &[ProcInfo],
-        children: &HashMap<u32, Vec<usize>>,
-        pid: u32,
-        depth: usize,
-    ) -> Option<ProcNode> {
-        let info = procs.iter().find(|p| p.pid == pid)?;
-        let node_children: Vec<ProcNode> = children
-            .get(&pid)
-            .map(|indices| {
-                indices
-                    .iter()
-                    .filter_map(|&i| build_subtree(procs, children, procs[i].pid, depth + 1))
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        Some(ProcNode {
-            info: info.clone(),
-            children: node_children,
-            depth,
-        })
+    let sort_idx = |v: &mut Vec<usize>| v.sort_by(|&a, &b| cmp(&procs[a], &procs[b], by, asc));
+    sort_idx(&mut roots);
+    for v in children.values_mut() {
+        sort_idx(v);
     }
 
-    let root_nodes: Vec<ProcNode> = roots
-        .iter()
-        .filter_map(|r| build_subtree(procs, &children, r.pid, 0))
-        .collect();
-
-    root_nodes
-}
-
-#[derive(Debug, Clone)]
-struct TreeRow {
-    pid: u32,
-    name: String,
-    cmdline: String,
-    mem_kb: u64,
-    cpu_pct: f64,
-    state: String,
-    depth: usize,
-    has_children: bool,
-    expanded: bool,
-    threads: u64,
-    uid: u32,
-    read_bps: f64,
-    write_bps: f64,
-}
-
-fn flatten_tree(nodes: &[ProcNode], collapsed: &HashSet<u32>) -> Vec<TreeRow> {
-    let mut rows = Vec::new();
-
-    fn walk(nodes: &[ProcNode], collapsed: &HashSet<u32>, rows: &mut Vec<TreeRow>) {
-        for node in nodes {
-            let is_collapsed = collapsed.contains(&node.info.pid);
-            rows.push(TreeRow {
-                pid: node.info.pid,
-                name: node.info.name.clone(),
-                cmdline: node.info.cmdline.clone(),
-                mem_kb: node.info.mem_kb,
-                cpu_pct: node.info.cpu_pct,
-                state: node.info.state.clone(),
-                depth: node.depth,
-                has_children: !node.children.is_empty(),
-                expanded: !is_collapsed,
-                threads: node.info.threads,
-                uid: node.info.uid,
-                read_bps: node.info.read_bps,
-                write_bps: node.info.write_bps,
-            });
-            if !is_collapsed {
-                walk(&node.children, collapsed, rows);
+    let mut out = Vec::with_capacity(procs.len());
+    // Explicit stack: (index, depth). Pushed in reverse so pop order = sorted order.
+    let mut stack: Vec<(usize, usize)> = roots.iter().rev().map(|&i| (i, 0)).collect();
+    while let Some((i, depth)) = stack.pop() {
+        let p = &procs[i];
+        let kids = children.get(&p.pid);
+        let has_children = kids.is_some_and(|k| !k.is_empty());
+        let expanded = !collapsed.contains(&p.pid);
+        out.push(Row {
+            info: p.clone(),
+            depth,
+            has_children,
+            expanded,
+        });
+        if has_children && expanded {
+            for &k in kids.unwrap().iter().rev() {
+                stack.push((k, depth + 1));
             }
         }
     }
-
-    walk(nodes, collapsed, &mut rows);
-    rows
+    out
 }
 
-fn sort_tree(nodes: &mut [ProcNode], by: SortField, asc: bool) {
-    nodes.sort_by(|a, b| {
-        let cmp = match by {
-            SortField::Mem => a.info.mem_kb.cmp(&b.info.mem_kb),
-            SortField::Pid => a.info.pid.cmp(&b.info.pid),
-            SortField::Name => a.info.name.cmp(&b.info.name),
-            SortField::Cpu => a.info.cpu_pct.total_cmp(&b.info.cpu_pct),
-            SortField::Rss => a.info.mem_kb.cmp(&b.info.mem_kb),
-        };
-        if asc {
-            cmp
-        } else {
-            cmp.reverse()
-        }
-    });
-    for child in nodes.iter_mut() {
-        sort_tree(&mut child.children, by, asc);
-    }
+fn rows_for(
+    sort_field: SortField,
+    sort_asc: bool,
+    search: &str,
+    tree_mode: bool,
+    collapsed: &HashSet<u32>,
+) -> (Vec<Row>, f64) {
+    let (procs, total_mem) = view(sort_field, sort_asc, search);
+    let rows = if tree_mode {
+        tree_rows(&procs, sort_field, sort_asc, collapsed)
+    } else {
+        procs
+            .into_iter()
+            .map(|info| Row {
+                info,
+                depth: 0,
+                has_children: false,
+                expanded: false,
+            })
+            .collect()
+    };
+    (rows, total_mem)
 }
 
-// ── Public API ─────────────────────────────────────────────────
-
-/// Top-N processes by memory usage for the Overview preview list.
-/// Returns (pid, name, mem_kb, cpu_pct) sorted by RSS descending.
-#[allow(dead_code)] // kept for Monitor page / future compact preview
-pub(crate) fn top_by_mem(n: usize) -> Vec<(u32, String, u64, f64)> {
-    collect_processes(SortField::Mem, false, "")
-        .into_iter()
-        .take(n)
-        .map(|p| (p.pid, p.name, p.mem_kb, p.cpu_pct))
-        .collect()
-}
-
+/// PID at a given row of the current view — used for select/kill/collapse.
 pub fn get_pid_at(
-    scroll_offset: usize,
+    index: usize,
     sort_field: SortField,
     sort_asc: bool,
     search: &str,
     tree_mode: bool,
     collapsed: &HashSet<u32>,
 ) -> Option<u32> {
-    if tree_mode {
-        let procs = collect_processes(sort_field, sort_asc, search);
-        let mut roots = build_tree(&procs);
-        sort_tree(&mut roots, sort_field, sort_asc);
-        let tree_rows = flatten_tree(&roots, collapsed);
-        tree_rows.get(scroll_offset).map(|r| r.pid)
-    } else {
-        let procs = collect_processes(sort_field, sort_asc, search);
-        procs.get(scroll_offset).map(|p| p.pid)
-    }
+    rows_for(sort_field, sort_asc, search, tree_mode, collapsed)
+        .0
+        .get(index)
+        .map(|r| r.info.pid)
 }
 
-/// Format a CPU percentage for display — shows "<0.1" instead of "0.0" for tiny values.
+// ── Formatting ─────────────────────────────────────────────────
+
 fn fmt_cpu(pct: f64) -> String {
     if pct > 0.0 && pct < 0.05 {
-        "<0.1".to_string()
+        " <0.1".to_string()
     } else {
         format!("{:>5.1}", pct)
     }
 }
 
-/// Format RSS memory KB for the 8-char wide column.
 fn fmt_rss(mem_kb: u64) -> String {
     let mb = mem_kb as f64 / 1024.0;
-    if mb > 1024.0 {
-        format!("{:>7.1}G", mb / 1024.0)
+    if mb >= 1024.0 {
+        format!("{:.1}G", mb / 1024.0)
     } else {
-        format!("{:>7.0}M", mb)
+        format!("{:.0}M", mb)
     }
 }
 
-/// Format I/O rate (bytes/sec) for a 6-char column (right-aligned).
-fn fmt_io_rate(bps: f64) -> String {
-    if bps <= 0.0 {
-        "    --".to_string()
-    } else if bps >= 1_000_000_000.0 {
-        format!("{:>6.1}G", bps / 1_000_000_000.0)
-    } else if bps >= 1_000_000.0 {
-        format!("{:>6.0}M", bps / 1_000_000.0)
-    } else if bps >= 1_000.0 {
-        format!("{:>6.0}K", bps / 1_000.0)
+fn fmt_io(bps: f64) -> String {
+    if bps < 1.0 {
+        "--".to_string()
+    } else if bps >= 1e9 {
+        format!("{:.1}G", bps / 1e9)
+    } else if bps >= 1e6 {
+        format!("{:.0}M", bps / 1e6)
+    } else if bps >= 1e3 {
+        format!("{:.0}K", bps / 1e3)
     } else {
-        format!("{:>6.0}B", bps)
+        format!("{:.0}B", bps)
     }
 }
 
-/// Truncate a name to fit, adding "…" if too long.
-fn trunc_name(name: &str, width: usize) -> String {
-    if name.len() > width {
-        format!("{}…", &name[..width.saturating_sub(1)])
-    } else {
-        format!("{:width$}", name, width = width)
+fn pad(s: &str, width: usize) -> String {
+    format!("{:<w$}", meter::ellipsize(s, width), w = width)
+}
+
+fn state_style(ch: char, theme: &Theme) -> Style {
+    match ch {
+        'R' => Style::default()
+            .fg(theme.green)
+            .add_modifier(Modifier::BOLD),
+        'D' | 'Z' => Style::default().fg(theme.red),
+        'T' | 't' => Style::default().fg(theme.yellow),
+        _ => Style::default().fg(theme.dim),
     }
 }
 
-/// Get a Style for a state character
-fn state_style(ch: &str, theme: &app::Theme) -> Style {
-    let color = match ch {
-        "R" => theme.green,
-        "S" => theme.dim,
-        "D" | "Z" => theme.red,
-        "T" => theme.yellow,
-        _ => theme.dim,
+fn tree_prefix(r: &Row) -> String {
+    let glyph = match (r.has_children, r.expanded) {
+        (true, true) => "▾ ",
+        (true, false) => "▸ ",
+        (false, _) => "· ",
     };
-    // Bold for running state
-    let modifier = if ch == "R" {
-        Modifier::BOLD
-    } else {
-        Modifier::empty()
-    };
-    Style::default().fg(color).add_modifier(modifier)
+    format!("{}{}", "  ".repeat(r.depth.min(6)), glyph)
 }
 
-/// Generate the prefix string for tree-mode indentation.
-fn tree_prefix(depth: usize, has_children: bool, expanded: bool, tree_mode: bool) -> String {
-    if !tree_mode {
-        return String::new();
-    }
-    if depth == 0 && has_children {
-        return if expanded {
-            " ▾ ".to_string()
-        } else {
-            " ▸ ".to_string()
-        };
-    }
-    if depth > 0 {
-        let indent_width = (depth.saturating_sub(1) * 2).min(8);
-        let spaces = " ".repeat(indent_width);
-        let branch = if has_children {
-            if expanded {
-                "▾─"
-            } else {
-                "▸─"
-            }
-        } else {
-            " ├─"
-        };
-        return format!("{}{}", spaces, branch);
-    }
-    String::new()
-}
-
-/// Extract basename from a full command path (last component after '/').
 fn cmd_basename(cmd: &str) -> &str {
     let first = cmd.split_whitespace().next().unwrap_or(cmd);
     first.rsplit('/').next().unwrap_or(first)
 }
 
-fn read_total_mem_kb() -> f64 {
-    // sysinfo returns bytes; /proc VmRSS is in kB — convert so percentages line up.
-    let sys = crate::app::SYS.lock().unwrap();
-    sys.total_memory() as f64 / 1024.0
-}
+// ── Render ─────────────────────────────────────────────────────
 
 #[allow(clippy::too_many_arguments)]
 pub fn render(
     f: &mut Frame,
     area: Rect,
-    theme: &app::Theme,
+    theme: &Theme,
     scroll_offset: usize,
     sort_field: SortField,
     sort_asc: bool,
     search: &str,
+    search_active: bool,
     tree_mode: bool,
     collapsed: &HashSet<u32>,
     selected_pid: Option<u32>,
     compact_cmd: bool,
-    show_detail: bool,
 ) {
-    let procs = collect_processes(sort_field, sort_asc, search);
-    let total_mem_kb = read_total_mem_kb().max(1.0);
-
-    let (display_rows, total_items) = if tree_mode {
-        let mut roots = build_tree(&procs);
-        sort_tree(&mut roots, sort_field, sort_asc);
-        let rows = flatten_tree(&roots, collapsed);
-        let total = rows.len();
-        (rows, total)
-    } else {
-        let total = procs.len();
-        let rows: Vec<TreeRow> = procs
-            .iter()
-            .map(|p| TreeRow {
-                pid: p.pid,
-                name: p.name.clone(),
-                cmdline: p.cmdline.clone(),
-                mem_kb: p.mem_kb,
-                cpu_pct: p.cpu_pct,
-                state: p.state.clone(),
-                depth: 0,
-                has_children: false,
-                expanded: false,
-                threads: p.threads,
-                uid: p.uid,
-                read_bps: p.read_bps,
-                write_bps: p.write_bps,
-            })
-            .collect();
-        (rows, total)
-    };
-
-    // ── Layout split: reserve bottom for spacing + detail + command + footer ──
-    let reserve_h = 4u16; // 1 blank + 1 detail + 1 command + 1 footer
-    if area.height <= reserve_h {
-        return; // Not enough height to render table + reserve
+    // header + at least one row + detail strip
+    if area.height < 4 || area.width < 40 {
+        return;
     }
-    let table_h = area.height.saturating_sub(reserve_h);
-    let table_rect = Rect {
+    let (rows, total_mem_kb) = rows_for(sort_field, sort_asc, search, tree_mode, collapsed);
+
+    let detail_h = 2u16;
+    let table_h = area.height - detail_h;
+    let table = Rect {
         height: table_h,
         ..area
     };
-    let blank_rect = Rect {
-        x: area.x,
-        y: area.y + table_h,
-        height: 1,
-        width: area.width,
-    };
-    let detail_rect = Rect {
-        x: area.x,
-        y: area.y + table_h + 1,
-        height: 1,
-        width: area.width,
-    };
-    let cmdline_rect = Rect {
-        x: area.x,
-        y: area.y + table_h + 2,
-        height: 1,
-        width: area.width,
-    };
-    let footer_rect = Rect {
-        x: area.x,
-        y: area.y + table_h + 3,
-        height: 1,
-        width: area.width,
-    };
+    let detail = Rect::new(area.x, area.y + table_h, area.width, detail_h);
 
-    // ── Column width calculation ──
+    // ── Columns ──
     let w = area.width as usize;
+    let (c_pid, c_cpu, c_mem, c_rss, c_st, c_usr, c_thr) = (7usize, 6, 6, 7, 2, 5, 4);
+    let fixed = c_pid + c_cpu + c_mem + c_rss + c_st + c_usr + c_thr + 7; // 7 separators
+    let show_io = w >= fixed + 8 + 14 + 16;
+    let io_w = if show_io { 14 } else { 0 };
+    let remaining = w.saturating_sub(fixed + io_w + 1);
+    let c_name = (remaining * 2 / 5).clamp(8.min(remaining), 28);
+    let c_cmd = remaining.saturating_sub(c_name + 1);
 
-    // Fixed-width mandatory columns
-    let col_pid = 6usize; // " 12345"
-    let col_cpu = 6usize; // " 12.3%"
-    let col_mem = 6usize; // " 45.2%"
-    let col_rss = 9usize; // "  240.0M"
-    let col_state = 3usize; // "  S "
-    let col_user = 7usize; // "  root"
-    let col_thr = 4usize; // "  12"
-
-    let fixed_w = col_pid + col_cpu + col_mem + col_rss + col_state + col_user + col_thr;
-    let sep_count = 8usize; // spaces between fixed columns
-
-    // Base space needed (no I/O or command): fixed + separators + minimal name
-    let base_need = fixed_w + sep_count + 8; // minimal 8-char name
-
-    // I/O columns — shown when there's room
-    let show_io = w >= base_need + 18; // 8+1+8+1 = 18 for " R/s" + " W/s"
-    let col_read: usize = if show_io { 8 } else { 0 };
-    let col_write: usize = if show_io { 8 } else { 0 };
-    let io_sep = if show_io { 2 } else { 0 };
-
-    // Remaining space shared between NAME and COMMAND
-    let remaining = w.saturating_sub(fixed_w + sep_count + io_sep);
-    // NAME gets ~40% of remaining (capped at 30), COMMAND gets the rest
-    let col_name = (remaining * 2 / 5).min(30).max(8.min(remaining));
-    let col_cmd = remaining.saturating_sub(col_name).max(4);
-
-    // Dynamic page size
-    let page_size = table_h.saturating_sub(1) as usize;
-    let max_scroll = total_items.saturating_sub(page_size);
+    let page = table_h.saturating_sub(1) as usize;
+    let total = rows.len();
+    let max_scroll = total.saturating_sub(page);
     let scroll = scroll_offset.min(max_scroll);
 
-    let mut lines: Vec<Line> = Vec::new();
-
-    // ── Header line ──
-    let scroll_hint = if total_items > page_size {
-        format!(" {:>3}/{}", scroll + 1, total_items)
-    } else {
-        String::new()
-    };
-
-    let mode_tag = if tree_mode { " [T]" } else { " [F]" };
-    let cmd_tag = if compact_cmd { "" } else { " [C]" };
-    let hdr_style = Style::default().fg(theme.dim).bg(theme.surface);
-
-    // Helper: produce a fixed-width cell string (exactly `width` chars, leading space)
-    let hdr_cell = |label: &str, arrow: &str, width: usize| -> String {
-        let inner = format!("{}{}", arrow, label);
-        let chars_count = inner.chars().count();
-        if chars_count + 1 >= width {
-            let truncated: String = inner.chars().take(width.saturating_sub(1)).collect();
-            format!(" {}", truncated)
+    // ── Header ──
+    let hs = Style::default().fg(theme.dim).bg(theme.surface);
+    let hs_on = Style::default()
+        .fg(theme.accent)
+        .bg(theme.surface)
+        .add_modifier(Modifier::BOLD);
+    let arrow = if sort_asc { "▴" } else { "▾" };
+    let h = |label: &str, width: usize, field: Option<SortField>, right: bool| -> Span<'static> {
+        let on = field == Some(sort_field);
+        let text = if on {
+            format!("{}{}", arrow, label)
         } else {
-            // Right-align headers to match the right-aligned data
-            let pad = width - 1 - chars_count;
-            format!(" {}{}", " ".repeat(pad), inner)
-        }
-    };
-    let hdr_arrow = |field: SortField| -> &'static str {
-        if sort_field == field {
-            if sort_asc {
-                "▴"
-            } else {
-                "▾"
-            }
+            label.to_string()
+        };
+        let s = if right {
+            format!("{:>w$}", text, w = width)
         } else {
-            ""
-        }
+            format!("{:<w$}", text, w = width)
+        };
+        Span::styled(s, if on { hs_on } else { hs })
     };
-
-    let mut hdr_spans: Vec<Span> = Vec::new();
-    hdr_spans.push(Span::styled(
-        hdr_cell("PID", hdr_arrow(SortField::Pid), col_pid),
-        hdr_style,
-    ));
-    hdr_spans.push(Span::styled(
-        format!(
-            " {:1$}",
-            format!("{}{}{}", "NAME", mode_tag, cmd_tag),
-            col_name.saturating_sub(1)
+    let mut hdr = vec![
+        h("PID", c_pid, Some(SortField::Pid), true),
+        Span::styled(" ", hs),
+        h(
+            if tree_mode { "NAME ⌥tree" } else { "NAME" },
+            c_name,
+            Some(SortField::Name),
+            false,
         ),
-        hdr_style,
-    ));
-    hdr_spans.push(Span::styled(
-        hdr_cell("CPU%", hdr_arrow(SortField::Cpu), col_cpu),
-        hdr_style,
-    ));
-    hdr_spans.push(Span::styled(
-        hdr_cell("MEM%", hdr_arrow(SortField::Mem), col_mem),
-        hdr_style,
-    ));
-    hdr_spans.push(Span::styled(
-        format!(" {:>1$}", "RSS", col_rss.saturating_sub(1)),
-        hdr_style,
-    ));
-    hdr_spans.push(Span::styled(
-        format!(" {:>1$}", "S", col_state.saturating_sub(1)),
-        hdr_style,
-    ));
-    hdr_spans.push(Span::styled(
-        format!(" {:>1$}", "USER", col_user.saturating_sub(1)),
-        hdr_style,
-    ));
-    hdr_spans.push(Span::styled(
-        format!(" {:>1$}", "THR", col_thr.saturating_sub(1)),
-        hdr_style,
-    ));
+        Span::styled(" ", hs),
+        h("CPU%", c_cpu, Some(SortField::Cpu), true),
+        Span::styled(" ", hs),
+        h("MEM%", c_mem, Some(SortField::Mem), true),
+        Span::styled(" ", hs),
+        h("RSS", c_rss, None, true),
+        Span::styled(" ", hs),
+        h("S", c_st, None, true),
+        Span::styled(" ", hs),
+        h("USER", c_usr, None, true),
+        Span::styled(" ", hs),
+        h("THR", c_thr, None, true),
+    ];
     if show_io {
-        hdr_spans.push(Span::styled(
-            format!(" {:>1$}", "R/s", col_read.saturating_sub(1)),
-            hdr_style,
-        ));
-        hdr_spans.push(Span::styled(
-            format!(" {:>1$}", "W/s", col_write.saturating_sub(1)),
-            hdr_style,
-        ));
+        hdr.push(Span::styled(" ", hs));
+        hdr.push(h("R/s", 6, None, true));
+        hdr.push(Span::styled(" ", hs));
+        hdr.push(h("W/s", 6, None, true));
     }
-    if col_cmd > 4 {
-        hdr_spans.push(Span::styled(
-            format!(" {:1$}", "COMMAND", col_cmd.saturating_sub(1)),
-            hdr_style,
-        ));
+    if c_cmd > 4 {
+        hdr.push(Span::styled(" ", hs));
+        hdr.push(h("COMMAND", c_cmd, None, false));
     }
-    if total_items > page_size {
-        hdr_spans.push(Span::styled(scroll_hint, hdr_style));
+    let used: usize = hdr.iter().map(|s| s.content.chars().count()).sum();
+    if used < w {
+        hdr.push(Span::styled(" ".repeat(w - used), hs));
     }
-    lines.push(Line::from(hdr_spans));
+    let mut lines = vec![Line::from(hdr)];
 
-    // ── Data rows ──
-    for (i, row) in display_rows.iter().skip(scroll).take(page_size).enumerate() {
-        let is_selected = selected_pid == Some(row.pid) || (selected_pid.is_none() && i == 0);
-
-        let name_avail = col_name.saturating_sub(6); // room for tree prefix
-        let name_display = trunc_name(&row.name, name_avail);
-        let cpu_display = fmt_cpu(row.cpu_pct);
-        let rss_str = fmt_rss(row.mem_kb);
-        let mem_pct = (row.mem_kb as f64 / total_mem_kb * 100.0).clamp(0.0, 100.0) as u8;
-
-        let cpu_color = if row.cpu_pct > 10.0 {
-            theme.accent // Bright highlight
+    // ── Rows ──
+    for (i, r) in rows.iter().skip(scroll).take(page).enumerate() {
+        let p = &r.info;
+        let is_sel = selected_pid == Some(p.pid) || (selected_pid.is_none() && i == 0);
+        let mem_pct = (p.mem_kb as f64 / total_mem_kb * 100.0).clamp(0.0, 100.0);
+        let (bg, fg) = if is_sel {
+            (theme.surface, theme.accent)
+        } else {
+            (theme.bg, theme.text)
+        };
+        let base = Style::default().bg(bg);
+        let cpu_col = if p.cpu_pct >= 50.0 {
+            theme.red
+        } else if p.cpu_pct >= 10.0 {
+            theme.yellow
+        } else if p.cpu_pct >= 1.0 {
+            theme.text
+        } else {
+            theme.dim
+        };
+        let mem_col = if mem_pct >= 20.0 {
+            theme.red
+        } else if mem_pct >= 5.0 {
+            theme.yellow
         } else {
             theme.dim
         };
 
-        let mem_bar_color = if mem_pct > 60 {
-            theme.red
-        } else if mem_pct > 30 {
-            theme.yellow
+        let name = if tree_mode {
+            format!("{}{}", tree_prefix(r), p.name)
         } else {
-            theme.green
+            p.name.clone()
         };
+        let user = if p.uid == 0 { "root" } else { "user" };
 
-        let (row_bg, row_fg) = if is_selected {
-            (theme.surface, theme.accent)
-        } else {
-            // Very subtle alternate row shading (we don't have a distinct slight-bg, so we'll just stick to theme.bg to keep it clean)
-            (theme.bg, theme.text)
-        };
-
-        let indicator = if is_selected { "▸" } else { " " };
-        let prefix = tree_prefix(row.depth, row.has_children, row.expanded, tree_mode);
-        let name_part = format!("{}{}", prefix, name_display);
-        let user_str = if row.uid == 0 { "root" } else { "user" };
-
-        let mut spans: Vec<Span> = Vec::new();
-
-        // PID
-        let pid_str = format!("{:>5}", row.pid);
-        spans.push(Span::styled(
-            format!("{}{}", indicator, pid_str),
-            Style::default().fg(row_fg).bg(row_bg),
-        ));
-
-        // NAME
-        spans.push(Span::styled(
-            format!(" {:1$}", name_part, col_name.saturating_sub(1)),
-            Style::default().fg(row_fg).bg(row_bg),
-        ));
-
-        // CPU%
-        let cpu_str = format!("{:>5}", cpu_display);
-        spans.push(Span::styled(
-            format!(" {}", cpu_str),
-            Style::default().fg(cpu_color).bg(row_bg),
-        ));
-
-        // MEM%
-        let mem_str = format!("{:>5.1}%", mem_pct as f64);
-        spans.push(Span::styled(
-            format!(" {}", mem_str),
-            Style::default().fg(mem_bar_color).bg(row_bg),
-        ));
-
-        // RSS
-        spans.push(Span::styled(
-            format!(" {:>7}", rss_str),
-            Style::default().fg(theme.dim).bg(row_bg),
-        ));
-
-        // State
-        spans.push(Span::styled(
-            format!(" {}", row.state),
-            state_style(&row.state, theme).bg(row_bg),
-        ));
-
-        // User
-        let user_str_fmt = format!(" {:>6}", user_str);
-        spans.push(Span::styled(
-            user_str_fmt,
-            Style::default().fg(theme.secondary).bg(row_bg),
-        ));
-
-        // Threads
-        let thr_str = format!(" {:>3}", row.threads.min(999));
-        spans.push(Span::styled(
-            thr_str,
-            Style::default().fg(theme.dim).bg(row_bg),
-        ));
-
-        // I/O columns — per-process rates from /proc/[pid]/io deltas
+        let mut spans = vec![
+            Span::styled(
+                format!(
+                    "{}{:>w$}",
+                    if is_sel { "▸" } else { " " },
+                    p.pid,
+                    w = c_pid - 1
+                ),
+                base.fg(fg),
+            ),
+            Span::styled(" ", base),
+            Span::styled(
+                pad(&name, c_name),
+                base.fg(fg).add_modifier(if is_sel {
+                    Modifier::BOLD
+                } else {
+                    Modifier::empty()
+                }),
+            ),
+            Span::styled(" ", base),
+            Span::styled(format!("{:>6}", fmt_cpu(p.cpu_pct)), base.fg(cpu_col)),
+            Span::styled(" ", base),
+            Span::styled(format!("{:>5.1}%", mem_pct), base.fg(mem_col)),
+            Span::styled(" ", base),
+            Span::styled(format!("{:>7}", fmt_rss(p.mem_kb)), base.fg(theme.dim)),
+            Span::styled(" ", base),
+            Span::styled(
+                format!("{:>2}", p.state),
+                state_style(p.state, theme).bg(bg),
+            ),
+            Span::styled(" ", base),
+            Span::styled(format!("{:>5}", user), base.fg(theme.secondary)),
+            Span::styled(" ", base),
+            Span::styled(format!("{:>4}", p.threads.min(9999)), base.fg(theme.dim)),
+        ];
         if show_io {
-            let read_str = fmt_io_rate(row.read_bps);
-            let write_str = fmt_io_rate(row.write_bps);
             spans.push(Span::styled(
-                read_str,
-                Style::default().fg(theme.secondary).bg(row_bg),
+                format!(" {:>6}", fmt_io(p.read_bps)),
+                base.fg(theme.secondary),
             ));
             spans.push(Span::styled(
-                write_str,
-                Style::default().fg(theme.secondary).bg(row_bg),
+                format!(" {:>6}", fmt_io(p.write_bps)),
+                base.fg(theme.secondary),
             ));
         }
-
-        // COMMAND (flex column — use remaining space)
-        if col_cmd > 4 {
-            let raw_cmd = if !row.cmdline.is_empty() && row.cmdline != "?" {
-                row.cmdline.clone()
+        if c_cmd > 4 {
+            let raw = if p.cmdline.is_empty() {
+                p.name.as_str()
             } else {
-                row.name.clone()
+                p.cmdline.as_str()
             };
-            // Show full command on selected row, otherwise compact if flag is set
-            let cmd = if compact_cmd && !is_selected {
-                cmd_basename(&raw_cmd).to_string()
+            let cmd = if compact_cmd && !is_sel {
+                cmd_basename(raw)
             } else {
-                raw_cmd
+                raw
             };
-            let cmd_trim = trunc_name(&cmd, col_cmd.saturating_sub(1));
+            spans.push(Span::styled(" ", base));
             spans.push(Span::styled(
-                format!(" {}", cmd_trim),
-                Style::default()
-                    .fg(if is_selected {
-                        theme.secondary
-                    } else {
-                        theme.dim
-                    })
-                    .bg(row_bg),
+                pad(cmd, c_cmd),
+                base.fg(if is_sel { theme.secondary } else { theme.dim }),
             ));
         }
-
+        let used: usize = spans.iter().map(|s| s.content.chars().count()).sum();
+        if used < w {
+            spans.push(Span::styled(" ".repeat(w - used), base));
+        }
         lines.push(Line::from(spans));
     }
 
-    // ── Empty states ──
-    if display_rows.is_empty() {
-        if search.is_empty() {
-            lines.push(Line::from(Span::styled(
-                " (no process data)",
-                Style::default().fg(theme.dim),
-            )));
+    if rows.is_empty() {
+        let msg = if search.is_empty() {
+            "  collecting…".to_string()
         } else {
-            lines.push(Line::from(Span::styled(
-                format!(" (no match for \"{}\")", search),
-                Style::default().fg(theme.dim),
-            )));
+            format!("  no match for \"{}\"", search)
+        };
+        lines.push(Line::from(Span::styled(
+            msg,
+            Style::default().fg(theme.dim),
+        )));
+    }
+    f.render_widget(Paragraph::new(lines), table);
+
+    // ── Detail strip ──
+    let sel = selected_pid
+        .and_then(|pid| rows.iter().find(|r| r.info.pid == pid))
+        .or_else(|| rows.get(scroll));
+    let ds = Style::default().fg(theme.dim).bg(theme.surface);
+    let mut l1: Vec<Span> = Vec::new();
+    if search_active || !search.is_empty() {
+        l1.push(Span::styled(" / ", ds.fg(theme.accent)));
+        l1.push(Span::styled(
+            search.to_string(),
+            ds.fg(theme.text).add_modifier(Modifier::BOLD),
+        ));
+        if search_active {
+            l1.push(Span::styled("▏", ds.fg(theme.accent)));
         }
-    }
-
-    // ── Render table ──
-    f.render_widget(
-        Paragraph::new(lines).style(Style::default().bg(theme.bg)),
-        table_rect,
-    );
-
-    // ── Blank row between table and detail ──
-    f.render_widget(
-        Paragraph::new(Line::from(Span::styled(
-            " ".repeat(area.width as usize),
-            Style::default().bg(theme.surface),
-        )))
-        .style(Style::default().bg(theme.surface)),
-        blank_rect,
-    );
-
-    // ── Detail summary line for selected process ──
-    let selected_row = if let Some(pid) = selected_pid {
-        display_rows
-            .iter()
-            .skip(scroll)
-            .take(page_size)
-            .find(|r| r.pid == pid)
-    } else {
-        display_rows.get(scroll)
-    };
-    if let Some(row) = selected_row {
-        let mem_pct = (row.mem_kb as f64 / total_mem_kb * 100.0).clamp(0.0, 100.0);
-        let detail = if show_detail {
+        l1.push(Span::styled(
+            format!("  {} match{}", total, if total == 1 { "" } else { "es" }),
+            ds,
+        ));
+    } else if let Some(r) = sel {
+        let p = &r.info;
+        let mem_pct = p.mem_kb as f64 / total_mem_kb * 100.0;
+        l1.push(Span::styled(
+            format!(" {} ", p.name),
+            ds.fg(theme.text).add_modifier(Modifier::BOLD),
+        ));
+        l1.push(Span::styled(
             format!(
-                " PID {} | {} {}% | RSS {} | CPU {} | S {} | THR {} | R {}/s  W {}/s",
-                row.pid,
-                row.name,
-                mem_pct as u8,
-                fmt_rss(row.mem_kb),
-                fmt_cpu(row.cpu_pct),
-                row.state,
-                row.threads,
-                fmt_io_rate(row.read_bps).trim(),
-                fmt_io_rate(row.write_bps).trim(),
-            )
-        } else {
-            format!(
-                " PID {} | RSS {} | CPU {} | THR {}",
-                row.pid,
-                fmt_rss(row.mem_kb),
-                fmt_cpu(row.cpu_pct),
-                row.threads,
-            )
-        };
-        f.render_widget(
-            Paragraph::new(Line::from(Span::styled(
-                detail,
-                Style::default().fg(theme.dim).bg(theme.surface),
-            )))
-            .style(Style::default().bg(theme.surface)),
-            detail_rect,
-        );
+                "pid {}  ppid {}  cpu {}%  mem {:.1}% ({})  thr {}  io ↓{} ↑{}   {}/{} · {} procs",
+                p.pid,
+                p.ppid,
+                fmt_cpu(p.cpu_pct).trim(),
+                mem_pct,
+                fmt_rss(p.mem_kb),
+                p.threads,
+                fmt_io(p.read_bps),
+                fmt_io(p.write_bps),
+                scroll + 1,
+                total,
+                count(),
+            ),
+            ds,
+        ));
     }
-
-    // ── Command line (full path for selected process) ──
-    if let Some(row) = selected_row {
-        let raw_cmd = if !row.cmdline.is_empty() && row.cmdline != "?" {
-            row.cmdline.clone()
-        } else {
-            row.name.clone()
-        };
-        let cmd_trim = trunc_name(&raw_cmd, cmdline_rect.width.saturating_sub(2) as usize);
-        f.render_widget(
-            Paragraph::new(Line::from(Span::styled(
-                format!(" {}", cmd_trim),
-                Style::default().fg(theme.secondary).bg(theme.surface),
-            )))
-            .style(Style::default().bg(theme.surface)),
-            cmdline_rect,
-        );
-    }
-
-    // ── Footer action bar ──
-    let footer = " ↑↓ select  │  / search  │  t tree  │  c cmd  │  s sort  │  k kill";
+    let l2 = sel
+        .map(|r| {
+            let raw = if r.info.cmdline.is_empty() {
+                r.info.name.as_str()
+            } else {
+                r.info.cmdline.as_str()
+            };
+            Line::from(Span::styled(
+                format!(" {}", meter::ellipsize(raw, w.saturating_sub(2))),
+                ds.fg(theme.secondary),
+            ))
+        })
+        .unwrap_or_default();
     f.render_widget(
-        Paragraph::new(Line::from(Span::styled(
-            footer,
-            Style::default().fg(theme.dim).bg(theme.surface),
-        )))
-        .style(Style::default().bg(theme.surface)),
-        footer_rect,
+        Paragraph::new(vec![Line::from(l1), l2]).style(Style::default().bg(theme.surface)),
+        detail,
     );
 }

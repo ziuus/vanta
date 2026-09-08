@@ -1,28 +1,36 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Config {
     pub ui: UiConfig,
     pub widgets: WidgetConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct UiConfig {
+    /// Seconds between data samples (CPU, memory, processes, ...).
     pub refresh_rate: f64,
+    /// Render frames per second. Animations (visualizer, matrix, donut) run at this rate.
+    pub fps: u32,
     pub theme: String,
-    #[serde(default = "default_startup_mode")]
     pub startup_mode: String,
-    /// Optional path to an image rendered as ASCII in the profile widget.
-    /// When unset, the embedded vanta logo is used.
-    #[serde(default)]
-    pub image_path: String,
 }
 
-fn default_startup_mode() -> String {
-    "overview".to_string()
+impl Default for UiConfig {
+    fn default() -> Self {
+        Self {
+            refresh_rate: 0.5,
+            fps: 30,
+            theme: "dark".to_string(),
+            startup_mode: "dashboard".to_string(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct WidgetConfig {
     pub cpu: bool,
     pub memory: bool,
@@ -34,7 +42,7 @@ pub struct WidgetConfig {
     pub music_viz: bool,
     pub processes: bool,
     pub media: bool,
-    pub profile: bool,
+    pub matrix: bool,
     pub video: bool,
 }
 
@@ -48,49 +56,36 @@ impl Default for WidgetConfig {
             gpu: true,
             clock: true,
             calendar: true,
-            music_viz: false,
+            music_viz: true,
             processes: true,
-            media: false,
-            profile: false,
-            video: false,
-        }
-    }
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            ui: UiConfig {
-                refresh_rate: 0.25,
-                theme: "dark".to_string(),
-                startup_mode: "overview".to_string(),
-                image_path: String::new(),
-            },
-            widgets: WidgetConfig::default(),
+            media: true,
+            matrix: true,
+            video: true,
         }
     }
 }
 
 impl Config {
     pub fn load() -> Self {
-        let config_path = dirs_or_default();
-        let content = std::fs::read_to_string(&config_path).unwrap_or_default();
-        toml::from_str(&content).unwrap_or_default()
+        let content = std::fs::read_to_string(config_path()).unwrap_or_default();
+        let mut cfg: Config = toml::from_str(&content).unwrap_or_default();
+        cfg.ui.refresh_rate = cfg.ui.refresh_rate.clamp(0.1, 10.0);
+        cfg.ui.fps = cfg.ui.fps.clamp(5, 120);
+        cfg
     }
 
     pub fn save(&self) {
-        let config_path = dirs_or_default();
-        // Ensure parent directory exists before writing
-        if let Some(parent) = std::path::Path::new(&config_path).parent() {
+        let path = config_path();
+        if let Some(parent) = std::path::Path::new(&path).parent() {
             let _ = std::fs::create_dir_all(parent);
         }
         if let Ok(toml_str) = toml::to_string(self) {
-            let _ = std::fs::write(&config_path, toml_str);
+            let _ = std::fs::write(&path, toml_str);
         }
     }
 }
 
-fn dirs_or_default() -> String {
+pub fn config_path() -> String {
     if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
         format!("{}/vanta/config.toml", xdg)
     } else if let Ok(home) = std::env::var("HOME") {

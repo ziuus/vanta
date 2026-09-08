@@ -1,4 +1,3 @@
-use std::fs;
 use std::process::Command;
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
@@ -9,7 +8,8 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
-use crate::app::Theme;
+use crate::monitors::cpu;
+use crate::theme::Theme;
 
 /// Facts that need a subprocess or a directory walk. Refreshed on a TTL so the
 /// ~125fps render loop never pays for them.
@@ -105,31 +105,31 @@ fn read_docker() -> Option<(usize, usize)> {
     ))
 }
 
-fn facts() -> Facts {
-    let mut c = CACHE.lock().unwrap();
-    let stale = c.stamp.is_none_or(|t| t.elapsed() > TTL);
-    if stale {
-        c.facts = Facts {
-            packages: count_packages(),
-            updates: count_updates(),
-            wifi: read_wifi(),
-            ip: read_ip(),
-            docker: read_docker(),
-        };
-        c.stamp = Some(Instant::now());
+/// Refresh the slow facts if stale. Runs on the sampler thread; the shell-outs
+/// (`checkupdates` alone can take seconds) never touch the render loop.
+pub fn sample() {
+    let stale = CACHE
+        .lock()
+        .unwrap()
+        .stamp
+        .is_none_or(|t| t.elapsed() > TTL);
+    if !stale {
+        return;
     }
-    c.facts.clone()
+    let fresh = Facts {
+        packages: count_packages(),
+        updates: count_updates(),
+        wifi: read_wifi(),
+        ip: read_ip(),
+        docker: read_docker(),
+    };
+    let mut c = CACHE.lock().unwrap();
+    c.facts = fresh;
+    c.stamp = Some(Instant::now());
 }
 
-/// Load average and the running/total process counts from /proc/loadavg.
-fn loadavg() -> Option<(f64, f64, f64, String)> {
-    let s = fs::read_to_string("/proc/loadavg").ok()?;
-    let mut f = s.split_whitespace();
-    let one = f.next()?.parse().ok()?;
-    let five = f.next()?.parse().ok()?;
-    let fifteen = f.next()?.parse().ok()?;
-    let procs = f.next()?.to_string();
-    Some((one, five, fifteen, procs))
+fn facts() -> Facts {
+    CACHE.lock().unwrap().facts.clone()
 }
 
 fn signal_bars(pct: u8) -> &'static str {
@@ -189,10 +189,10 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
             Span::styled(" running", Style::default().fg(theme.dim)),
         ]));
     }
-    if let Some((one, five, fifteen, procs)) = loadavg() {
-        let cores = std::thread::available_parallelism()
-            .map(|n| n.get() as f64)
-            .unwrap_or(1.0);
+    let cpu = cpu::snapshot();
+    {
+        let cores = cpu.cores.len().max(1) as f64;
+        let (one, five, fifteen) = cpu.load;
         let col = if one > cores {
             theme.red
         } else if one > cores * 0.7 {
@@ -203,31 +203,30 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
         lines.push(Line::from(vec![
             key("LOAD"),
             val(format!("{:.2} {:.2} {:.2}", one, five, fifteen), col),
+            Span::styled(
+                format!("  /{}", cores as usize),
+                Style::default().fg(theme.dim),
+            ),
         ]));
-        lines.push(Line::from(vec![key("PROCS"), val(procs, theme.text)]));
+        lines.push(Line::from(vec![
+            key("PROCS"),
+            val(crate::monitors::processes::count().to_string(), theme.text),
+        ]));
     }
 
-    let core_temps = crate::monitors::cpu::read_core_temps();
-    if !core_temps.is_empty() {
-        let max = core_temps.iter().copied().fold(0.0f64, f64::max);
-        let col = if max > 90.0 {
-            theme.red
-        } else if max > 75.0 {
-            theme.yellow
-        } else {
-            theme.text
-        };
+    if let Some(max) = cpu.max_temp() {
         let limit = if area.width > 35 { 8 } else { 4 };
-        let mut t_str = core_temps
+        let mut t_str = cpu
+            .temps
             .iter()
             .take(limit)
             .map(|t| format!("{:.0}°", t))
             .collect::<Vec<_>>()
             .join(" ");
-        if core_temps.len() > limit {
-            t_str.push_str(" ...");
+        if cpu.temps.len() > limit {
+            t_str.push_str(" …");
         }
-        lines.push(Line::from(vec![key("TEMPS"), val(t_str, col)]));
+        lines.push(Line::from(vec![key("TEMPS"), val(t_str, theme.temp(max))]));
     }
 
     if lines.is_empty() {

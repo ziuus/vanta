@@ -1,323 +1,409 @@
-use std::time::Duration;
+use std::sync::{LazyLock, Mutex};
+use std::time::{Duration, Instant};
 
 use dbus::arg::{PropMap, RefArg, Variant};
 use dbus::blocking::{BlockingSender, Connection};
 use dbus::Message;
-use ratatui::layout::Rect;
-use ratatui::style::Style;
-use ratatui::symbols::line;
+use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{LineGauge, Paragraph};
+use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
-use crate::app;
+use crate::theme::Theme;
+use crate::widgets::braille_image;
+use crate::widgets::meter;
 
-/// Full metadata extracted from an MPRIS player.
-#[derive(Debug, Default)]
-struct TrackInfo {
-    title: String,
-    artist: String,
-    length_usec: i64,
-    art_url: String,
+const TIMEOUT: Duration = Duration::from_millis(40);
+const MPRIS_PATH: &str = "/org/mpris/MediaPlayer2";
+const PLAYER_IFACE: &str = "org.mpris.MediaPlayer2.Player";
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub enum Status {
+    Playing,
+    Paused,
+    #[default]
+    Stopped,
 }
 
-/// Read metadata dict from a Properties.Get reply using inline Iter walking.
-/// Properties.Get for Metadata returns Variant(a{sv}).
-fn read_metadata(conn: &Connection, player: &str, timeout: Duration) -> TrackInfo {
-    let msg = Message::call_with_args(
+#[derive(Clone, Debug, Default)]
+pub struct Track {
+    pub player: String,
+    pub status: Status,
+    pub title: String,
+    pub artist: String,
+    pub album: String,
+    pub length_us: i64,
+    pub position_us: i64,
+    pub volume: Option<f64>,
+    pub art_url: String,
+}
+
+struct State {
+    conn: Option<Connection>,
+    track: Option<Track>,
+    /// When `track.position_us` was read, so the bar can advance smoothly
+    /// between samples while playing.
+    stamp: Instant,
+    art: Option<(String, u16, u16, Vec<Line<'static>>)>,
+}
+
+static STATE: LazyLock<Mutex<State>> = LazyLock::new(|| {
+    Mutex::new(State {
+        conn: None,
+        track: None,
+        stamp: Instant::now(),
+        art: None,
+    })
+});
+
+fn prop_msg(player: &str, prop: &str) -> Message {
+    Message::call_with_args(
         player,
-        "/org/mpris/MediaPlayer2",
+        MPRIS_PATH,
         "org.freedesktop.DBus.Properties",
         "Get",
-        ("org.mpris.MediaPlayer2.Player", "Metadata"),
+        (PLAYER_IFACE, prop),
+    )
+}
+
+fn get<T: for<'a> dbus::arg::Get<'a>>(conn: &Connection, player: &str, prop: &str) -> Option<T> {
+    let reply = conn
+        .send_with_reply_and_block(prop_msg(player, prop), TIMEOUT)
+        .ok()?;
+    reply.get1::<Variant<T>>().map(|v| v.0)
+}
+
+fn percent_decode(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
+                out.push(v);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+fn read_track(conn: &Connection, player: &str) -> Option<Track> {
+    let status = match get::<String>(conn, player, "PlaybackStatus")?.as_str() {
+        "Playing" => Status::Playing,
+        "Paused" => Status::Paused,
+        _ => return None,
+    };
+    let mut t = Track {
+        player: player
+            .trim_start_matches("org.mpris.MediaPlayer2.")
+            .split('.')
+            .next()
+            .unwrap_or("")
+            .to_string(),
+        status,
+        position_us: get::<i64>(conn, player, "Position").unwrap_or(0),
+        volume: get::<f64>(conn, player, "Volume"),
+        ..Default::default()
+    };
+    if let Some(map) = get::<PropMap>(conn, player, "Metadata") {
+        let s = |k: &str| map.get(k).and_then(|v| v.0.as_str()).map(str::to_string);
+        t.title = s("xesam:title").unwrap_or_default();
+        t.album = s("xesam:album").unwrap_or_default();
+        t.art_url = s("mpris:artUrl").unwrap_or_default();
+        t.length_us = map
+            .get("mpris:length")
+            .and_then(|v| v.0.as_i64())
+            .unwrap_or(0);
+        if let Some(a) = map.get("xesam:artist") {
+            t.artist = a.0.as_str().map(str::to_string).unwrap_or_else(|| {
+                a.0.as_iter()
+                    .map(|it| {
+                        it.filter_map(|x| x.as_str().map(str::to_string))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    })
+                    .unwrap_or_default()
+            });
+        }
+        // VLC on a bare file publishes no title; derive one from the URL.
+        if t.title.is_empty() {
+            if let Some(url) = s("xesam:url") {
+                let name = url.rsplit('/').next().unwrap_or(&url);
+                let name = percent_decode(name.split('?').next().unwrap_or(name));
+                let stem = name.rsplit_once('.').map(|(a, _)| a).unwrap_or(&name);
+                t.title = stem.replace(['.', '_'], " ").trim().to_string();
+            }
+        }
+    }
+    Some(t)
+}
+
+/// Poll MPRIS once. Prefers a playing player, then a paused one.
+pub fn sample() {
+    // Take the connection out so the D-Bus round trips happen unlocked.
+    let conn = {
+        let mut st = STATE.lock().unwrap();
+        match st.conn.take() {
+            Some(c) => Some(c),
+            None => Connection::new_session().ok(),
+        }
+    };
+    let Some(conn_owned) = conn else {
+        STATE.lock().unwrap().track = None;
+        return;
+    };
+    let conn = &conn_owned;
+    let names = Message::call_with_args(
+        "org.freedesktop.DBus",
+        "/",
+        "org.freedesktop.DBus",
+        "ListNames",
+        (),
     );
-    let reply = match conn.send_with_reply_and_block(msg, timeout) {
-        Ok(r) => r,
-        Err(_) => return TrackInfo::default(),
+    let players: Vec<String> = match conn.send_with_reply_and_block(names, TIMEOUT) {
+        Ok(r) => r
+            .read_all::<(Vec<String>,)>()
+            .map(|(v,)| v)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|n| n.starts_with("org.mpris.MediaPlayer2.") && !n.ends_with(".playerctld"))
+            .collect(),
+        Err(_) => {
+            // Bus went away (session restart); reconnect next tick.
+            STATE.lock().unwrap().track = None;
+            return;
+        }
+    };
+    let mut best: Option<Track> = None;
+    for p in players {
+        if let Some(t) = read_track(conn, &p) {
+            let better = match &best {
+                None => true,
+                Some(b) => t.status == Status::Playing && b.status != Status::Playing,
+            };
+            if better {
+                let playing = t.status == Status::Playing;
+                best = Some(t);
+                if playing {
+                    break;
+                }
+            }
+        }
+    }
+    let mut st = STATE.lock().unwrap();
+    st.track = best;
+    st.stamp = Instant::now();
+    st.conn = Some(conn_owned);
+}
+
+/// Playback control on the currently displayed player. Fire-and-forget.
+pub fn control(action: Action) {
+    let st = STATE.lock().unwrap();
+    let (Some(conn), Some(track)) = (st.conn.as_ref(), st.track.as_ref()) else {
+        return;
+    };
+    let player = format!("org.mpris.MediaPlayer2.{}", track.player);
+    // The full bus name may carry an instance suffix; fall back to a scan.
+    let target = full_name(conn, &track.player).unwrap_or(player);
+    match action {
+        Action::PlayPause | Action::Next | Action::Previous => {
+            let method = match action {
+                Action::PlayPause => "PlayPause",
+                Action::Next => "Next",
+                _ => "Previous",
+            };
+            let msg = Message::new_method_call(&target, MPRIS_PATH, PLAYER_IFACE, method)
+                .expect("static dbus names are valid");
+            let _ = conn.send_with_reply_and_block(msg, TIMEOUT);
+        }
+        Action::VolumeUp | Action::VolumeDown => {
+            let cur = track.volume.unwrap_or(1.0);
+            let delta = if action == Action::VolumeUp {
+                0.05
+            } else {
+                -0.05
+            };
+            let v = (cur + delta).clamp(0.0, 1.0);
+            let msg = Message::call_with_args(
+                &target,
+                MPRIS_PATH,
+                "org.freedesktop.DBus.Properties",
+                "Set",
+                (PLAYER_IFACE, "Volume", Variant(v)),
+            );
+            let _ = conn.send_with_reply_and_block(msg, TIMEOUT);
+        }
+    }
+}
+
+fn full_name(conn: &Connection, short: &str) -> Option<String> {
+    let names = Message::call_with_args(
+        "org.freedesktop.DBus",
+        "/",
+        "org.freedesktop.DBus",
+        "ListNames",
+        (),
+    );
+    let r = conn.send_with_reply_and_block(names, TIMEOUT).ok()?;
+    let (v,): (Vec<String>,) = r.read_all().ok()?;
+    let prefix = format!("org.mpris.MediaPlayer2.{}", short);
+    v.into_iter().find(|n| n.starts_with(&prefix))
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Action {
+    PlayPause,
+    Next,
+    Previous,
+    VolumeUp,
+    VolumeDown,
+}
+
+fn fmt_dur(us: i64) -> String {
+    let s = (us.max(0) / 1_000_000) as u64;
+    if s >= 3600 {
+        format!("{}:{:02}:{:02}", s / 3600, (s % 3600) / 60, s % 60)
+    } else {
+        format!("{}:{:02}", s / 60, s % 60)
+    }
+}
+
+fn art_lines(st: &mut State, url: &str, w: u16, h: u16) -> Option<Vec<Line<'static>>> {
+    if let Some((u, cw, ch, lines)) = &st.art {
+        if u == url && *cw == w && *ch == h {
+            return (!lines.is_empty()).then(|| lines.clone());
+        }
+    }
+    // Cache misses too (empty vec) so an undecodable file isn't retried per frame.
+    let lines = url
+        .strip_prefix("file://")
+        .and_then(|p| braille_image::render_path(&percent_decode(p), w, h))
+        .unwrap_or_default();
+    st.art = Some((url.to_string(), w, h, lines.clone()));
+    (!lines.is_empty()).then_some(lines)
+}
+
+pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
+    if area.height < 1 || area.width < 16 {
+        return;
+    }
+    let mut st = STATE.lock().unwrap();
+    let Some(track) = st.track.clone() else {
+        let y = area.y + area.height.saturating_sub(1) / 2;
+        f.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                "nothing playing",
+                Style::default().fg(theme.dim),
+            )))
+            .alignment(ratatui::layout::Alignment::Center),
+            Rect::new(area.x, y, area.width, 1),
+        );
+        return;
     };
 
-    let mut info = TrackInfo::default();
+    // Album art on the left when there is room for it.
+    let art_w: u16 = if area.height >= 4 && area.width >= 48 {
+        (area.height * 2).min(16)
+    } else {
+        0
+    };
+    let art = if art_w > 0 && !track.art_url.is_empty() {
+        art_lines(&mut st, &track.art_url, art_w, area.height)
+    } else {
+        None
+    };
+    drop(st);
 
-    if let Some(variant) = reply.get1::<Variant<PropMap>>() {
-        let map = variant.0;
-
-        if let Some(title) = map.get("xesam:title") {
-            if let Some(t) = title.0.as_str() {
-                info.title = t.to_string();
-            }
+    let text_area = match &art {
+        Some(lines) => {
+            let h = (lines.len() as u16).min(area.height);
+            let top = area.height.saturating_sub(h) / 2;
+            f.render_widget(
+                Paragraph::new(lines.clone()),
+                Rect::new(area.x, area.y + top, art_w, h),
+            );
+            Rect::new(
+                area.x + art_w + 2,
+                area.y,
+                area.width.saturating_sub(art_w + 2),
+                area.height,
+            )
         }
+        None => area,
+    };
 
-        if let Some(artist) = map.get("xesam:artist") {
-            if let Some(a) = artist.0.as_str() {
-                info.artist = a.to_string();
-            } else if let Some(arr) = artist.0.as_iter() {
-                let mut v = Vec::new();
-                for item in arr {
-                    if let Some(s) = item.as_str() {
-                        v.push(s.to_string());
-                    }
-                }
-                if !v.is_empty() {
-                    info.artist = v.join(", ");
-                }
-            }
-        }
+    // Smooth position: advance by wall time since the last sample while playing.
+    let elapsed = STATE.lock().unwrap().stamp.elapsed().as_micros() as i64;
+    let pos = if track.status == Status::Playing {
+        (track.position_us + elapsed).min(track.length_us.max(track.position_us))
+    } else {
+        track.position_us
+    };
+    let progress = if track.length_us > 0 {
+        (pos as f64 / track.length_us as f64).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
 
-        if let Some(length) = map.get("mpris:length") {
-            if let Some(l) = length.0.as_i64() {
-                info.length_usec = l;
-            }
+    let icon = match track.status {
+        Status::Playing => "▶",
+        Status::Paused => "⏸",
+        Status::Stopped => "■",
+    };
+    let w = text_area.width as usize;
+    let mut lines: Vec<Line> = vec![Line::from(vec![
+        Span::styled(format!("{} ", icon), Style::default().fg(theme.accent)),
+        Span::styled(
+            meter::ellipsize(&track.title, w.saturating_sub(2)),
+            Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+        ),
+    ])];
+    let mut sub = track.artist.clone();
+    if !track.album.is_empty()
+        && text_area.height >= 3
+        && sub.chars().count() + track.album.chars().count() + 3 < w
+    {
+        if !sub.is_empty() {
+            sub.push_str(" · ");
         }
-
-        // Some players (VLC on a bare file) publish no xesam:title; derive a
-        // readable name from the source URL instead of showing an empty row.
-        if info.title.is_empty() {
-            if let Some(url) = map.get("xesam:url").and_then(|u| u.0.as_str()) {
-                let name = url.rsplit('/').next().unwrap_or(url);
-                let name = name.split('?').next().unwrap_or(name);
-                let decoded = percent_decode(name);
-                let stem = decoded.rsplit_once('.').map(|(a, _)| a).unwrap_or(&decoded);
-                info.title = stem.replace(['.', '_'], " ").trim().to_string();
-            }
-        }
-
-        if let Some(art) = map.get("mpris:artUrl") {
-            if let Some(a) = art.0.as_str() {
-                info.art_url = a.to_string();
-            }
-        }
+        sub.push_str(&track.album);
+    }
+    if !sub.is_empty() {
+        lines.push(Line::from(Span::styled(
+            format!("  {}", meter::ellipsize(&sub, w.saturating_sub(2))),
+            Style::default().fg(theme.secondary),
+        )));
     }
 
-    info
-}
+    // Progress row: time · bar · time · player · volume
+    let pos_s = fmt_dur(pos);
+    let len_s = fmt_dur(track.length_us);
+    let vol = track
+        .volume
+        .map(|v| format!("  vol {:>3.0}%", v * 100.0))
+        .unwrap_or_default();
+    let tail = format!(" {}  {}{}", len_s, track.player, vol);
+    let head = format!("{} ", pos_s);
+    let bar_w = w.saturating_sub(head.len() + tail.len()).max(4);
+    let (on, off) = meter::track(progress, bar_w);
+    let progress_line = Line::from(vec![
+        Span::styled(head, Style::default().fg(theme.dim)),
+        Span::styled(on, Style::default().fg(theme.accent)),
+        Span::styled(off, Style::default().fg(theme.surface)),
+        Span::styled(tail, Style::default().fg(theme.dim)),
+    ]);
 
-/// Get a string property via org.freedesktop.DBus.Properties.Get.
-fn get_prop(conn: &Connection, player: &str, prop: &str, timeout: Duration) -> Option<String> {
-    let msg = Message::call_with_args(
-        player,
-        "/org/mpris/MediaPlayer2",
-        "org.freedesktop.DBus.Properties",
-        "Get",
-        ("org.mpris.MediaPlayer2.Player", prop),
-    );
-    let reply = conn.send_with_reply_and_block(msg, timeout).ok()?;
-    let v: Variant<String> = reply.get1()?;
-    Some(v.0)
-}
-
-/// Get an i64 property.
-fn get_prop_i64(conn: &Connection, player: &str, prop: &str, timeout: Duration) -> Option<i64> {
-    let msg = Message::call_with_args(
-        player,
-        "/org/mpris/MediaPlayer2",
-        "org.freedesktop.DBus.Properties",
-        "Get",
-        ("org.mpris.MediaPlayer2.Player", prop),
-    );
-    let reply = conn.send_with_reply_and_block(msg, timeout).ok()?;
-    let v: Variant<i64> = reply.get1()?;
-    Some(v.0)
-}
-
-/// Get a double property.
-fn get_prop_f64(conn: &Connection, player: &str, prop: &str, timeout: Duration) -> Option<f64> {
-    let msg = Message::call_with_args(
-        player,
-        "/org/mpris/MediaPlayer2",
-        "org.freedesktop.DBus.Properties",
-        "Get",
-        ("org.mpris.MediaPlayer2.Player", prop),
-    );
-    let reply = conn.send_with_reply_and_block(msg, timeout).ok()?;
-    let v: Variant<f64> = reply.get1()?;
-    Some(v.0)
-}
-
-fn fmt_dur(usec: i64) -> String {
-    if usec <= 0 {
-        return "0:00".into();
+    let text_h = (lines.len() as u16 + 2).min(text_area.height); // + blank + progress
+    let top = text_area.height.saturating_sub(text_h) / 2;
+    let block = Rect::new(text_area.x, text_area.y + top, text_area.width, text_h);
+    let rows = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).split(block);
+    f.render_widget(Paragraph::new(lines), rows[0]);
+    if text_h >= 2 {
+        f.render_widget(Paragraph::new(progress_line), rows[1]);
     }
-    let secs = usec / 1_000_000;
-    let m = secs / 60;
-    let s = secs % 60;
-    format!("{}:{:02}", m, s)
-}
-
-/// Truncate to `max` display chars, adding an ellipsis when it doesn't fit.
-/// Char-based: byte truncation would panic on non-ASCII track names.
-fn truncate_chars(s: &str, max: usize) -> String {
-    if max == 0 {
-        return String::new();
-    }
-    if s.chars().count() <= max {
-        return s.to_string();
-    }
-    let mut out: String = s.chars().take(max.saturating_sub(1)).collect();
-    out.push('\u{2026}');
-    out
-}
-
-/// MPRIS `mpris:artUrl` is usually a `file://` URI. Return a readable local
-/// path, or `None` for remote/unsupported schemes.
-/// Percent-decode the handful of escapes that actually show up in media paths.
-fn percent_decode(s: &str) -> String {
-    s.replace("%20", " ")
-        .replace("%28", "(")
-        .replace("%29", ")")
-        .replace("%27", "'")
-        .replace("%5B", "[")
-        .replace("%5D", "]")
-}
-
-fn local_art_path(url: &str) -> Option<String> {
-    let path = url.strip_prefix("file://")?;
-    let decoded = percent_decode(path);
-    std::path::Path::new(&decoded).exists().then_some(decoded)
-}
-
-pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
-    let conn = Connection::new_session().ok();
-    let timeout = Duration::from_millis(50);
-
-    if let Some(conn) = conn {
-        // List MPRIS players on the session bus
-        let list_msg = Message::call_with_args(
-            "org.freedesktop.DBus",
-            "/",
-            "org.freedesktop.DBus",
-            "ListNames",
-            (),
-        );
-        let list_reply = conn.send_with_reply_and_block(list_msg, timeout).ok();
-        let player_name: Option<String> = list_reply.and_then(|r| {
-            let (names,): (Vec<String>,) = r.read_all().ok()?;
-            let mut players: Vec<String> = names
-                .into_iter()
-                .filter(|n| n.starts_with("org.mpris.MediaPlayer2."))
-                // playerctld is a proxy that forwards to whatever is active; it
-                // exposes the well-known name but no object at the MPRIS path,
-                // so querying it yields an empty track. Prefer a real player.
-                .filter(|n| !n.ends_with(".playerctld"))
-                .collect();
-            players.sort();
-            players.into_iter().next()
-        });
-
-        if let Some(ref player) = player_name {
-            let status = get_prop(&conn, player, "PlaybackStatus", timeout)
-                .unwrap_or_else(|| "Stopped".into());
-
-            if status != "Stopped" {
-                let track = read_metadata(&conn, player, timeout);
-                let position_usec = get_prop_i64(&conn, player, "Position", timeout).unwrap_or(0);
-                let _volume = get_prop_f64(&conn, player, "Volume", timeout).unwrap_or(0.0);
-
-                let icon = if status == "Playing" {
-                    "\u{25b6}"
-                } else {
-                    "\u{23f8}"
-                };
-
-                let pos_str = fmt_dur(position_usec);
-                let len_str = fmt_dur(track.length_usec);
-                let progress = if track.length_usec > 0 {
-                    (position_usec as f64 / track.length_usec as f64).clamp(0.0, 1.0)
-                } else {
-                    0.0
-                };
-
-                // Album art (braille) on the left when the panel is tall enough.
-                let art_h = area.height.saturating_sub(1);
-                let art_w: u16 = if area.height >= 5 && area.width >= 40 {
-                    14
-                } else {
-                    0
-                };
-                let art_lines = if art_w > 0 {
-                    local_art_path(&track.art_url)
-                        .and_then(|p| crate::widgets::braille_image::render_path(&p, art_w, art_h))
-                } else {
-                    None
-                };
-
-                let text_area = match &art_lines {
-                    Some(lines) => {
-                        let h = (lines.len() as u16).min(area.height);
-                        let top = area.height.saturating_sub(h) / 2;
-                        f.render_widget(
-                            Paragraph::new(lines.clone()),
-                            Rect::new(area.x, area.y + top, art_w, h),
-                        );
-                        Rect::new(
-                            area.x + art_w + 2,
-                            area.y,
-                            area.width.saturating_sub(art_w + 2),
-                            area.height,
-                        )
-                    }
-                    None => area,
-                };
-
-                // Title and artist on their own lines so long track names stay
-                // readable instead of being squeezed into one row.
-                let avail = text_area.width as usize;
-                let title = truncate_chars(&track.title, avail);
-                let artist = truncate_chars(&track.artist, avail.saturating_sub(2));
-
-                let mut lines: Vec<Line> = vec![Line::from(vec![
-                    Span::styled(format!("{} ", icon), Style::default().fg(theme.accent)),
-                    Span::styled(
-                        title,
-                        Style::default()
-                            .fg(theme.text)
-                            .add_modifier(ratatui::style::Modifier::BOLD),
-                    ),
-                ])];
-                if !artist.is_empty() {
-                    lines.push(Line::from(Span::styled(
-                        format!("  {}", artist),
-                        Style::default().fg(theme.secondary),
-                    )));
-                }
-                lines.push(Line::from(""));
-
-                let block_h = lines.len() as u16 + 1; // + gauge row
-                let top = text_area.height.saturating_sub(block_h) / 2;
-                let content = Rect::new(
-                    text_area.x,
-                    text_area.y + top,
-                    text_area.width,
-                    block_h.min(text_area.height),
-                );
-                let chunks = ratatui::layout::Layout::vertical([
-                    ratatui::layout::Constraint::Length(lines.len() as u16),
-                    ratatui::layout::Constraint::Length(1),
-                ])
-                .split(content);
-
-                f.render_widget(Paragraph::new(lines), chunks[0]);
-
-                let gauge = LineGauge::default()
-                    .filled_style(Style::default().fg(theme.accent).bg(theme.surface))
-                    .ratio(progress)
-                    .label(format!("{} / {}", pos_str, len_str))
-                    .line_set(line::THICK);
-                f.render_widget(gauge, chunks[1]);
-                return;
-            }
-        }
-    }
-
-    // No player active — quiet placeholder. (The dashboard has its own
-    // full-width visualizer strip, so we don't duplicate it here.)
-    let top = area.height.saturating_sub(1) / 2;
-    f.render_widget(
-        Paragraph::new(Line::from(Span::styled(
-            "  no media playing",
-            Style::default().fg(theme.dim),
-        )))
-        .alignment(ratatui::layout::Alignment::Center)
-        .style(Style::default().bg(theme.bg)),
-        Rect::new(area.x, area.y + top, area.width, 1),
-    );
 }

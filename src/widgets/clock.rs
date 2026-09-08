@@ -1,54 +1,118 @@
-use std::fs;
-
-use chrono::Local;
+use chrono::{Local, Timelike};
 use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
-use crate::app;
+use crate::theme::Theme;
 
-fn format_uptime() -> String {
-    let boot_time = fs::read_to_string("/proc/uptime")
-        .ok()
-        .and_then(|s| s.split_whitespace().next()?.parse::<f64>().ok())
-        .unwrap_or(0.0);
+/// 3×5 glyphs. `#` is lit. Colon is 1 wide.
+const GLYPH_H: usize = 5;
 
-    let total_secs = boot_time as u64;
-    let days = total_secs / 86400;
-    let hours = (total_secs % 86400) / 3600;
-    let mins = (total_secs % 3600) / 60;
-
-    if days > 0 {
-        format!("{}d {}h {}m", days, hours, mins)
-    } else if hours > 0 {
-        format!("{}h {}m", hours, mins)
-    } else {
-        format!("{}m", mins)
+fn glyph(c: char) -> [&'static str; GLYPH_H] {
+    match c {
+        '0' => ["###", "# #", "# #", "# #", "###"],
+        '1' => [" ##", "  #", "  #", "  #", "  #"],
+        '2' => ["###", "  #", "###", "#  ", "###"],
+        '3' => ["###", "  #", "###", "  #", "###"],
+        '4' => ["# #", "# #", "###", "  #", "  #"],
+        '5' => ["###", "#  ", "###", "  #", "###"],
+        '6' => ["###", "#  ", "###", "# #", "###"],
+        '7' => ["###", "  #", "  #", "  #", "  #"],
+        '8' => ["###", "# #", "###", "# #", "###"],
+        '9' => ["###", "# #", "###", "  #", "###"],
+        ':' => [" ", "#", " ", "#", " "],
+        _ => ["   ", "   ", "   ", "   ", "   "],
     }
 }
 
-pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
-    if area.height < 1 {
+/// Width in cells of `text` rendered at horizontal scale `sx`, with one
+/// `sx`-wide gap between glyphs.
+fn text_width(text: &str, sx: usize) -> usize {
+    let glyphs = text.chars().count();
+    let cells: usize = text.chars().map(|c| glyph(c)[0].len()).sum();
+    (cells + glyphs.saturating_sub(1)) * sx
+}
+
+/// Render `text` as block glyphs. `sx`/`sy` stretch each glyph pixel.
+/// `colon_on` toggles the colons so they can blink with the seconds.
+fn big_lines(
+    text: &str,
+    sx: usize,
+    sy: usize,
+    colon_on: bool,
+    theme: &Theme,
+) -> Vec<Line<'static>> {
+    let digit = Style::default()
+        .fg(theme.accent)
+        .add_modifier(Modifier::BOLD);
+    let colon = Style::default().fg(if colon_on {
+        theme.accent
+    } else {
+        theme.surface
+    });
+    let mut out = Vec::with_capacity(GLYPH_H * sy);
+    for row in 0..GLYPH_H {
+        let mut spans: Vec<Span<'static>> = Vec::new();
+        for (i, c) in text.chars().enumerate() {
+            if i > 0 {
+                spans.push(Span::raw(" ".repeat(sx)));
+            }
+            let style = if c == ':' { colon } else { digit };
+            for px in glyph(c)[row].chars() {
+                let cell = if px == '#' { "█" } else { " " };
+                spans.push(Span::styled(cell.repeat(sx), style));
+            }
+        }
+        let line = Line::from(spans);
+        for _ in 0..sy {
+            out.push(line.clone());
+        }
+    }
+    out
+}
+
+/// Pick the largest scale whose glyph block fits. Cells are ~1:2, so sx = 2·sy
+/// keeps the 3×5 glyph at its intended proportions; (1,1) is the thin fallback.
+fn pick_scale(text: &str, w: usize, h: usize) -> Option<(usize, usize)> {
+    for &(sx, sy) in &[(6usize, 3usize), (4, 2), (2, 1), (1, 1)] {
+        if text_width(text, sx) <= w && GLYPH_H * sy <= h {
+            return Some((sx, sy));
+        }
+    }
+    None
+}
+
+/// Big clock. Layout: block-digit time, then a date line beneath. Falls back
+/// to plain text when the area is too small for glyphs.
+pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
+    if area.height == 0 || area.width < 8 {
         return;
     }
-
     let now = Local::now();
-    let time_str = now.format("%H:%M:%S").to_string();
-    let date_str = now.format("%A, %B %d").to_string();
-    let up_str = format!("up {}", format_uptime());
+    let date = now.format("%A, %-d %B %Y").to_string();
+    let colon_on = now.nanosecond() < 500_000_000;
 
-    // Two lines: time (big bold accent) + date · uptime (dim)
-    // Vertically center both within the available area
-    let content_h = 2u16;
-    let top = area.y + area.height.saturating_sub(content_h) / 2;
+    let w = area.width as usize;
+    // Reserve a row for the date when there's room for glyphs + date.
+    let glyph_h_avail = (area.height as usize).saturating_sub(2);
 
-    // Row 1 — time
-    if top < area.y + area.height {
+    let full = now.format("%H:%M:%S").to_string();
+    let short = now.format("%H:%M").to_string();
+    let choice = pick_scale(&full, w, glyph_h_avail)
+        .map(|s| (full.clone(), s, None))
+        .or_else(|| {
+            pick_scale(&short, w, glyph_h_avail)
+                .map(|s| (short.clone(), s, Some(now.format("%S").to_string())))
+        });
+
+    let Some((text, (sx, sy), seconds)) = choice else {
+        // Text fallback for tiny panels.
+        let top = area.y + area.height.saturating_sub(2) / 2;
         f.render_widget(
             Paragraph::new(Line::from(Span::styled(
-                time_str,
+                full,
                 Style::default()
                     .fg(theme.accent)
                     .add_modifier(Modifier::BOLD),
@@ -56,19 +120,47 @@ pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
             .alignment(Alignment::Center),
             Rect::new(area.x, top, area.width, 1),
         );
-    }
+        if area.height >= 2 {
+            f.render_widget(
+                Paragraph::new(Line::from(Span::styled(
+                    date,
+                    Style::default().fg(theme.dim),
+                )))
+                .alignment(Alignment::Center),
+                Rect::new(area.x, top + 1, area.width, 1),
+            );
+        }
+        return;
+    };
 
-    // Row 2 — date · uptime
-    let row2 = top + 1;
-    if row2 < area.y + area.height {
-        let sub = format!("{} · {}", date_str, up_str);
+    let mut lines = big_lines(&text, sx, sy, colon_on, theme);
+    // When we dropped seconds, tuck them small at the bottom-right of the glyphs.
+    if let Some(sec) = seconds {
+        if let Some(last) = lines.last_mut() {
+            last.spans.push(Span::styled(
+                format!(" {}", sec),
+                Style::default().fg(theme.dim),
+            ));
+        }
+    }
+    let block_h = lines.len() as u16 + 2; // blank + date
+    let top = area.y + area.height.saturating_sub(block_h) / 2;
+    let glyph_w = text_width(&text, sx) as u16;
+    let left = area.x + area.width.saturating_sub(glyph_w) / 2;
+    let n = lines.len() as u16;
+    f.render_widget(
+        Paragraph::new(lines),
+        Rect::new(left, top, area.width.saturating_sub(left - area.x), n),
+    );
+    let date_y = top + n + 1;
+    if date_y < area.y + area.height {
         f.render_widget(
             Paragraph::new(Line::from(Span::styled(
-                sub,
+                date,
                 Style::default().fg(theme.dim),
             )))
             .alignment(Alignment::Center),
-            Rect::new(area.x, row2, area.width, 1),
+            Rect::new(area.x, date_y, area.width, 1),
         );
     }
 }

@@ -6,28 +6,32 @@ on:
   pull_request:
     branches: [main]
 
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: monitor
+env:
+  CARGO_TERM_COLOR: always
 
+jobs:
+  check:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Install system deps (libdbus)
+        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config
+
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          python-version: "3.11"
+          components: rustfmt, clippy
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+      - uses: Swatinem/rust-cache@v2
 
-      - name: Lint (compile check)
-        run: python -m py_compile src/monitor/*.py src/monitor/screens/*.py src/monitor/components/*.py src/monitor/core/*.py
+      - name: Format
+        run: cargo fmt --all -- --check
 
-      - name: Run tests
-        run: pytest tests/ -v
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Build
+        run: cargo build --release --locked
+
+      - name: Test
+        run: cargo test --locked

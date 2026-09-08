@@ -1,143 +1,125 @@
 use std::sync::{LazyLock, Mutex};
 
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Color, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
-use crate::app;
+use crate::monitors::history::History;
+use crate::theme::Theme;
+use crate::widgets::block_graph::BlockGraph;
+use crate::widgets::meter;
 
-fn usage_color(usage: f64, theme: &app::Theme) -> Color {
-    if usage < 80.0 {
-        theme.accent
-    } else if usage < 95.0 {
-        theme.yellow
-    } else {
-        theme.red
+#[derive(Clone, Copy, Default)]
+pub struct MemSnapshot {
+    pub total: u64,
+    pub used: u64,
+    pub swap_total: u64,
+    pub swap_used: u64,
+}
+
+impl MemSnapshot {
+    pub fn pct(&self) -> f64 {
+        if self.total == 0 {
+            0.0
+        } else {
+            self.used as f64 / self.total as f64 * 100.0
+        }
+    }
+    pub fn swap_pct(&self) -> f64 {
+        if self.swap_total == 0 {
+            0.0
+        } else {
+            self.swap_used as f64 / self.swap_total as f64 * 100.0
+        }
     }
 }
 
-const HIST_LEN: usize = 240;
-static MEM_HISTORY: LazyLock<Mutex<([f64; HIST_LEN], usize)>> =
-    LazyLock::new(|| Mutex::new(([0.0; HIST_LEN], 0)));
+static SNAP: Mutex<MemSnapshot> = Mutex::new(MemSnapshot {
+    total: 0,
+    used: 0,
+    swap_total: 0,
+    swap_used: 0,
+});
+static HISTORY: LazyLock<Mutex<History<240>>> = LazyLock::new(|| Mutex::new(History::new()));
 
-pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
-    let sys = crate::app::SYS.lock().unwrap();
-    let (total, used, swap_total, swap_used) = (
-        sys.total_memory(),
-        sys.used_memory(),
-        sys.total_swap(),
-        sys.used_swap(),
-    );
+pub fn snapshot() -> MemSnapshot {
+    *SNAP.lock().unwrap()
+}
 
-    let used_gb = used as f64 / 1_073_741_824.0;
-    let total_gb = total as f64 / 1_073_741_824.0;
-    let pct = if total > 0 {
-        (used as f64 / total as f64) * 100.0
-    } else {
-        0.0
+pub fn sample(sys: &sysinfo::System) {
+    let snap = MemSnapshot {
+        total: sys.total_memory(),
+        used: sys.used_memory(),
+        swap_total: sys.total_swap(),
+        swap_used: sys.used_swap(),
     };
+    HISTORY.lock().unwrap().push(snap.pct());
+    *SNAP.lock().unwrap() = snap;
+}
 
-    // Record this sample into the ring buffer.
-    {
-        let mut mem = MEM_HISTORY.lock().unwrap();
-        let idx = mem.1;
-        mem.0[idx] = pct;
-        mem.1 = (idx + 1) % HIST_LEN;
+fn row<'a>(label: &'a str, used: u64, total: u64, pct: f64, width: u16, theme: &Theme) -> Line<'a> {
+    let stats = format!(
+        "{:>5} / {:<5}",
+        meter::fmt_bytes(used),
+        meter::fmt_bytes(total)
+    );
+    let pct_str = format!("{:>3.0}%", pct);
+    let fixed = label.len() + 1 + stats.len() + 2 + pct_str.len() + 1;
+    let bar_w = (width as usize).saturating_sub(fixed);
+    let (on, off) = meter::track(pct / 100.0, bar_w);
+    let c = theme.usage(pct);
+    Line::from(vec![
+        Span::styled(format!("{} ", label), Style::default().fg(theme.dim)),
+        Span::styled(format!("{}  ", stats), Style::default().fg(theme.text)),
+        Span::styled(on, Style::default().fg(c)),
+        Span::styled(off, Style::default().fg(theme.surface)),
+        Span::styled(
+            format!(" {}", pct_str),
+            Style::default().fg(c).add_modifier(Modifier::BOLD),
+        ),
+    ])
+}
+
+pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
+    if area.height < 2 {
+        return;
     }
+    let m = snapshot();
+    let has_swap = m.swap_total > 0;
 
     let chunks = Layout::vertical([
-        Constraint::Length(1), // RAM text line
-        Constraint::Length(2), // Trend sparkline
-        Constraint::Length(1), // blank spacer
-        Constraint::Length(1), // Swap text line
-        Constraint::Min(0),    // Padding
+        Constraint::Length(1),
+        Constraint::Min(1),
+        Constraint::Length(if has_swap { 1 } else { 0 }),
     ])
     .split(area);
 
-    let color = usage_color(pct, theme);
+    f.render_widget(
+        Paragraph::new(row("RAM ", m.used, m.total, m.pct(), area.width, theme)),
+        chunks[0],
+    );
 
-    // RAM Line
-    let label = "RAM";
-    let stats = format!("{:>4.1}/{:<4.1} GiB", used_gb, total_gb);
-    let pct_str = format!("{:>3.0}%", pct);
-    let needed_w = label.len() + stats.len() + pct_str.len() + 4; // spaces
-    let dots_w = area.width.saturating_sub(needed_w as u16) as usize;
-    let dots = if dots_w > 0 {
-        "·".repeat(dots_w)
-    } else {
-        String::new()
-    };
+    let hist = HISTORY.lock().unwrap().recent(chunks[1].width as usize);
+    f.render_widget(
+        BlockGraph::new(&hist)
+            .max(100.0)
+            .colors(theme.secondary, theme.yellow, theme.red),
+        chunks[1],
+    );
 
-    let ram_line = Line::from(vec![
-        Span::styled(format!("{} ", label), Style::default().fg(theme.dim)),
-        Span::styled(format!("{} ", stats), Style::default().fg(theme.text)),
-        Span::styled(dots, Style::default().fg(theme.dim)),
-        Span::styled(
-            format!(" {}", pct_str),
-            Style::default()
-                .fg(color)
-                .add_modifier(ratatui::style::Modifier::BOLD),
-        ),
-    ]);
-    f.render_widget(Paragraph::new(ram_line), chunks[0]);
-
-    // Sparkline (Braille Graph)
-    let max_w = (chunks[1].width as usize * 2).min(HIST_LEN);
-    let hist: Vec<f64> = {
-        let mem = MEM_HISTORY.lock().unwrap();
-        let idx = mem.1;
-        (0..max_w)
-            .map(|i| mem.0[(idx + HIST_LEN - 1 - i) % HIST_LEN])
-            .rev()
-            .collect()
-    };
-
-    let braille = crate::widgets::block_graph::BlockGraph::new(&hist)
-        .min(0.0)
-        .max(100.0)
-        .colors(theme.green, theme.yellow, theme.red);
-
-    f.render_widget(braille, chunks[1]);
-
-    // Swap Line
-    if swap_total > 0 {
-        let swap_used_gb = swap_used as f64 / 1_073_741_824.0;
-        let swap_total_gb = swap_total as f64 / 1_073_741_824.0;
-        let swap_pct = (swap_used as f64 / swap_total as f64) * 100.0;
-        let swap_color = usage_color(swap_pct, theme);
-
-        let label = "Swap";
-        let stats = format!("{:>4.1}/{:<4.1} GiB", swap_used_gb, swap_total_gb);
-        let pct_str = format!("{:>3.0}%", swap_pct);
-        let needed_w = label.len() + stats.len() + pct_str.len() + 4;
-        let dots_w = area.width.saturating_sub(needed_w as u16) as usize;
-        let dots = if dots_w > 0 {
-            "·".repeat(dots_w)
-        } else {
-            String::new()
-        };
-
-        let swap_line = Line::from(vec![
-            Span::styled(format!("{} ", label), Style::default().fg(theme.dim)),
-            Span::styled(format!("{} ", stats), Style::default().fg(theme.text)),
-            Span::styled(dots, Style::default().fg(theme.dim)),
-            Span::styled(
-                format!(" {}", pct_str),
-                Style::default()
-                    .fg(swap_color)
-                    .add_modifier(ratatui::style::Modifier::BOLD),
-            ),
-        ]);
-        f.render_widget(Paragraph::new(swap_line), chunks[3]);
-    } else {
+    if has_swap {
         f.render_widget(
-            Paragraph::new(Line::from(Span::styled(
-                "Swap: None",
-                Style::default().fg(theme.dim),
-            ))),
-            chunks[3],
+            Paragraph::new(row(
+                "SWAP",
+                m.swap_used,
+                m.swap_total,
+                m.swap_pct(),
+                area.width,
+                theme,
+            )),
+            chunks[2],
         );
     }
 }
