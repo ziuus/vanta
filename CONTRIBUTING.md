@@ -67,11 +67,20 @@ One-time setup: add an npm automation token as the `NPM_TOKEN` repository
 secret. Without it the release still publishes, and the npm job logs a warning
 and skips.
 
-The npm package is `vanta-tui` (`vanta` is taken by vanta.js) and ships only a
+The npm package is `@ziuus/vanta` — both `vanta` and `vanta-tui` were already
+taken, and a scope is the one namespace nobody can race us for. It ships only a
 Node shim plus `install.js`; the native binary is downloaded from the release on
-`postinstall`. `npm/package.json`'s `prepack` script copies `README.md` and
-`LICENSE` into `npm/` and rewrites the screenshot paths to raw.githubusercontent
-URLs, so both CI and a manual `npm publish` get the full package. Those two
-copies are gitignored — they are build output, not source.
+`postinstall`. Scoped packages default to restricted, so the publish needs
+`--access public`.
+
+The shim is installed under two names, `vanta` and `vtui`. Bin names are a
+separate namespace from package names, so the unrelated `vtui` package on the
+registry doesn't block us — but a user who installs both globally will have one
+symlink clobber the other.
+
+`npm/package.json`'s `prepack` script copies `README.md` and `LICENSE` into
+`npm/` and rewrites the screenshot paths to raw.githubusercontent URLs, so both
+CI and a manual `npm publish` get the full package. Those two copies are
+gitignored — they are build output, not source.
 
 By contributing you agree your work is licensed under the MIT License.
