@@ -1,0 +1,60 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  binary:
+    name: build linux-x64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build --release --locked
+      - name: package
+        run: tar -czf vanta-x86_64-unknown-linux-gnu.tar.gz -C target/release vanta
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: vanta-x86_64-unknown-linux-gnu.tar.gz
+          generate_release_notes: true
+
+  npm:
+    name: publish to npm
+    needs: binary
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      # The tag is the source of truth: install.js builds the release download
+      # URL from the package version, so the two must not drift.
+      - name: sync version to tag
+        run: npm --prefix npm version --no-git-tag-version --allow-same-version "${GITHUB_REF_NAME#v}"
+
+      # npm always ships README/LICENSE; rewrite relative image paths so the
+      # screenshots resolve on npmjs.com too.
+      - name: stage package docs
+        run: |
+          cp README.md LICENSE npm/
+          sed -i 's|src="docs/|src="https://raw.githubusercontent.com/ziuus/vanta/main/docs/|g' npm/README.md
+
+      - name: publish
+        working-directory: npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::warning::NPM_TOKEN secret is not set — skipping npm publish"
+            exit 0
+          fi
+          npm publish --access public

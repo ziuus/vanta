@@ -45,4 +45,29 @@ cargo test
   literals.
 - Commit messages: imperative subject, body explains *why*.
 
+## Releasing
+
+Publishing is tag-driven: `.github/workflows/release.yml` builds the linux-x64
+binary, attaches it to a GitHub release, and publishes the npm wrapper.
+
+```bash
+# 1. bump the version in Cargo.toml, then refresh the lockfile
+cargo build --release
+git commit -am "Release v0.3.0"
+
+# 2. tag it — this is what triggers everything
+git tag v0.3.0 && git push origin main --tags
+```
+
+The workflow syncs `npm/package.json` to the tag, so the version lives in
+`Cargo.toml` only. `npm/install.js` derives its download URL from that version,
+which is why the tag must be `v<version>`.
+
+One-time setup: add an npm automation token as the `NPM_TOKEN` repository
+secret. Without it the release still publishes, and the npm job logs a warning
+and skips.
+
+The npm package is `vanta-tui` (`vanta` was taken); the binary it installs is
+still called `vanta`.
+
 By contributing you agree your work is licensed under the MIT License.

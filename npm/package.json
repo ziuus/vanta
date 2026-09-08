@@ -1,0 +1,45 @@
+{
+  "name": "vanta-tui",
+  "version": "0.2.0",
+  "description": "Aesthetic Rust TUI system dashboard — CPU, memory, disk, network, GPU, processes, now-playing, clock and visualizer in one terminal pane",
+  "bin": {
+    "vanta": "bin/vanta.js"
+  },
+  "scripts": {
+    "postinstall": "node install.js"
+  },
+  "files": [
+    "bin/vanta.js",
+    "install.js"
+  ],
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "engines": {
+    "node": ">=16"
+  },
+  "keywords": [
+    "tui",
+    "dashboard",
+    "system-monitor",
+    "htop",
+    "btop",
+    "ratatui",
+    "rust",
+    "terminal",
+    "cli"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ziuus/vanta.git"
+  },
+  "homepage": "https://github.com/ziuus/vanta#readme",
+  "bugs": {
+    "url": "https://github.com/ziuus/vanta/issues"
+  },
+  "license": "MIT",
+  "author": "zius"
+}

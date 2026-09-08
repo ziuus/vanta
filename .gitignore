@@ -10,3 +10,9 @@
 graphify-out/
 website/.vercel/
 website/node_modules/
+npm/node_modules/
+npm/bin/vanta-bin
+npm/*.tgz
+# staged by the release workflow, not source
+npm/README.md
+npm/LICENSE
