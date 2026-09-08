@@ -185,6 +185,7 @@ impl App {
         let theme = Theme::from_name(&config.ui.theme);
         let mode = DashboardMode::from_str(&config.ui.startup_mode);
         let sampler_interval = monitors::start(Duration::from_secs_f64(config.ui.refresh_rate));
+        music_viz::set_style(&config.ui.visualizer);
         let mut app = Self {
             running: true,
             theme,
@@ -312,6 +313,8 @@ impl App {
             KeyCode::Char('T') => self.cycle_theme(),
             KeyCode::Char('v') | KeyCode::Char('V') => {
                 music_viz::cycle_style();
+                self.config.ui.visualizer = music_viz::style_name().to_string();
+                self.config.save();
                 self.toast(format!("visualizer · {}", music_viz::style_name()));
             }
             KeyCode::Char('+') | KeyCode::Char('=') => self.adjust_refresh(true),

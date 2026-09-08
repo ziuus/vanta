@@ -50,7 +50,10 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, config: &Config) {
             "cycle panel focus        esc  clear focus / unzoom",
         ),
         key("enter", "zoom focused panel to full page"),
-        key("T", "next theme               v    visualizer style"),
+        key(
+            "T",
+            "next theme               v    visualizer (bars/mirror/wave/peaks)",
+        ),
         key("+ -", "sample faster / slower   ?    this help"),
         key("q", "quit"),
         blank.clone(),

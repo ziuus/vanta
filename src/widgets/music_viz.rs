@@ -22,13 +22,28 @@ static CAVA_CHILD: Mutex<Option<u32>> = Mutex::new(None);
 static LAST_SPAWN: Mutex<Option<std::time::Instant>> = Mutex::new(None);
 
 // ── Visualizer style ──
-// 0 = bars (bottom-up), 1 = mirror (center-out), 2 = wave (midline).
-const STYLE_COUNT: usize = 3;
+// 0 = bars (bottom-up), 1 = mirror (center-out), 2 = wave (midline),
+// 3 = peaks (bars with falling caps).
+const STYLE_COUNT: usize = 4;
+/// Per-column peak hold for the "peaks" style, in normalised 0..1 units.
+static PEAK_CAPS: Mutex<Vec<f32>> = Mutex::new(Vec::new());
 static VIZ_STYLE: AtomicUsize = AtomicUsize::new(0);
 
 /// Cycle to the next visualizer style. Bound to `v` globally.
 pub fn cycle_style() {
-    VIZ_STYLE.fetch_add(1, Ordering::Relaxed);
+    let next = (VIZ_STYLE.load(Ordering::Relaxed) + 1) % STYLE_COUNT;
+    VIZ_STYLE.store(next, Ordering::Relaxed);
+}
+
+/// Select a style by config name; unknown names fall back to bars.
+pub fn set_style(name: &str) {
+    let idx = match name {
+        "mirror" => 1,
+        "wave" => 2,
+        "peaks" => 3,
+        _ => 0,
+    };
+    VIZ_STYLE.store(idx, Ordering::Relaxed);
 }
 
 fn ensure_cava() {
@@ -174,6 +189,7 @@ pub fn style_name() -> &'static str {
     match VIZ_STYLE.load(Ordering::Relaxed) % STYLE_COUNT {
         1 => "mirror",
         2 => "wave",
+        3 => "peaks",
         _ => "bars",
     }
 }
@@ -325,6 +341,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, _tick: u64) {
     let lines = match style {
         1 => draw_mirror(&heights, norm_peak, term_cols, term_rows, theme, dim),
         2 => draw_wave(&heights, norm_peak, term_cols, term_rows, theme, dim),
+        3 => draw_peaks(&heights, norm_peak, term_cols, term_rows, theme, dim),
         _ => draw_bars(&heights, norm_peak, term_cols, term_rows, theme, dim),
     };
 
@@ -459,6 +476,68 @@ fn draw_wave(
             };
             let c = if ch == '│' { theme.dim } else { color };
             spans.push(Span::styled(ch.to_string(), Style::default().fg(c)));
+        }
+        lines.push(Line::from(spans));
+    }
+    lines
+}
+
+/// Bars with a peak cap per column that holds briefly, then falls.
+fn draw_peaks(
+    heights: &[f32],
+    norm_peak: f32,
+    cols: usize,
+    rows: usize,
+    theme: &Theme,
+    dim: bool,
+) -> Vec<Line<'static>> {
+    let mut caps = PEAK_CAPS.lock().unwrap_or_else(|e| e.into_inner());
+    if caps.len() != cols {
+        *caps = vec![0.0; cols];
+    }
+    let norm: Vec<f32> = heights.iter().map(|h| (h / norm_peak).min(1.0)).collect();
+    for (cap, &h) in caps.iter_mut().zip(&norm) {
+        if h >= *cap {
+            *cap = h;
+        } else {
+            // Gravity: falls faster the longer it has been above the bar.
+            *cap = (*cap - 0.012 - (*cap - h) * 0.04).max(h);
+        }
+    }
+
+    let display_rows = rows as f32;
+    let cap_col = if dim { theme.dim } else { theme.text };
+    let mut lines: Vec<Line> = Vec::with_capacity(rows);
+    for display_row in (0..rows).rev() {
+        let row_low = display_row as f32;
+        let mut spans: Vec<Span<'static>> = Vec::with_capacity(cols);
+        for (i, &h) in norm.iter().enumerate() {
+            let bar_float = h * display_rows;
+            let cap_row = ((caps[i] * display_rows).ceil() as usize).min(rows.saturating_sub(1));
+            let (ch, filled) = if bar_float <= row_low {
+                (' ', false)
+            } else if bar_float >= row_low + 1.0 {
+                ('█', true)
+            } else {
+                let frac = bar_float - row_low;
+                (BLOCKS[(frac * 8.0).round().clamp(1.0, 8.0) as usize], true)
+            };
+            // The cap sits on the row just above the bar's current top.
+            let is_cap = !filled && display_row == cap_row && caps[i] > 0.02;
+            let height_frac = display_row as f32 / display_rows;
+            let style = if is_cap {
+                Style::default().fg(cap_col)
+            } else {
+                Style::default().fg(bar_color(theme, height_frac, filled, dim))
+            };
+            spans.push(Span::styled(
+                if is_cap {
+                    "▁".to_string()
+                } else {
+                    ch.to_string()
+                },
+                style,
+            ));
         }
         lines.push(Line::from(spans));
     }

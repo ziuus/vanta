@@ -18,6 +18,8 @@ pub struct UiConfig {
     pub startup_mode: String,
     /// 24-hour clock (false = 12-hour with am/pm).
     pub clock_24h: bool,
+    /// Visualizer style: bars | mirror | wave | peaks.
+    pub visualizer: String,
 }
 
 impl Default for UiConfig {
@@ -28,6 +30,7 @@ impl Default for UiConfig {
             theme: "dark".to_string(),
             startup_mode: "dashboard".to_string(),
             clock_24h: true,
+            visualizer: "bars".to_string(),
         }
     }
 }

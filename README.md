@@ -31,7 +31,7 @@ Vanta collapses everything you care about into one terminal pane: CPU, memory, d
 | `Tab` / `Shift-Tab` | Cycle panel focus · `Esc` clears |
 | `Enter` | Zoom the focused panel to the full page · `Esc` back |
 | `T` | Next theme (persisted) |
-| `v` | Visualizer style: bars / mirror / wave |
+| `v` | Visualizer style: bars / mirror / wave / peaks |
 | `+` / `-` | Sample faster / slower |
 | `Space` `n` `p` | Play/pause · next · previous (MPRIS, any page) |
 | `<` `>` | Volume down / up |
@@ -56,6 +56,7 @@ fps = 30                # render rate (animations)
 theme = "dark"
 startup_mode = "dashboard"
 clock_24h = true
+visualizer = "bars"     # bars | mirror | wave | peaks
 
 [widgets]               # all default to true
 cpu = true
