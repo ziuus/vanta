@@ -224,6 +224,35 @@ pub fn sample(total_mem_bytes: u64) {
     st.total_mem_kb = (total_mem_bytes as f64 / 1024.0).max(1.0);
 }
 
+/// Name of a live PID from the last snapshot.
+pub fn name_of(pid: u32) -> Option<String> {
+    STATE
+        .lock()
+        .unwrap()
+        .snapshot
+        .iter()
+        .find(|p| p.pid == pid)
+        .map(|p| p.name.clone())
+}
+
+/// uid → login name from /etc/passwd, read once.
+static USERS: LazyLock<HashMap<u32, String>> = LazyLock::new(|| {
+    fs::read_to_string("/etc/passwd")
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|l| {
+            let mut f = l.split(':');
+            let name = f.next()?;
+            let uid = f.nth(1)?.parse().ok()?;
+            Some((uid, name.to_string()))
+        })
+        .collect()
+});
+
+fn user_name(uid: u32) -> String {
+    USERS.get(&uid).cloned().unwrap_or_else(|| uid.to_string())
+}
+
 pub fn count() -> usize {
     STATE.lock().unwrap().snapshot.len()
 }
@@ -460,7 +489,7 @@ pub fn render(
 
     // ── Columns ──
     let w = area.width as usize;
-    let (c_pid, c_cpu, c_mem, c_rss, c_st, c_usr, c_thr) = (7usize, 6, 6, 7, 2, 5, 4);
+    let (c_pid, c_cpu, c_mem, c_rss, c_st, c_usr, c_thr) = (7usize, 6, 6, 7, 2, 8, 4);
     let fixed = c_pid + c_cpu + c_mem + c_rss + c_st + c_usr + c_thr + 7; // 7 separators
     let show_io = w >= fixed + 8 + 14 + 16;
     let io_w = if show_io { 14 } else { 0 };
@@ -565,7 +594,7 @@ pub fn render(
         } else {
             p.name.clone()
         };
-        let user = if p.uid == 0 { "root" } else { "user" };
+        let user = meter::ellipsize(&user_name(p.uid), c_usr);
 
         let mut spans = vec![
             Span::styled(
@@ -598,7 +627,14 @@ pub fn render(
                 state_style(p.state, theme).bg(bg),
             ),
             Span::styled(" ", base),
-            Span::styled(format!("{:>5}", user), base.fg(theme.secondary)),
+            Span::styled(
+                format!("{:>w$}", user, w = c_usr),
+                base.fg(if p.uid == 0 {
+                    theme.yellow
+                } else {
+                    theme.secondary
+                }),
+            ),
             Span::styled(" ", base),
             Span::styled(format!("{:>4}", p.threads.min(9999)), base.fg(theme.dim)),
         ];

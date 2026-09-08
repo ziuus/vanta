@@ -79,6 +79,54 @@ fn short_cpu(model: &str) -> String {
     s.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Battery {
+    pub pct: u8,
+    pub charging: bool,
+    /// Draw (or charge) in watts, when the driver reports it.
+    pub watts: Option<f64>,
+    /// Estimated seconds to empty (discharging) or full (charging).
+    pub eta_secs: Option<u64>,
+}
+
+/// Power/energy detail for the first battery; separate from the summary tuple
+/// because only the status panel wants it.
+pub fn read_battery_detail() -> Option<Battery> {
+    let dir = fs::read_dir("/sys/class/power_supply").ok()?;
+    let bat = dir
+        .flatten()
+        .find(|e| e.file_name().to_string_lossy().starts_with("BAT"))?
+        .path();
+    let num =
+        |f: &str| -> Option<f64> { fs::read_to_string(bat.join(f)).ok()?.trim().parse().ok() };
+    let pct = num("capacity")? as u8;
+    let status = fs::read_to_string(bat.join("status")).unwrap_or_default();
+    let charging = matches!(status.trim(), "Charging" | "Full");
+    // µW directly, or µA × µV.
+    let watts = num("power_now")
+        .or_else(|| Some(num("current_now")? * num("voltage_now")? / 1e6))
+        .map(|uw| uw / 1e6)
+        .filter(|w| *w > 0.05);
+    let (now, full) = match (num("energy_now"), num("energy_full")) {
+        (Some(n), Some(f)) => (Some(n / 1e6), Some(f / 1e6)),
+        _ => match (num("charge_now"), num("charge_full"), num("voltage_now")) {
+            (Some(n), Some(f), Some(v)) => (Some(n * v / 1e12), Some(f * v / 1e12)),
+            _ => (None, None),
+        },
+    };
+    let eta_secs = match (watts, now, full, status.trim()) {
+        (Some(w), Some(n), _, "Discharging") => Some((n / w * 3600.0) as u64),
+        (Some(w), Some(n), Some(f), "Charging") => Some(((f - n).max(0.0) / w * 3600.0) as u64),
+        _ => None,
+    };
+    Some(Battery {
+        pct,
+        charging,
+        watts,
+        eta_secs,
+    })
+}
+
 /// First BAT* capacity under /sys/class/power_supply, or None on AC-only machines.
 pub fn read_battery() -> Option<(u8, bool)> {
     let dir = fs::read_dir("/sys/class/power_supply").ok()?;

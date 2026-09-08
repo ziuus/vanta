@@ -45,7 +45,11 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, config: &Config) {
         key("1 2 3", "dashboard · monitor · aesthetic"),
         blank.clone(),
         head("global"),
-        key("tab ⇧tab", "cycle panel focus        esc  clear focus"),
+        key(
+            "tab ⇧tab",
+            "cycle panel focus        esc  clear focus / unzoom",
+        ),
+        key("enter", "zoom focused panel to full page"),
         key("T", "next theme               v    visualizer style"),
         key("+ -", "sample faster / slower   ?    this help"),
         key("q", "quit"),
@@ -60,7 +64,11 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, config: &Config) {
             "select                   /    filter (enter keeps, esc clears)",
         ),
         key("s r", "sort field / reverse     t    tree view   ← →  fold"),
-        key("c", "toggle full command      k K  SIGTERM / SIGKILL"),
+        key(
+            "c",
+            "toggle full command      k K  SIGTERM / SIGKILL (press twice)",
+        ),
+        key("x", "cancel a pending kill"),
         blank.clone(),
         head("calendar (when focused)"),
         key(

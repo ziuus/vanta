@@ -170,9 +170,13 @@ pub struct App {
     pub focused_panel: Option<PanelId>,
     pub panel_states: PanelStates,
     pub show_help: bool,
+    /// A focused panel expanded to fill the page (Enter / Esc).
+    pub zoomed: Option<PanelId>,
     pub summary: Summary,
     /// Short transient message shown in the status bar (theme changed, killed pid …).
     toast: Option<(String, Instant)>,
+    /// First press of k/K arms this; the second press within the window fires.
+    pending_signal: Option<(u32, &'static str, Instant)>,
     sampler_interval: std::sync::Arc<std::sync::atomic::AtomicU64>,
 }
 
@@ -190,8 +194,10 @@ impl App {
             focused_panel: None,
             panel_states: PanelStates::default(),
             show_help: false,
+            zoomed: None,
             summary: Summary::default(),
             toast: None,
+            pending_signal: None,
             sampler_interval,
         };
         if mode == DashboardMode::Monitor {
@@ -209,6 +215,7 @@ impl App {
             return;
         }
         self.mode = mode;
+        self.zoomed = None;
         self.focused_panel = (mode == DashboardMode::Monitor).then_some(PanelId::Processes);
         self.config.ui.startup_mode = mode.as_str().to_string();
         self.config.save();
@@ -237,6 +244,9 @@ impl App {
             None => panels.len() - 1,
         };
         self.focused_panel = Some(panels[next]);
+        if self.zoomed.is_some() {
+            self.zoomed = self.focused_panel;
+        }
     }
 
     fn adjust_refresh(&mut self, faster: bool) {
@@ -308,7 +318,18 @@ impl App {
             KeyCode::Char('-') | KeyCode::Char('_') => self.adjust_refresh(false),
             KeyCode::Tab => self.cycle_focus(true),
             KeyCode::BackTab => self.cycle_focus(false),
-            KeyCode::Esc => self.focused_panel = None,
+            KeyCode::Enter => match (self.zoomed, self.focused_panel) {
+                (Some(_), _) => self.zoomed = None,
+                (None, Some(p)) => self.zoomed = Some(p),
+                (None, None) => {}
+            },
+            KeyCode::Esc => {
+                if self.zoomed.is_some() {
+                    self.zoomed = None;
+                } else {
+                    self.focused_panel = None;
+                }
+            }
 
             // Media transport is global: it's the whole point of a dashboard.
             KeyCode::Char(' ') => media::control(Action::PlayPause),
@@ -367,9 +388,7 @@ impl App {
                     KeyCode::Right | KeyCode::Char('l') => ps.calendar_month_offset += 1,
                     KeyCode::Up | KeyCode::Char('k') => ps.calendar_month_offset -= 12,
                     KeyCode::Down | KeyCode::Char('j') => ps.calendar_month_offset += 12,
-                    KeyCode::Home | KeyCode::Enter | KeyCode::Char('t') => {
-                        ps.calendar_month_offset = 0
-                    }
+                    KeyCode::Home | KeyCode::Char('t') => ps.calendar_month_offset = 0,
                     _ => {}
                 }
             }
@@ -436,6 +455,10 @@ impl App {
             }
             KeyCode::Char('k') => self.signal_selected("TERM"),
             KeyCode::Char('K') => self.signal_selected("KILL"),
+            KeyCode::Char('x') | KeyCode::Char('X') => {
+                self.pending_signal = None;
+                self.toast("cancelled");
+            }
             _ => {}
         }
     }
@@ -463,7 +486,7 @@ impl App {
         }
     }
 
-    fn signal_selected(&mut self, sig: &str) {
+    fn signal_selected(&mut self, sig: &'static str) {
         let Some(pid) = self.selected_pid() else {
             return;
         };
@@ -471,6 +494,24 @@ impl App {
             self.toast("not killing myself — press q to quit");
             return;
         }
+        // Two-step: the first press arms, the second (same pid + signal,
+        // within 3s) fires. A mis-typed k on the wrong row is otherwise fatal.
+        let armed = self
+            .pending_signal
+            .is_some_and(|(p, s, t)| p == pid && s == sig && t.elapsed() < Duration::from_secs(3));
+        if !armed {
+            let name = processes::name_of(pid).unwrap_or_default();
+            self.pending_signal = Some((pid, sig, Instant::now()));
+            self.toast(format!(
+                "SIG{} → {} {}?  press {} again to confirm, x to cancel",
+                sig,
+                pid,
+                name,
+                if sig == "KILL" { "K" } else { "k" }
+            ));
+            return;
+        }
+        self.pending_signal = None;
         let ok = std::process::Command::new("kill")
             .args([&format!("-{}", sig), &pid.to_string()])
             .status()
@@ -514,10 +555,11 @@ impl App {
 
         self.render_title(f, title_bar);
 
-        match self.mode {
-            DashboardMode::Dashboard => screens::dashboard::render(f, main, self),
-            DashboardMode::Monitor => screens::monitor::render(f, main, self),
-            DashboardMode::Aesthetic => screens::aesthetic::render(f, main, self),
+        match (self.zoomed, self.mode) {
+            (Some(p), _) => screens::render_panel(f, main, self, p),
+            (None, DashboardMode::Dashboard) => screens::dashboard::render(f, main, self),
+            (None, DashboardMode::Monitor) => screens::monitor::render(f, main, self),
+            (None, DashboardMode::Aesthetic) => screens::aesthetic::render(f, main, self),
         }
 
         self.render_status(f, status_bar);
@@ -696,6 +738,16 @@ impl App {
                 }
                 _ => {
                     hint("tab", "focus");
+                    if self.focused_panel.is_some() {
+                        hint(
+                            "enter",
+                            if self.zoomed.is_some() {
+                                "unzoom"
+                            } else {
+                                "zoom"
+                            },
+                        );
+                    }
                     hint("space", "play/pause");
                     hint("n/p", "track");
                     hint("<>", "volume");

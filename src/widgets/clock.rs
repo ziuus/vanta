@@ -86,7 +86,7 @@ fn pick_scale(text: &str, w: usize, h: usize) -> Option<(usize, usize)> {
 
 /// Big clock. Layout: block-digit time, then a date line beneath. Falls back
 /// to plain text when the area is too small for glyphs.
-pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
+pub fn render(f: &mut Frame, area: Rect, theme: &Theme, h24: bool) {
     if area.height == 0 || area.width < 8 {
         return;
     }
@@ -98,8 +98,18 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
     // Reserve a row for the date when there's room for glyphs + date.
     let glyph_h_avail = (area.height as usize).saturating_sub(2);
 
-    let full = now.format("%H:%M:%S").to_string();
-    let short = now.format("%H:%M").to_string();
+    let (full, short) = if h24 {
+        (
+            now.format("%H:%M:%S").to_string(),
+            now.format("%H:%M").to_string(),
+        )
+    } else {
+        (
+            now.format("%-I:%M:%S").to_string(),
+            now.format("%-I:%M").to_string(),
+        )
+    };
+    let suffix = (!h24).then(|| now.format("%P").to_string());
     let choice = pick_scale(&full, w, glyph_h_avail)
         .map(|s| (full.clone(), s, None))
         .or_else(|| {
@@ -134,11 +144,18 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
     };
 
     let mut lines = big_lines(&text, sx, sy, colon_on, theme);
-    // When we dropped seconds, tuck them small at the bottom-right of the glyphs.
-    if let Some(sec) = seconds {
+    // Small seconds (when dropped) and am/pm tag sit at the bottom-right of the glyphs.
+    let mut tag = seconds.unwrap_or_default();
+    if let Some(s) = &suffix {
+        if !tag.is_empty() {
+            tag.push(' ');
+        }
+        tag.push_str(s);
+    }
+    if !tag.is_empty() {
         if let Some(last) = lines.last_mut() {
             last.spans.push(Span::styled(
-                format!(" {}", sec),
+                format!(" {}", tag),
                 Style::default().fg(theme.dim),
             ));
         }

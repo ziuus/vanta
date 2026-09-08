@@ -214,6 +214,41 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
         ]));
     }
 
+    if let Some(b) = crate::monitors::system_info::read_battery_detail() {
+        let col = if b.charging || b.pct > 20 {
+            theme.accent
+        } else if b.pct > 10 {
+            theme.yellow
+        } else {
+            theme.red
+        };
+        let mut spans = vec![
+            key("BAT"),
+            val(
+                format!("{}%{}", b.pct, if b.charging { " ⚡" } else { "" }),
+                col,
+            ),
+        ];
+        if let Some(w) = b.watts {
+            spans.push(Span::styled(
+                format!("  {:.1}W", w),
+                Style::default().fg(theme.dim),
+            ));
+        }
+        if let Some(s) = b.eta_secs.filter(|s| *s > 0 && *s < 48 * 3600) {
+            spans.push(Span::styled(
+                format!(
+                    "  {}h{:02}m {}",
+                    s / 3600,
+                    (s % 3600) / 60,
+                    if b.charging { "to full" } else { "left" }
+                ),
+                Style::default().fg(theme.dim),
+            ));
+        }
+        lines.push(Line::from(spans));
+    }
+
     if let Some(max) = cpu.max_temp() {
         let limit = if area.width > 35 { 8 } else { 4 };
         let mut t_str = cpu

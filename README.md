@@ -29,6 +29,7 @@ Vanta collapses everything you care about into one terminal pane: CPU, memory, d
 |-----|--------|
 | `1` `2` `3` | Switch page (persisted as startup page) |
 | `Tab` / `Shift-Tab` | Cycle panel focus · `Esc` clears |
+| `Enter` | Zoom the focused panel to the full page · `Esc` back |
 | `T` | Next theme (persisted) |
 | `v` | Visualizer style: bars / mirror / wave |
 | `+` / `-` | Sample faster / slower |
@@ -36,7 +37,7 @@ Vanta collapses everything you care about into one terminal pane: CPU, memory, d
 | `<` `>` | Volume down / up |
 | `q` | Quit |
 
-**Processes (Monitor):** `↑↓ PgUp PgDn Home End` select · `/` filter (`Enter` keeps, `Esc` clears) · `s` sort field · `r` reverse · `t` tree · `←→` fold · `c` full command · `k` SIGTERM · `K` SIGKILL
+**Processes (Monitor):** `↑↓ PgUp PgDn Home End` select · `/` filter (`Enter` keeps, `Esc` clears) · `s` sort field · `r` reverse · `t` tree · `←→` fold · `c` full command · `k` SIGTERM · `K` SIGKILL (press twice to confirm, `x` cancels)
 
 **Calendar (focused):** `←→` month · `↑↓` year · `Home` today
 
@@ -54,6 +55,7 @@ refresh_rate = 0.5      # seconds between samples
 fps = 30                # render rate (animations)
 theme = "dark"
 startup_mode = "dashboard"
+clock_24h = true
 
 [widgets]               # all default to true
 cpu = true

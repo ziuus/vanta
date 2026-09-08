@@ -111,7 +111,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
 
         if cfg.clock {
             let inner = panel(f, rows[0], "clock", theme, focus(PanelId::Clock));
-            clock::render(f, inner, theme);
+            clock::render(f, inner, theme, app.config.ui.clock_24h);
         }
         if cfg.media {
             let inner = panel(f, rows[1], "now playing", theme, focus(PanelId::Media));

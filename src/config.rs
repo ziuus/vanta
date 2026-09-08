@@ -16,6 +16,8 @@ pub struct UiConfig {
     pub fps: u32,
     pub theme: String,
     pub startup_mode: String,
+    /// 24-hour clock (false = 12-hour with am/pm).
+    pub clock_24h: bool,
 }
 
 impl Default for UiConfig {
@@ -25,6 +27,7 @@ impl Default for UiConfig {
             fps: 30,
             theme: "dark".to_string(),
             startup_mode: "dashboard".to_string(),
+            clock_24h: true,
         }
     }
 }
