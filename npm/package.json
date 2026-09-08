@@ -1,11 +1,12 @@
 {
-  "name": "vanta",
+  "name": "vanta-tui",
   "version": "0.2.0",
   "description": "Aesthetic Rust TUI system dashboard — CPU, memory, disk, network, GPU, processes, now-playing, clock and visualizer in one terminal pane",
   "bin": {
     "vanta": "bin/vanta.js"
   },
   "scripts": {
+    "prepack": "cp ../README.md ../LICENSE . && sed -i 's|src=\"docs/|src=\"https://raw.githubusercontent.com/ziuus/vanta/main/docs/|g' README.md",
     "postinstall": "node install.js"
   },
   "files": [

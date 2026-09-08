@@ -41,13 +41,9 @@ jobs:
       - name: sync version to tag
         run: npm --prefix npm version --no-git-tag-version --allow-same-version "${GITHUB_REF_NAME#v}"
 
-      # npm always ships README/LICENSE; rewrite relative image paths so the
-      # screenshots resolve on npmjs.com too.
-      - name: stage package docs
-        run: |
-          cp README.md LICENSE npm/
-          sed -i 's|src="docs/|src="https://raw.githubusercontent.com/ziuus/vanta/main/docs/|g' npm/README.md
-
+      # npm always ships README/LICENSE; npm/package.json's prepack script
+      # copies them in and rewrites the relative image paths so the screenshots
+      # resolve on npmjs.com too. Manual publishes get the same treatment.
       - name: publish
         working-directory: npm
         env:

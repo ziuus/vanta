@@ -27,7 +27,7 @@ function download(url, hops = 0) {
   return new Promise((resolve, reject) => {
     if (hops > 5) return reject(new Error('too many redirects'));
     https
-      .get(url, { headers: { 'user-agent': `vanta/${version}` } }, (res) => {
+      .get(url, { headers: { 'user-agent': `vanta-tui/${version}` } }, (res) => {
         const { statusCode, headers } = res;
         if (statusCode >= 300 && statusCode < 400 && headers.location) {
           res.resume();
