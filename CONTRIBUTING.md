@@ -29,7 +29,11 @@ cargo test
 - `src/monitors/` — data collection. Each module owns a `static` snapshot and a
   `sample()` that runs on the **sampler thread** (`monitors/mod.rs`). Never do
   I/O in a `render()`; read the snapshot instead. Do the slow work *before*
-  taking the lock so the UI never waits on it.
+  taking the lock so the UI never waits on it. A TTL cache is not enough for an
+  *unbounded* wait — anything that shells out to the network (`checkupdates`,
+  `nmcli`) gets its own thread, or it stalls every other monitor behind it and
+  `Summary` (assigned last) never lands. That shipped once as `cpu 0%` in the
+  title bar; `monitors::facts_thread` is the pattern.
 - `src/widgets/` — pure drawing helpers (clock glyphs, gauges, graphs, meters).
 - `src/screens/` — one file per page; `screens::panel()` is the shared chrome.
 - `src/app.rs` — state, key handling, title/status bars.

@@ -59,7 +59,6 @@ fn sample_all(sys: &mut sysinfo::System) {
     disk::sample();
     processes::sample(sys.total_memory());
     crate::widgets::media::sample();
-    crate::widgets::status::sample();
     *SUMMARY.lock().unwrap() = collect_summary();
 }
 
@@ -84,5 +83,43 @@ pub fn start(interval: Duration) -> Arc<AtomicU64> {
             }
         })
         .expect("spawn sampler thread");
+    facts_thread();
     handle
+}
+
+/// `status::sample()` shells out to `checkupdates`, `nmcli`, `pacman` and
+/// `docker` — measured at ~7s combined on a first run (checkupdates alone syncs
+/// package DBs over the network). On the sampler thread that stalled every
+/// monitor behind it: `SUMMARY` is assigned last, so the title bar and gauges
+/// sat at their `Default` 0% with a blank uptime, and every graph held the
+/// single data point from the one sample that had completed. Its cache is
+/// already `Mutex`-guarded and TTL-gated, so it just needs a thread of its own.
+fn facts_thread() {
+    std::thread::Builder::new()
+        .name("vanta-facts".into())
+        .spawn(|| loop {
+            crate::widgets::status::sample();
+            // sample() early-returns on a lock check until its TTL expires, so
+            // polling this often costs nothing.
+            std::thread::sleep(Duration::from_secs(1));
+        })
+        .expect("spawn facts thread");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Regression: the headline numbers must not be gated behind the slow
+    /// shell-outs in `status::sample()`. With those inline on the sampler thread
+    /// this took ~7s, so the first frames rendered `cpu 0%`, `mem 0%` and an
+    /// empty uptime.
+    #[test]
+    fn summary_populates_before_the_slow_shell_outs_could_finish() {
+        let _handle = start(Duration::from_millis(100));
+        std::thread::sleep(Duration::from_secs(1));
+        let s = summary();
+        assert!(!s.uptime.is_empty(), "uptime still Default after 1s");
+        assert!(s.mem_pct > 0.0, "mem_pct still Default after 1s");
+    }
 }
