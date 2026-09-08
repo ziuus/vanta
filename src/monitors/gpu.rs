@@ -27,16 +27,17 @@ pub struct GpuData {
 struct Cache {
     data: Option<GpuData>,
     stamp: Option<Instant>,
-    /// Set once nvidia-smi is known to be missing or failing, so we don't
-    /// keep forking it every second on machines without an NVIDIA card.
-    nvidia_dead: bool,
+    /// After nvidia-smi fails, don't fork it again until this instant. Keeps
+    /// non-NVIDIA machines from spawning it every second, but still notices a
+    /// driver or eGPU that shows up later.
+    nvidia_retry_at: Option<Instant>,
 }
 
 static CACHE: LazyLock<Mutex<Cache>> = LazyLock::new(|| {
     Mutex::new(Cache {
         data: None,
         stamp: None,
-        nvidia_dead: false,
+        nvidia_retry_at: None,
     })
 });
 static HISTORY: LazyLock<Mutex<History<240>>> = LazyLock::new(|| Mutex::new(History::new()));
@@ -58,13 +59,13 @@ pub fn sample() {
     if c.stamp.is_some_and(|t| t.elapsed() < TTL) {
         return;
     }
-    let data = if c.nvidia_dead {
+    let data = if c.nvidia_retry_at.is_some_and(|t| Instant::now() < t) {
         None
     } else {
         let d = read_nvidia();
-        if d.is_none() {
-            c.nvidia_dead = true;
-        }
+        c.nvidia_retry_at = d
+            .is_none()
+            .then(|| Instant::now() + Duration::from_secs(60));
         d
     };
     let data = data.or_else(read_amd).or_else(read_intel);
