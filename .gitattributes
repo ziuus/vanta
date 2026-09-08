@@ -1,3 +1,5 @@
-# Force shell scripts and bin files to always use LF (Unix) line endings
-*.sh text eol=lf
-bin/* text eol=lf
+* text=auto eol=lf
+*.rs text diff=rust
+*.toml text
+*.png binary
+Cargo.lock -diff
