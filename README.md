@@ -86,16 +86,16 @@ Optional tools that light up extra panels — vanta degrades quietly without the
 ## Managing vanta
 
 ```bash
-vanta --version                     # what am I running
-vanta --help                        # usage + keys
+vanta --version                 # what am I running
+vanta --help                    # usage + keys
 
-npm update -g @ziuus/vanta             # update  (npm)
+npm update -g @ziuus/vanta      # update  (npm)
+npm uninstall -g @ziuus/vanta   # remove  (npm)
+
 cargo install --git https://github.com/ziuus/vanta --force   # update  (cargo)
+cargo uninstall vanta                                        # remove  (cargo)
 
-npm uninstall -g @ziuus/vanta          # remove  (npm)
-cargo uninstall vanta               # remove  (cargo)
-
-rm -rf ~/.config/vanta              # drop config + persisted theme/page
+rm -rf ~/.config/vanta          # drop config + persisted theme/page
 ```
 
 Where things live:

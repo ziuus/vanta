@@ -258,3 +258,23 @@ if (canvas && typeof THREE !== 'undefined') {
     renderer.setSize(window.innerWidth, window.innerHeight);
   });
 }
+
+// The copy buttons were styled but never wired, so clicking one did nothing.
+// ponytail: navigator.clipboard only exists on a secure origin — over plain
+// http the button says so rather than failing silently.
+document.querySelectorAll('.copy-btn').forEach((btn) => {
+  btn.addEventListener('click', async () => {
+    const code = btn.parentElement.querySelector('code');
+    if (!code) return;
+    const done = (msg) => {
+      btn.textContent = msg;
+      setTimeout(() => (btn.textContent = 'Copy'), 1500);
+    };
+    try {
+      await navigator.clipboard.writeText(code.textContent.trim());
+      done('Copied');
+    } catch {
+      done('Copy failed');
+    }
+  });
+});
