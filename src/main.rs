@@ -26,7 +26,6 @@ pub fn run() -> io::Result<()> {
     }
 
     let config = Config::load();
-    widgets::profile::set_image_path(config.ui.image_path.clone());
 
     enable_raw_mode()?;
     let mut stdout = io::stdout();

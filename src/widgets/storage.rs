@@ -13,39 +13,49 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
         return;
     }
 
-    let disks = sysinfo::Disks::new_with_refreshed_list();
-    let mut rows: Vec<(String, f64, u64, u64)> = Vec::new();
-    for d in disks.iter() {
-        let fs = d.file_system().to_str().unwrap_or("");
-        let name = d.name().to_str().unwrap_or("");
-        if fs.is_empty()
-            || name.contains("loop")
-            || name.contains("squashfs")
-            || name.contains("tmpfs")
-            || name.contains("overlay")
-        {
-            continue;
+    static DISK_CACHE: std::sync::LazyLock<std::sync::Mutex<(std::time::Instant, Vec<(String, f64, u64, u64)>)>> =
+        std::sync::LazyLock::new(|| std::sync::Mutex::new((std::time::Instant::now() - std::time::Duration::from_secs(60), Vec::new())));
+
+    let mut cache = DISK_CACHE.lock().unwrap();
+    if cache.0.elapsed() > std::time::Duration::from_secs(5) {
+        let disks = sysinfo::Disks::new_with_refreshed_list();
+        let mut rows: Vec<(String, f64, u64, u64)> = Vec::new();
+        for d in disks.iter() {
+            let fs = d.file_system().to_str().unwrap_or("");
+            let name = d.name().to_str().unwrap_or("");
+            if fs.is_empty()
+                || name.contains("loop")
+                || name.contains("squashfs")
+                || name.contains("tmpfs")
+                || name.contains("overlay")
+            {
+                continue;
+            }
+            let mount = d.mount_point().to_string_lossy().to_string();
+            // Skip nested bind/container mounts and transient helper mounts; they
+            // duplicate a real filesystem or are always ~100% by construction.
+            if mount.contains("/waydroid")
+                || mount.contains("/efivars")
+                || mount.starts_with("/tmp/.mount")
+                || mount.starts_with("/run")
+                || mount.starts_with("/var/lib/docker")
+                || mount.starts_with("/snap")
+            {
+                continue;
+            }
+            let total = d.total_space();
+            if total == 0 {
+                continue;
+            }
+            let used = total.saturating_sub(d.available_space());
+            let pct = used as f64 / total as f64 * 100.0;
+            rows.push((mount, pct, used, total));
         }
-        let mount = d.mount_point().to_string_lossy().to_string();
-        // Skip nested bind/container mounts and transient helper mounts; they
-        // duplicate a real filesystem or are always ~100% by construction.
-        if mount.contains("/waydroid")
-            || mount.contains("/efivars")
-            || mount.starts_with("/tmp/.mount")
-            || mount.starts_with("/run")
-            || mount.starts_with("/var/lib/docker")
-            || mount.starts_with("/snap")
-        {
-            continue;
-        }
-        let total = d.total_space();
-        if total == 0 {
-            continue;
-        }
-        let used = total.saturating_sub(d.available_space());
-        let pct = used as f64 / total as f64 * 100.0;
-        rows.push((mount, pct, used, total));
+        cache.0 = std::time::Instant::now();
+        cache.1 = rows;
     }
+    
+    let mut rows = cache.1.clone();
     rows.sort_by(|a, b| a.0.cmp(&b.0));
     rows.dedup_by(|a, b| a.0 == b.0);
     rows.truncate(area.height as usize);

@@ -8,7 +8,7 @@ use crate::app::{PanelStates, Theme};
 use crate::config::Config;
 use crate::mode::DashboardMode;
 use crate::monitors::{cpu, disk, gpu, memory, network, processes, system_info};
-use crate::widgets::{calendar, clock, cmatrix, media, music_viz, video};
+use crate::widgets::{calendar, clock, media, music_viz, video};
 
 /// A single dashboard widget that can render itself to a given area.
 ///
@@ -48,7 +48,6 @@ pub struct CalendarWidget;
 pub struct MediaWidget;
 pub struct MusicVizWidget;
 pub struct ProcessesWidget;
-pub struct CmatrixWidget;
 pub struct VideoWidget;
 
 // ── Trait implementations ──
@@ -346,30 +345,6 @@ impl DashboardWidget for ProcessesWidget {
     }
 }
 
-impl DashboardWidget for CmatrixWidget {
-    fn id(&self) -> &'static str {
-        "cmatrix"
-    }
-    fn label(&self) -> &'static str {
-        "Cmatrix"
-    }
-    fn icon(&self) -> &'static str {
-        "〰 "
-    }
-    fn render(
-        &self,
-        f: &mut Frame,
-        area: Rect,
-        _theme: &Theme,
-        _config: &Config,
-        _states: &PanelStates,
-        tick: u64,
-    ) {
-        let inner = draw_border(f, area, self.label(), _theme);
-        cmatrix::render(f, inner, tick, _theme);
-    }
-}
-
 impl DashboardWidget for VideoWidget {
     fn id(&self) -> &'static str {
         "video"
@@ -428,7 +403,6 @@ pub fn widgets_for_mode(mode: DashboardMode) -> Vec<Box<dyn DashboardWidget>> {
             Box::new(ClockWidget),
             Box::new(CalendarWidget),
             Box::new(MusicVizWidget),
-            Box::new(CmatrixWidget),
             Box::new(VideoWidget),
         ],
     }

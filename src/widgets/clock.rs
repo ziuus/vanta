@@ -1,8 +1,8 @@
 use std::fs;
 
 use chrono::Local;
-use ratatui::layout::Rect;
-use ratatui::style::Style;
+use ratatui::layout::{Alignment, Rect};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
@@ -29,105 +29,46 @@ fn format_uptime() -> String {
     }
 }
 
-/// Elegant thin-line clock font: much sharper and cleaner than heavy blocks,
-/// aligning perfectly with the btop aesthetic.
-fn big_glyph(c: char) -> [&'static str; 6] {
-    match c {
-        '0' => ["╭────╮", "│ ╭╮ │", "│ ││ │", "│ ││ │", "│ ╰╯ │", "╰────╯"],
-        '1' => ["  ╭──╮", "  ╰╮ │", "   │ │", "   │ │", " ╭─┴─╮", " ╰───╯"],
-        '2' => ["╭────╮", "╰──╮ │", "╭──╯ │", "│ ╭──╯", "│ ╰──╮", "╰────╯"],
-        '3' => ["╭────╮", "╰──╮ │", " ╭─╯ │", " ╰─╮ │", "╭──╯ │", "╰────╯"],
-        '4' => ["╭──╮ ╭", "│  │ │", "│  ╰─┤", "╰──╮ │", "   │ │", "   ╰─╯"],
-        '5' => ["╭────╮", "│ ╭──╯", "│ ╰──╮", "╰──╮ │", "╭──╯ │", "╰────╯"],
-        '6' => ["╭────╮", "│ ╭──╯", "│ ╰──╮", "│ ╭╮ │", "│ ╰╯ │", "╰────╯"],
-        '7' => ["╭────╮", "╰──╮ │", "   │ │", "   │ │", "   │ │", "   ╰─╯"],
-        '8' => ["╭────╮", "│ ╭╮ │", "│ ╰╯ │", "│ ╭╮ │", "│ ╰╯ │", "╰────╯"],
-        '9' => ["╭────╮", "│ ╭╮ │", "│ ╰╯ │", "╰──╮ │", "╭──╯ │", "╰────╯"],
-        ':' => ["      ", "  ╭╮  ", "  ╰╯  ", "  ╭╮  ", "  ╰╯  ", "      "],
-        _ => ["      ", "      ", "      ", "      ", "      ", "      "],
-    }
-}
-
-/// 3x5 block-digit font — the mid-size fallback for narrower panels.
-fn glyph(c: char) -> [&'static str; 5] {
-    match c {
-        '0' => ["███", "█ █", "█ █", "█ █", "███"],
-        '1' => ["  █", "  █", "  █", "  █", "  █"],
-        '2' => ["███", "  █", "███", "█  ", "███"],
-        '3' => ["███", "  █", "███", "  █", "███"],
-        '4' => ["█ █", "█ █", "███", "  █", "  █"],
-        '5' => ["███", "█  ", "███", "  █", "███"],
-        '6' => ["███", "█  ", "███", "█ █", "███"],
-        '7' => ["███", "  █", "  █", "  █", "  █"],
-        '8' => ["███", "█ █", "███", "█ █", "███"],
-        '9' => ["███", "█ █", "███", "  █", "███"],
-        ':' => [" ", "█", " ", "█", " "],
-        _ => ["   ", "   ", "   ", "   ", "   "],
-    }
-}
-
-/// Join per-glyph rows into full lines, one space between glyphs.
-fn compose<const N: usize>(s: &str, f: impl Fn(char) -> [&'static str; N]) -> Vec<String> {
-    let glyphs: Vec<[&'static str; N]> = s.chars().map(f).collect();
-    (0..N)
-        .map(|row| glyphs.iter().map(|g| g[row]).collect::<Vec<_>>().join(" "))
-        .collect()
-}
-
-fn styled(rows: Vec<String>, theme: &app::Theme) -> Vec<Line<'static>> {
-    rows.into_iter()
-        .map(|r| {
-            Line::from(Span::styled(
-                r,
-                Style::default()
-                    .fg(theme.accent)
-                    .add_modifier(ratatui::style::Modifier::BOLD),
-            ))
-        })
-        .collect()
-}
-
 pub fn render(f: &mut Frame, area: Rect, theme: &app::Theme) {
-    let now = Local::now();
-
-    let date_str = now.format("%a %b %d, %Y").to_string();
-    let dt = format!("{}  ·  Up {}", date_str, format_uptime());
-
-    if area.height < 2 {
+    if area.height < 1 {
         return;
     }
 
-    // Pick the heaviest font the panel can hold
+    let now = Local::now();
     let time_str = now.format("%H:%M:%S").to_string();
-    let mut lines: Vec<Line<'static>> = if area.width >= 48 && area.height >= 6 {
-        styled(compose(&time_str, big_glyph), theme)
-    } else if area.width >= 34 && area.height >= 5 {
-        styled(compose(&time_str, glyph), theme)
-    } else {
-        let short = if area.width >= 10 {
-            time_str
-        } else {
-            now.format("%H:%M").to_string()
-        };
-        vec![Line::from(Span::styled(
-            short,
-            Style::default()
-                .fg(theme.accent)
-                .add_modifier(ratatui::style::Modifier::BOLD),
-        ))]
-    };
+    let date_str = now.format("%A, %B %d").to_string();
+    let up_str = format!("up {}", format_uptime());
 
-    // Blank spacer then the date/uptime caption, when there's room.
-    if area.height as usize > lines.len() + 1 {
-        lines.push(Line::from(""));
-    }
-    if area.height as usize > lines.len() {
-        lines.push(Line::from(Span::styled(dt, Style::default().fg(theme.dim))));
+    // Two lines: time (big bold accent) + date · uptime (dim)
+    // Vertically center both within the available area
+    let content_h = 2u16;
+    let top = area.y + area.height.saturating_sub(content_h) / 2;
+
+    // Row 1 — time
+    if top < area.y + area.height {
+        f.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                time_str,
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            )))
+            .alignment(Alignment::Center),
+            Rect::new(area.x, top, area.width, 1),
+        );
     }
 
-    let top = (area.height.saturating_sub(lines.len() as u16)) / 2;
-    f.render_widget(
-        Paragraph::new(lines).alignment(ratatui::layout::Alignment::Center),
-        Rect::new(area.x, area.y + top, area.width, area.height - top),
-    );
+    // Row 2 — date · uptime
+    let row2 = top + 1;
+    if row2 < area.y + area.height {
+        let sub = format!("{} · {}", date_str, up_str);
+        f.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                sub,
+                Style::default().fg(theme.dim),
+            )))
+            .alignment(Alignment::Center),
+            Rect::new(area.x, row2, area.width, 1),
+        );
+    }
 }

@@ -65,10 +65,7 @@ pub fn render_overlay(f: &mut Frame, area: Rect, theme: &Theme, config: &Config)
             "Dashboard   monitoring overview + clock/calendar/media/viz",
         ),
         key("2", "Monitor     btop-style detail + full process table"),
-        key(
-            "3",
-            "Aesthetic   clock, calendar, visualizer, matrix, 3D demo",
-        ),
+        key("3", "Aesthetic   clock, calendar, visualizer, 3D demo"),
         Line::from(""),
         head("Global"),
         key("T", "cycle theme (saved to config)"),

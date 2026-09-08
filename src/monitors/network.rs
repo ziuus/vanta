@@ -67,6 +67,13 @@ fn read_net_rates() -> (f64, f64) {
         .prev_time
         .map(|t| t.elapsed().as_secs_f64())
         .unwrap_or(1.0);
+        
+    // Throttle updates to ~500ms so the graph represents 30 seconds (60 samples),
+    // instead of flying by at 120 FPS.
+    if elapsed < 0.5 {
+        let idx = (net.short_idx + SHORT_LEN - 1) % SHORT_LEN;
+        return (net.dl_short[idx], net.ul_short[idx]);
+    }
     let drx = total_rx.saturating_sub(net.prev_rx);
     let dtx = total_tx.saturating_sub(net.prev_tx);
 

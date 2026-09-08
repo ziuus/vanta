@@ -112,7 +112,7 @@ gravity = 30
             match stdout.read_exact(&mut buf) {
                 Ok(()) => {
                     let values: Vec<f32> = buf
-                        .chunks_exact(2)
+                        .as_chunks::<2>().0.iter()
                         .map(|c| {
                             let val = u16::from_le_bytes([c[0], c[1]]);
                             val as f32 / 65535.0

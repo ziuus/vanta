@@ -234,9 +234,6 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
         return;
     }
 
-    let top = (area.height.saturating_sub(lines.len() as u16)) / 2;
-    f.render_widget(
-        Paragraph::new(lines),
-        Rect::new(area.x, area.y + top, area.width, area.height - top),
-    );
+    // Top-align: no vertical centering — fills from the top of the box
+    f.render_widget(Paragraph::new(lines), area);
 }

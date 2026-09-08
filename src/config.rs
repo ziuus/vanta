@@ -34,7 +34,6 @@ pub struct WidgetConfig {
     pub music_viz: bool,
     pub processes: bool,
     pub media: bool,
-    pub cmatrix: bool,
     pub profile: bool,
     pub video: bool,
 }
@@ -52,7 +51,6 @@ impl Default for WidgetConfig {
             music_viz: false,
             processes: true,
             media: false,
-            cmatrix: false,
             profile: false,
             video: false,
         }

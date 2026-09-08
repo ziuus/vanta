@@ -186,23 +186,19 @@ fn overview_layout(area: Rect, config: &Config) -> Vec<WidgetPlacement> {
     placements
 }
 
-// ── Aesthetic: clock + calendar + visualizer + cmatrix ──
+// ── Aesthetic: clock + calendar + visualizer + video ──
 
 fn aesthetic_layout(area: Rect) -> Vec<WidgetPlacement> {
     let rows = Layout::vertical([
         Constraint::Length(10), // Clock + Calendar height
-        Constraint::Min(0),     // Visualizer + Cmatrix get the rest
+        Constraint::Min(0),     // Visualizer + Video get the rest
     ])
     .split(area);
 
     let top = Layout::horizontal([Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)]).split(rows[0]);
 
-    let bottom = Layout::horizontal([
-        Constraint::Ratio(1, 3),
-        Constraint::Ratio(1, 3),
-        Constraint::Ratio(1, 3),
-    ])
-    .split(rows[1]);
+    let bottom =
+        Layout::horizontal([Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)]).split(rows[1]);
 
     vec![
         WidgetPlacement {
@@ -218,12 +214,8 @@ fn aesthetic_layout(area: Rect) -> Vec<WidgetPlacement> {
             area: bottom[0],
         },
         WidgetPlacement {
-            id: "cmatrix",
-            area: bottom[1],
-        },
-        WidgetPlacement {
             id: "video",
-            area: bottom[2],
+            area: bottom[1],
         },
     ]
 }
