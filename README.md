@@ -60,6 +60,9 @@ npm install -g vanta-tui && vanta
 npx vanta-tui
 ```
 
+The npm install puts down two commands for the same binary — `vanta` and the
+shorter `vtui`. A `cargo install` gives you `vanta` only.
+
 ### Requirements
 
 Linux (vanta reads `/proc` and `/sys`). Building from source also needs `libdbus`:
