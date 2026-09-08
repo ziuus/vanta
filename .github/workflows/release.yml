@@ -36,10 +36,12 @@ jobs:
           node-version: 20
           registry-url: https://registry.npmjs.org
 
-      # The tag is the source of truth: install.js builds the release download
-      # URL from the package version, so the two must not drift.
+      # Cargo.toml is the single source of truth for the version; install.js
+      # builds the release download URL from it, so the two must not drift.
+      # Same script the manual `npm run release` path uses, and it fails the job
+      # if the tag disagrees with Cargo.toml.
       - name: sync version to tag
-        run: npm --prefix npm version --no-git-tag-version --allow-same-version "${GITHUB_REF_NAME#v}"
+        run: node npm/sync-version.js "${GITHUB_REF_NAME#v}"
 
       # npm always ships README/LICENSE; npm/package.json's prepack script
       # copies them in and rewrites the relative image paths so the screenshots
