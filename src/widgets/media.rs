@@ -28,7 +28,10 @@ pub enum Status {
 
 #[derive(Clone, Debug, Default)]
 pub struct Track {
+    /// Short name for display ("spotify").
     pub player: String,
+    /// Full well-known bus name, kept so controls need no lookup.
+    pub bus_name: String,
     pub status: Status,
     pub title: String,
     pub artist: String,
@@ -99,6 +102,7 @@ fn read_track(conn: &Connection, player: &str) -> Option<Track> {
         _ => return None,
     };
     let mut t = Track {
+        bus_name: player.to_string(),
         player: player
             .trim_start_matches("org.mpris.MediaPlayer2.")
             .split('.')
@@ -207,9 +211,7 @@ pub fn control(action: Action) {
     let (Some(conn), Some(track)) = (st.conn.as_ref(), st.track.as_ref()) else {
         return;
     };
-    let player = format!("org.mpris.MediaPlayer2.{}", track.player);
-    // The full bus name may carry an instance suffix; fall back to a scan.
-    let target = full_name(conn, &track.player).unwrap_or(player);
+    let target = track.bus_name.clone();
     match action {
         Action::PlayPause | Action::Next | Action::Previous => {
             let method = match action {
@@ -239,20 +241,6 @@ pub fn control(action: Action) {
             let _ = conn.send_with_reply_and_block(msg, TIMEOUT);
         }
     }
-}
-
-fn full_name(conn: &Connection, short: &str) -> Option<String> {
-    let names = Message::call_with_args(
-        "org.freedesktop.DBus",
-        "/",
-        "org.freedesktop.DBus",
-        "ListNames",
-        (),
-    );
-    let r = conn.send_with_reply_and_block(names, TIMEOUT).ok()?;
-    let (v,): (Vec<String>,) = r.read_all().ok()?;
-    let prefix = format!("org.mpris.MediaPlayer2.{}", short);
-    v.into_iter().find(|n| n.starts_with(&prefix))
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
