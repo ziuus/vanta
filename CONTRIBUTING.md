@@ -67,7 +67,7 @@ One-time setup: add an npm automation token as the `NPM_TOKEN` repository
 secret. Without it the release still publishes, and the npm job logs a warning
 and skips.
 
-The npm package is `vanta-tui` (`vanta` was taken); the binary it installs is
-still called `vanta`.
+The npm package is `vanta` and ships only a Node shim plus `install.js`; the
+native binary is downloaded from the release on `postinstall`.
 
 By contributing you agree your work is licensed under the MIT License.

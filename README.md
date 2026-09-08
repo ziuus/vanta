@@ -6,7 +6,7 @@
 
 A fast, aesthetic terminal system dashboard in Rust.
 
-[![npm](https://img.shields.io/npm/v/vanta-tui?style=for-the-badge&logo=npm&logoColor=white&color=CB3837)](https://www.npmjs.com/package/vanta-tui)
+[![npm](https://img.shields.io/npm/v/vanta?style=for-the-badge&logo=npm&logoColor=white&color=CB3837)](https://www.npmjs.com/package/vanta)
 [![CI](https://img.shields.io/github/actions/workflow/status/ziuus/vanta/ci.yml?style=for-the-badge&label=CI)](https://github.com/ziuus/vanta/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/ziuus/vanta?style=for-the-badge&color=4A9E8E)](https://github.com/ziuus/vanta/releases)
 [![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE)
@@ -25,7 +25,7 @@ network, GPU, processes, now-playing, a block-digit clock, a calendar, and an au
 visualizer. Keyboard only. **~3 MB binary, ~2–5% CPU** at the default 30 fps.
 
 ```bash
-npm install -g vanta-tui && vanta
+npm install -g vanta && vanta
 ```
 
 ## Install
@@ -34,7 +34,7 @@ npm install -g vanta-tui && vanta
 <tr><th align="left">Method</th><th align="left">Command</th><th align="left">Notes</th></tr>
 <tr>
   <td><strong>npm</strong></td>
-  <td><code>npm install -g vanta-tui</code></td>
+  <td><code>npm install -g vanta</code></td>
   <td>Fetches the prebuilt <code>linux-x64</code> binary. No Rust needed.</td>
 </tr>
 <tr>
@@ -57,7 +57,7 @@ npm install -g vanta-tui && vanta
 **One-liner, no install:**
 
 ```bash
-npx vanta-tui
+npx vanta
 ```
 
 ### Requirements
@@ -86,10 +86,10 @@ Optional tools that light up extra panels — vanta degrades quietly without the
 vanta --version                     # what am I running
 vanta --help                        # usage + keys
 
-npm update -g vanta-tui             # update  (npm)
+npm update -g vanta             # update  (npm)
 cargo install --git https://github.com/ziuus/vanta --force   # update  (cargo)
 
-npm uninstall -g vanta-tui          # remove  (npm)
+npm uninstall -g vanta          # remove  (npm)
 cargo uninstall vanta               # remove  (cargo)
 
 rm -rf ~/.config/vanta              # drop config + persisted theme/page
@@ -100,7 +100,7 @@ Where things live:
 | Path | What |
 |------|------|
 | `~/.config/vanta/config.toml` | Config, plus the theme / page / visualizer vanta persists for you |
-| `$(npm root -g)/vanta-tui/bin/` | The npm-installed binary |
+| `$(npm root -g)/vanta/bin/` | The npm-installed binary |
 | `~/.cargo/bin/vanta` | The cargo-installed binary |
 
 Vanta respects `XDG_CONFIG_HOME` if you set it.

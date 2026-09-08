@@ -1,5 +1,5 @@
 {
-  "name": "vanta-tui",
+  "name": "vanta",
   "version": "0.2.0",
   "description": "Aesthetic Rust TUI system dashboard — CPU, memory, disk, network, GPU, processes, now-playing, clock and visualizer in one terminal pane",
   "bin": {
