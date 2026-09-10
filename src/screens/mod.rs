@@ -119,5 +119,10 @@ pub fn render_panel(f: &mut Frame, area: Rect, app: &crate::app::App, id: crate:
                 ps.process_compact_cmd,
             )
         }
+        P::Custom(idx) => {
+            // The border with the zoom title is already drawn above (inner is
+            // the area inside it).  Delegate pure content rendering.
+            app.custom_widgets.render_widget_inner(f, inner, idx, theme);
+        }
     }
 }

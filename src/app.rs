@@ -9,6 +9,7 @@ use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
 use crate::config::Config;
+use crate::custom::CustomWidgetManager;
 use crate::mode::DashboardMode;
 use crate::monitors::{self, processes, Summary};
 use crate::screens;
@@ -63,13 +64,15 @@ pub enum PanelId {
     Calendar,
     Matrix,
     Video,
+    /// A user-defined custom widget at the given index in `CustomWidgetManager`.
+    Custom(usize),
 }
 
 impl PanelId {
     /// Tab order for a page, honouring widget toggles.
     pub fn for_mode(mode: DashboardMode, cfg: &Config) -> Vec<PanelId> {
         let w = &cfg.widgets;
-        let list: Vec<(PanelId, bool)> = match mode {
+        let mut list: Vec<(PanelId, bool)> = match mode {
             DashboardMode::Dashboard => vec![
                 (PanelId::System, true),
                 (PanelId::Gauges, true),
@@ -101,6 +104,14 @@ impl PanelId {
                 (PanelId::Visualizer, w.music_viz),
             ],
         };
+        // Append enabled custom widgets (they only appear on the Dashboard page).
+        if mode == DashboardMode::Dashboard {
+            for (i, cw) in cfg.custom_widgets.iter().enumerate() {
+                if cw.enabled {
+                    list.push((PanelId::Custom(i), true));
+                }
+            }
+        }
         list.into_iter()
             .filter(|(_, on)| *on)
             .map(|(p, _)| p)
@@ -125,6 +136,7 @@ impl PanelId {
             PanelId::Calendar => "calendar",
             PanelId::Matrix => "matrix",
             PanelId::Video => "donut",
+            PanelId::Custom(_) => "custom",
         }
     }
 }
@@ -178,6 +190,8 @@ pub struct App {
     /// First press of k/K arms this; the second press within the window fires.
     pending_signal: Option<(u32, &'static str, Instant)>,
     sampler_interval: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    /// Manager for all user-defined custom widgets.
+    pub custom_widgets: CustomWidgetManager,
 }
 
 impl App {
@@ -186,6 +200,7 @@ impl App {
         let mode = DashboardMode::from_str(&config.ui.startup_mode);
         let sampler_interval = monitors::start(Duration::from_secs_f64(config.ui.refresh_rate));
         music_viz::set_style(&config.ui.visualizer);
+        let custom_widgets = CustomWidgetManager::start_all(&config.custom_widgets);
         let mut app = Self {
             running: true,
             theme,
@@ -200,6 +215,7 @@ impl App {
             toast: None,
             pending_signal: None,
             sampler_interval,
+            custom_widgets,
         };
         if mode == DashboardMode::Monitor {
             app.focused_panel = Some(PanelId::Processes);
@@ -543,6 +559,9 @@ impl App {
         {
             self.toast = None;
         }
+
+        // Advance custom widget history buffers before any rendering.
+        self.custom_widgets.tick();
 
         let area = f.area();
         f.render_widget(

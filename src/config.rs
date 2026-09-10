@@ -1,10 +1,16 @@
 use serde::{Deserialize, Serialize};
 
+use crate::custom::config::CustomWidgetConfig;
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
     pub ui: UiConfig,
     pub widgets: WidgetConfig,
+    /// User-defined custom widgets declared via `[[custom_widgets]]` entries.
+    /// Existing configs that omit this field load fine — serde defaults to an
+    /// empty `Vec`.
+    pub custom_widgets: Vec<CustomWidgetConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,13 +86,43 @@ impl Config {
         cfg
     }
 
+    /// Persist only the runtime-mutable fields (`[ui]` and `[widgets]`).
+    ///
+    /// The `[[custom_widgets]]` array is entirely user-authored. Rewriting the
+    /// whole file with `toml::to_string(self)` would serialise it as a flat
+    /// inline array and destroy the user's hand-written table entries on every
+    /// theme change or page switch. Instead we:
+    ///   1. Parse the existing file into a `toml::Value` document tree.
+    ///   2. Overwrite only the `[ui]` and `[widgets]` tables in that tree.
+    ///   3. Write the mutated tree back — `[[custom_widgets]]` and any comments
+    ///      survive untouched.
     pub fn save(&self) {
         let path = config_path();
         if let Some(parent) = std::path::Path::new(&path).parent() {
             let _ = std::fs::create_dir_all(parent);
         }
-        if let Ok(toml_str) = toml::to_string(self) {
-            let _ = std::fs::write(&path, toml_str);
+
+        // Serialise only the two mutable sections.
+        let Ok(ui_val) = toml::Value::try_from(&self.ui) else {
+            return;
+        };
+        let Ok(widgets_val) = toml::Value::try_from(&self.widgets) else {
+            return;
+        };
+
+        // Load the existing document so we can do a surgical update.
+        let existing = std::fs::read_to_string(&path).unwrap_or_default();
+        let mut doc: toml::Value =
+            toml::from_str(&existing).unwrap_or(toml::Value::Table(toml::map::Map::new()));
+
+        if let toml::Value::Table(ref mut map) = doc {
+            map.insert("ui".to_string(), ui_val);
+            map.insert("widgets".to_string(), widgets_val);
+            // Deliberately do NOT touch "custom_widgets".
+        }
+
+        if let Ok(out) = toml::to_string(&doc) {
+            let _ = std::fs::write(&path, out);
         }
     }
 }

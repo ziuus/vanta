@@ -1,5 +1,6 @@
 mod app;
 mod config;
+mod custom;
 mod mode;
 mod monitors;
 mod screens;

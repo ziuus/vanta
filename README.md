@@ -4,7 +4,7 @@
 
 **Your machine, one pane.**
 
-A fast, aesthetic terminal system dashboard in Rust.
+A fast, aesthetic terminal system dashboard in Rust. The most complete keyboard-driven terminal dashboard — one pane, six modes, zero mouse.
 
 [![npm](https://img.shields.io/npm/v/@ziuus/vanta?style=for-the-badge&logo=npm&logoColor=white&color=CB3837)](https://www.npmjs.com/package/@ziuus/vanta)
 [![CI](https://img.shields.io/github/actions/workflow/status/ziuus/vanta/ci.yml?style=for-the-badge&label=CI)](https://github.com/ziuus/vanta/actions/workflows/ci.yml)
@@ -184,6 +184,112 @@ media = true
 matrix = true
 video = true
 ```
+
+## Custom Widgets
+
+Add your own data panels to the Dashboard without recompiling Vanta.  
+Each `[[custom_widgets]]` entry in `config.toml` runs a command or reads a file in the background and displays the result.
+
+### Quick examples
+
+**Raspberry Pi voltage:**
+
+```toml
+[[custom_widgets]]
+id = "pi_voltage"
+title = "Pi Battery"
+source = "command"
+command = "vcgencmd measure_volts"
+renderer = "value"
+refresh = 2.0
+```
+
+**Raspberry Pi CPU temperature (millidegrees → degrees with min/max):**
+
+```toml
+[[custom_widgets]]
+id = "pi_temp"
+title = "CPU Temp"
+source = "command"
+command = "cat /sys/class/thermal/thermal_zone0/temp"
+renderer = "gauge"
+refresh = 2.0
+min = 0
+max = 100000
+unit = "m°C"
+```
+
+**Linux battery percentage (gauge renderer):**
+
+```toml
+[[custom_widgets]]
+id = "battery"
+title = "Battery"
+source = "file"
+path = "/sys/class/power_supply/BAT0/capacity"
+renderer = "gauge"
+refresh = 1.0
+min = 0
+max = 100
+```
+
+**Any shell command as plain text:**
+
+```toml
+[[custom_widgets]]
+id = "uptime_cmd"
+title = "Uptime"
+source = "command"
+command = "uptime -p"
+renderer = "text"
+refresh = 10.0
+```
+
+**Docker running containers:**
+
+```toml
+[[custom_widgets]]
+id = "docker_count"
+title = "Containers"
+source = "command"
+command = "docker ps -q"
+renderer = "text"
+refresh = 5.0
+```
+
+### All options
+
+| Key | Required | Default | Description |
+|-----|----------|---------|-------------|
+| `id` | ✓ | — | Unique identifier (used for focus/zoom). |
+| `title` | ✓ | — | Panel title shown in the border. |
+| `source` | — | `command` | `command` or `file`. |
+| `command` | when `source = "command"` | — | Command to run (supports quoted args; no shell). |
+| `path` | when `source = "file"` | — | File to read (e.g. `/sys/class/…`). |
+| `renderer` | — | `value` | `value` · `text` · `gauge` · `bar` · `graph`. |
+| `refresh` | — | `5.0` | Seconds between fetches (0.1 – 3600). |
+| `unit` | — | none | Unit suffix appended to `value` displays (e.g. `"V"`). |
+| `min` | — | `0` | Range minimum for `gauge` and `bar`. |
+| `max` | — | `100` | Range maximum for `gauge` and `bar`. |
+| `enabled` | — | `true` | Set `false` to hide without removing the entry. |
+
+### Renderers
+
+| Name | Shows |
+|------|-------|
+| `value` | Single value, centred and bold. Appends `unit` if set. |
+| `text` | Raw text output, word-wrapped. |
+| `gauge` | Horizontal bar `████░░ 82%` normalised to `min`/`max`. |
+| `bar` | Horizontal bar without percentage label. |
+| `graph` | Scrolling history graph using Vanta's block-character primitives. |
+
+### How it works
+
+- Each widget runs on its own background thread at its own `refresh` interval. The render loop (30 fps) only reads a cached result — it never blocks on I/O.
+- Commands are executed directly (no `sh -c`). Arguments with spaces can be quoted: `command = 'grep -r "error" /var/log'`.
+- Commands that hang are killed after 10 seconds. Crashed commands, missing files, and parse errors are shown as status messages (`Command failed`, `Unavailable`, `Invalid value`, `Timeout`, `Loading…`) — they never crash Vanta.
+- Custom widgets appear as a horizontal row at the bottom of the Dashboard page. They participate in normal Tab focus and Enter zoom like any built-in panel.
+- Set `VANTA_DEBUG=1` before running Vanta to see per-widget error messages on stderr.
 
 ## Architecture
 

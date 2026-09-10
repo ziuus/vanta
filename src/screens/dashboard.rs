@@ -24,12 +24,30 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
     let focus = |p: PanelId| app.focused_panel == Some(p);
     let term = (f.area().width, f.area().height);
 
+    // Determine whether we need a custom-widgets row at the bottom.
+    // Only allocate space when there's enough room to show both the main
+    // dashboard and the custom row legibly. 37 rows = 30 main + 7 custom.
+    let n_custom = app
+        .config
+        .custom_widgets
+        .iter()
+        .filter(|c| c.enabled)
+        .count();
+    let custom_row_h: u16 = if n_custom > 0 && area.height >= 37 {
+        7
+    } else {
+        0
+    };
+
+    let [main_area, custom_area] =
+        Layout::vertical([Constraint::Min(0), Constraint::Length(custom_row_h)]).areas(area);
+
     let cols = Layout::horizontal([
         Constraint::Ratio(1, 3),
         Constraint::Ratio(1, 3),
         Constraint::Ratio(1, 3),
     ])
-    .split(area);
+    .split(main_area);
 
     // ── LEFT: hardware ─────────────────────────────────────────
     {
@@ -137,7 +155,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
 
     // ── RIGHT: environment ─────────────────────────────────────
     {
-        let mem_h = if cfg.memory && area.height >= 42 {
+        let mem_h = if cfg.memory && main_area.height >= 42 {
             7
         } else {
             0
@@ -170,6 +188,42 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
             let inner = panel(f, rows[3], "calendar", theme, focus(PanelId::Calendar));
             calendar::render(f, inner, theme, app.panel_states.calendar_month_offset);
         }
+    }
+
+    // ── BOTTOM: custom widgets ─────────────────────────────────
+    if n_custom > 0 && custom_area.height > 0 {
+        render_custom_row(f, custom_area, app, n_custom);
+    }
+}
+
+/// Lay out all enabled custom widgets in a single horizontal row.
+/// Each widget gets an equal share of the width; they're always at least
+/// `MIN_W` columns wide — if there isn't room we render as many as fit.
+fn render_custom_row(f: &mut Frame, area: Rect, app: &App, n_custom: usize) {
+    const MIN_W: u16 = 20;
+    let max_fit = ((area.width / MIN_W) as usize).max(1);
+    let n = n_custom.min(max_fit);
+    if n == 0 {
+        return;
+    }
+
+    // Equal-width columns.
+    let constraints: Vec<Constraint> = (0..n).map(|_| Constraint::Ratio(1, n as u32)).collect();
+    let cols = Layout::horizontal(constraints).split(area);
+
+    // Iterate over enabled widgets (same order as in for_mode()).
+    let mut slot = 0usize;
+    for (cfg_idx, cfg) in app.config.custom_widgets.iter().enumerate() {
+        if !cfg.enabled {
+            continue;
+        }
+        if slot >= n {
+            break;
+        }
+        let focused = app.focused_panel == Some(PanelId::Custom(cfg_idx));
+        app.custom_widgets
+            .render_widget(f, cols[slot], cfg_idx, focused, &app.theme);
+        slot += 1;
     }
 }
 
