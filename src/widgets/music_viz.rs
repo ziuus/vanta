@@ -243,7 +243,9 @@ fn read_cava_bars() -> Vec<f32> {
     CAVA_BARS.lock().unwrap_or_else(|e| e.into_inner()).clone()
 }
 
-// ── Smooth resample: preserves peak shapes better than linear ──
+// ── Spatial resample: max-fold preserves peak shapes when a narrow panel has
+// fewer columns than cava has bars. cava's bars are already neighbour-smoothed
+// (monstercat), so the fold stays visually continuous. ──
 fn resample_max(src: &[f32], dst_len: usize) -> Vec<f32> {
     if src.is_empty() || dst_len == 0 {
         return vec![0.0f32; dst_len];
@@ -261,6 +263,35 @@ fn resample_max(src: &[f32], dst_len: usize) -> Vec<f32> {
             src[start..end].iter().copied().fold(0.0f32, f32::max)
         })
         .collect()
+}
+
+/// Per-column smoothed heights, eased toward the latest frame every render.
+static SMOOTHED: Mutex<Vec<f32>> = Mutex::new(Vec::new());
+
+/// One easing step over a column state, in place. Rise fast, fall slow.
+fn ease_step(state: &mut [f32], target: &[f32]) {
+    for (cur, &t) in state.iter_mut().zip(target) {
+        let alpha = if t > *cur { 0.5 } else { 0.15 };
+        *cur += (t - *cur) * alpha;
+    }
+}
+
+/// Ease each column toward its target: rise fast, fall slow. cava eases every
+/// bar at its own 120fps; vanta only samples it at ~30fps, so without this the
+/// bars snap between frames. The asymmetry is the classic cava "liquid" drip —
+/// a spike jumps up, then drains.
+///
+/// ponytail: alphas are tuned for the ~30fps render loop; if the frame rate
+/// becomes configurable, scale them by dt.
+fn smooth_temporal(target: &[f32]) -> Vec<f32> {
+    let mut s = SMOOTHED.lock().unwrap_or_else(|e| e.into_inner());
+    if s.len() != target.len() {
+        // First frame or a resize — snap, don't ease from stale state.
+        *s = target.to_vec();
+        return s.clone();
+    }
+    ease_step(&mut s, target);
+    s.clone()
 }
 
 // ── Narrow bar rendering ──
@@ -312,11 +343,14 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, _tick: u64) {
 
     // When silent, synthesize a gentle "breathing" wave so the widget stays
     // alive-looking instead of showing dead/blank bars.
-    let heights: Vec<f32> = if is_silent {
+    let target: Vec<f32> = if is_silent {
         idle_wave(term_cols, _tick)
     } else {
         resample_max(&raw, term_cols)
     };
+    // Ease toward the target so bars flow between frames instead of snapping.
+    // Applied across the silent boundary too, so fading in/out glides.
+    let heights = smooth_temporal(&target);
 
     // ── Decaying peak (normalization) ──
     let norm_peak = if is_silent {
@@ -542,4 +576,35 @@ fn draw_peaks(
         lines.push(Line::from(spans));
     }
     lines
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The liquid feel is the rise/fall asymmetry: a jump reaches its target
+    /// far quicker than it drains away.
+    #[test]
+    fn ease_rises_faster_than_it_falls() {
+        // Same magnitude of change, opposite direction.
+        let mut up = [0.0f32];
+        ease_step(&mut up, &[1.0]);
+
+        let mut down = [1.0f32];
+        ease_step(&mut down, &[0.0]);
+
+        let rose = up[0]; // distance moved up from 0
+        let fell = 1.0 - down[0]; // distance moved down from 1
+        assert!(rose > fell, "attack {rose} should exceed release {fell}");
+    }
+
+    /// Easing must converge, not overshoot or oscillate.
+    #[test]
+    fn ease_converges_to_target() {
+        let mut s = [0.0f32];
+        for _ in 0..200 {
+            ease_step(&mut s, &[0.7]);
+        }
+        assert!((s[0] - 0.7).abs() < 1e-3, "settled at {}", s[0]);
+    }
 }
