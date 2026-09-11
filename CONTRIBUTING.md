@@ -35,6 +35,13 @@ cargo test
   `Summary` (assigned last) never lands. That shipped once as `cpu 0%` in the
   title bar; `monitors::facts_thread` is the pattern.
 - `src/widgets/` — pure drawing helpers (clock glyphs, gauges, graphs, meters).
+- `src/custom/` — user-defined widgets from `[[custom_widgets]]` in the config.
+  Each enabled widget gets its own `DataWorker` thread (`source.rs`) that polls a
+  command or file and writes a `FetchResult` the renderer only reads — never the
+  sampler thread, so a user's slow command can't stall telemetry. Commands run
+  through `Command::new` with an argv split, **never** `sh -c`: a config file is
+  not a trust boundary you can hand a shell. Timeouts must `wait()` after
+  `kill()` or the child is left a zombie.
 - `src/screens/` — one file per page; `screens::panel()` is the shared chrome.
 - `src/app.rs` — state, key handling, title/status bars.
 - `src/theme.rs` — palettes. Add a theme by adding a constructor and its name

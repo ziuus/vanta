@@ -152,6 +152,10 @@ fn split_command(cmd: &str) -> Option<Vec<String>> {
 }
 
 fn fetch_command(cmd: &str) -> FetchResult {
+    fetch_command_with_timeout(cmd, CMD_TIMEOUT)
+}
+
+fn fetch_command_with_timeout(cmd: &str, timeout: Duration) -> FetchResult {
     let Some(parts) = split_command(cmd) else {
         return FetchResult::CommandFailed("empty command".into());
     };
@@ -173,7 +177,7 @@ fn fetch_command(cmd: &str) -> FetchResult {
     };
 
     // Poll until the child finishes or we hit the timeout.
-    let deadline = Instant::now() + CMD_TIMEOUT;
+    let deadline = Instant::now() + timeout;
     loop {
         match child.try_wait() {
             Ok(Some(status)) => {
@@ -203,6 +207,11 @@ fn fetch_command(cmd: &str) -> FetchResult {
             Ok(None) => {
                 if Instant::now() >= deadline {
                     let _ = child.kill();
+                    // kill() only sends the signal. Without a wait() the child
+                    // stays a zombie for the life of the process — Rust's
+                    // Child::drop does not reap. vanta runs all day, so a
+                    // widget whose command hangs would leak one PID per poll.
+                    let _ = child.wait();
                     log_debug(&format!("custom widget: {:?} timed out", exe));
                     return FetchResult::Timeout;
                 }
@@ -306,6 +315,54 @@ mod tests {
     fn empty_command_string_fails() {
         let result = fetch_command("");
         assert!(matches!(result, FetchResult::CommandFailed(_)));
+    }
+
+    /// Child processes of this process that have exited but not been reaped.
+    fn zombie_children() -> usize {
+        let me = std::process::id().to_string();
+        let Ok(entries) = std::fs::read_dir("/proc") else {
+            return 0;
+        };
+        entries
+            .flatten()
+            .filter(|e| {
+                let Ok(pid) = e.file_name().to_string_lossy().parse::<u32>() else {
+                    return false;
+                };
+                let Ok(status) = std::fs::read_to_string(format!("/proc/{}/status", pid)) else {
+                    return false;
+                };
+                let zombie = status
+                    .lines()
+                    .any(|l| l.starts_with("State:") && l.contains('Z'));
+                let ours = status
+                    .lines()
+                    .any(|l| l.strip_prefix("PPid:").is_some_and(|v| v.trim() == me));
+                zombie && ours
+            })
+            .count()
+    }
+
+    /// Regression: the timeout path must reap, not just signal. `kill()` alone
+    /// left a zombie per timed-out poll, which on a day-long session is a slow
+    /// PID leak.
+    #[test]
+    fn timed_out_command_is_reaped() {
+        let result = fetch_command_with_timeout("sleep 30", Duration::from_millis(200));
+        assert!(matches!(result, FetchResult::Timeout));
+
+        // Every other path reaps via try_wait(), so the steady state is zero —
+        // but sibling tests run in parallel and their children can be mid-reap,
+        // so poll instead of sampling once. An unreaped child never clears.
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while zombie_children() > 0 && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        assert_eq!(
+            zombie_children(),
+            0,
+            "timed-out child was killed but never reaped"
+        );
     }
 
     // ---- file source -----------------------------------------------------------
