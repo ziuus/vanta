@@ -1,12 +1,24 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use ratatui::layout::{Alignment, Rect};
-use ratatui::style::Style;
+use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
 use crate::theme::Theme;
+
+/// Shade a facet by luminance `t` (0..1): dark faces sit near `dim`, the
+/// midrange is the accent, and the brightest specular highlights push to
+/// `text`. A flat single colour is what made the torus read as a dead
+/// silhouette rather than a lit surface.
+fn shade(theme: &Theme, t: f32) -> Color {
+    if t < 0.5 {
+        crate::theme::blend(theme.dim, theme.accent, t * 2.0)
+    } else {
+        crate::theme::blend(theme.accent, theme.text, (t - 0.5) * 2.0)
+    }
+}
 
 /// Render a rotating 3D torus (donut) as an ASCII "video" demo.
 #[allow(non_snake_case)]
@@ -20,6 +32,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, _tick: u64) {
 
     let mut z_buffer = vec![0.0f32; width * height];
     let mut b_buffer = vec![' '; width * height];
+    let mut c_buffer = vec![theme.accent; width * height];
 
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -65,10 +78,9 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, _tick: u64) {
                 if ooz > z_buffer[idx] {
                     z_buffer[idx] = ooz;
                     let lum_idx = (L * 8.0) as usize;
-                    b_buffer[idx] = ".,-~:;=!*#$@"
-                        .chars()
-                        .nth(lum_idx.clamp(0, 11))
-                        .unwrap_or('@');
+                    let li = lum_idx.clamp(0, 11);
+                    b_buffer[idx] = ".,-~:;=!*#$@".chars().nth(li).unwrap_or('@');
+                    c_buffer[idx] = shade(theme, li as f32 / 11.0);
                 }
             }
         }
@@ -76,13 +88,39 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, _tick: u64) {
 
     let mut lines = Vec::with_capacity(height);
     for y in 0..height {
-        let row: String = b_buffer[y * width..(y + 1) * width].iter().collect();
-        lines.push(Line::from(Span::styled(
-            row,
-            Style::default().fg(theme.accent),
-        )));
+        let mut spans: Vec<Span> = Vec::with_capacity(width);
+        for x in 0..width {
+            let idx = y * width + x;
+            let ch = b_buffer[idx];
+            if ch == ' ' {
+                spans.push(Span::raw(" "));
+            } else {
+                spans.push(Span::styled(
+                    ch.to_string(),
+                    Style::default().fg(c_buffer[idx]),
+                ));
+            }
+        }
+        lines.push(Line::from(spans));
     }
 
     let p = Paragraph::new(lines).alignment(Alignment::Center);
     f.render_widget(p, area);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The whole point of the change: facets are shaded, not one flat colour.
+    /// Dark faces sit at `dim`, midtones at `accent`, highlights at `text`,
+    /// and the three must actually differ.
+    #[test]
+    fn shade_spans_dim_to_text() {
+        let t = Theme::dark();
+        assert_eq!(shade(&t, 0.0), t.dim);
+        assert_eq!(shade(&t, 0.5), t.accent);
+        assert_eq!(shade(&t, 1.0), t.text);
+        assert_ne!(shade(&t, 0.0), shade(&t, 1.0));
+    }
 }
