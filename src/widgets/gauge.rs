@@ -17,12 +17,16 @@ const INNER: f64 = 0.58;
 #[derive(Clone, Copy, PartialEq)]
 enum Px {
     Empty,
-    Fill,
+    /// A lit segment of the arc, carrying its own colour so the dial can shade
+    /// along the sweep instead of being one flat block.
+    Fill(Color),
     Track,
 }
 
 /// A 180° arc, centre at the bottom-middle, drawn with half-block pixels so
-/// the ring is solid. Label and value sit in the hollow under the arch.
+/// the ring is solid. The fill shades accent→yellow→red along the sweep, so
+/// the dial visibly heats up as it fills — the tip sits at the value's own
+/// colour. Label and value sit in the hollow under the arch.
 fn ring(pct: f64, label: &str, value: &str, col: Color, theme: &Theme) -> Vec<Line<'static>> {
     let sweep = pct.clamp(0.0, 100.0) / 100.0 * 180.0;
     let h_px = H * 2;
@@ -40,25 +44,33 @@ fn ring(pct: f64, label: &str, value: &str, col: Color, theme: &Theme) -> Vec<Li
             // 0° at the left (9 o'clock) sweeping clockwise over the top to 180°.
             let ang = (-dy).atan2(dx).to_degrees(); // -180..0 on the top half
             let ang = ang + 180.0; // 0 (left) .. 180 (right)
-            *cell = if ang <= sweep { Px::Fill } else { Px::Track };
+            *cell = if ang <= sweep {
+                // Colour by absolute dial position, so heat means the same
+                // thing here as in usage() — 0° green, 180° red.
+                Px::Fill(theme.usage_ramp(ang / 180.0))
+            } else {
+                Px::Track
+            };
         }
     }
 
-    let fill = Style::default().fg(col);
     let track = Style::default().fg(theme.surface);
+    let fg = |c: Color| Style::default().fg(c);
     let mut rows: Vec<Line<'static>> = (0..H)
         .map(|y| {
             let spans = (0..W)
                 .map(|x| match (px[y * 2][x], px[y * 2 + 1][x]) {
                     (Px::Empty, Px::Empty) => Span::raw(" "),
-                    (Px::Fill, Px::Fill) => Span::styled("█", fill),
+                    // Adjacent sub-rows sit at near-identical angles, so the top
+                    // pixel's colour stands in for a full block.
+                    (Px::Fill(c), Px::Fill(_)) => Span::styled("█", fg(c)),
                     (Px::Track, Px::Track) => Span::styled("█", track),
-                    (Px::Fill, Px::Empty) => Span::styled("▀", fill),
-                    (Px::Empty, Px::Fill) => Span::styled("▄", fill),
+                    (Px::Fill(c), Px::Empty) => Span::styled("▀", fg(c)),
+                    (Px::Empty, Px::Fill(c)) => Span::styled("▄", fg(c)),
                     (Px::Track, Px::Empty) => Span::styled("▀", track),
                     (Px::Empty, Px::Track) => Span::styled("▄", track),
-                    (Px::Fill, Px::Track) => Span::styled("▀", fill.bg(theme.surface)),
-                    (Px::Track, Px::Fill) => Span::styled("▄", fill.bg(theme.surface)),
+                    (Px::Fill(c), Px::Track) => Span::styled("▀", fg(c).bg(theme.surface)),
+                    (Px::Track, Px::Fill(c)) => Span::styled("▄", fg(c).bg(theme.surface)),
                 })
                 .collect::<Vec<_>>();
             Line::from(spans)

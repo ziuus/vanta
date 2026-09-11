@@ -179,6 +179,18 @@ impl Theme {
         }
     }
 
+    /// Continuous accent → yellow → red ramp, `t` in 0..1. The gradient
+    /// counterpart to `usage()`: a number badge wants three unambiguous states,
+    /// a swept dial or bar wants no visible seam between them.
+    pub fn usage_ramp(&self, t: f64) -> Color {
+        let t = t.clamp(0.0, 1.0) as f32;
+        if t < 0.5 {
+            blend(self.accent, self.yellow, t * 2.0)
+        } else {
+            blend(self.yellow, self.red, (t - 0.5) * 2.0)
+        }
+    }
+
     /// Green → yellow → red by threshold. Shared by every "usage %" readout so
     /// colours mean the same thing everywhere.
     pub fn usage(&self, pct: f64) -> Color {
@@ -229,5 +241,15 @@ mod tests {
         // invent one.
         assert_eq!(blend(Color::Red, Color::Blue, 0.2), Color::Red);
         assert_eq!(blend(Color::Red, Color::Blue, 0.8), Color::Blue);
+    }
+
+    #[test]
+    fn usage_ramp_is_continuous_across_the_midpoint() {
+        let t = Theme::dark();
+        // The seam between the two halves is where a naive two-segment ramp
+        // jumps; both sides must land on yellow.
+        assert_eq!(t.usage_ramp(0.5), t.yellow);
+        assert_eq!(t.usage_ramp(0.0), t.accent);
+        assert_eq!(t.usage_ramp(1.0), t.red);
     }
 }
