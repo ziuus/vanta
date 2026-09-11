@@ -45,15 +45,24 @@ impl<'a> BlockGraph<'a> {
         self
     }
 
-    /// Colour by magnitude, so a spike is visible even in a one-row graph.
-    fn color_for(&self, t: f64) -> Color {
-        if t >= 0.85 {
-            self.color_crit
-        } else if t >= 0.6 {
-            self.color_warn
+    /// Continuous safe→warn→crit ramp for a magnitude `t`, so the tip of a bar
+    /// takes its true heat instead of snapping between three buckets.
+    fn ramp(&self, t: f64) -> Color {
+        let t = t.clamp(0.0, 1.0) as f32;
+        if t < 0.5 {
+            crate::theme::blend(self.color_safe, self.color_warn, t * 2.0)
         } else {
-            self.color_safe
+            crate::theme::blend(self.color_warn, self.color_crit, (t - 0.5) * 2.0)
         }
+    }
+
+    /// Colour for one filled cell: the base of a bar stays the safe colour and
+    /// fades up to `ramp(t)` at its tip. `cf` is the cell's fraction of the
+    /// bar's own filled height (0 at the base, 1 at the tip) — so a one-row bar
+    /// is all tip and still shows a spike's heat, while a tall bar reads as a
+    /// gradient with depth.
+    fn cell_color(&self, t: f64, cf: f64) -> Color {
+        crate::theme::blend(self.color_safe, self.ramp(t), cf.clamp(0.0, 1.0) as f32)
     }
 }
 
@@ -84,7 +93,8 @@ impl Widget for BlockGraph<'_> {
             let Some(v) = filled else { continue };
             let t = ((v - self.min) / span).clamp(0.0, 1.0);
             let lit = (t * steps as f64).round() as usize;
-            let color = self.color_for(t);
+            // Filled height of this bar, in fractional cells, for the gradient.
+            let filled_cells = (lit as f64 / 8.0).max(f64::EPSILON);
 
             for row in 0..area.height as usize {
                 // Row 0 is the top; fill grows from the bottom up.
@@ -93,6 +103,9 @@ impl Widget for BlockGraph<'_> {
                 if level == 0 {
                     continue;
                 }
+                // This cell's height up the bar, 0 at the base and 1 at the tip.
+                let cf = (from_bottom as f64 + 0.5) / filled_cells;
+                let color = self.cell_color(t, cf);
                 let (px, py) = (area.left() + x as u16, area.top() + row as u16);
                 if let Some(cell) = buf.cell_mut((px, py)) {
                     cell.set_char(BLOCKS[level]);
@@ -100,5 +113,38 @@ impl Widget for BlockGraph<'_> {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::style::Color;
+
+    fn g() -> BlockGraph<'static> {
+        BlockGraph::new(&[]).colors(
+            Color::Rgb(0, 255, 0),
+            Color::Rgb(255, 255, 0),
+            Color::Rgb(255, 0, 0),
+        )
+    }
+
+    #[test]
+    fn ramp_hits_the_three_stops() {
+        let g = g();
+        assert_eq!(g.ramp(0.0), Color::Rgb(0, 255, 0));
+        assert_eq!(g.ramp(0.5), Color::Rgb(255, 255, 0));
+        assert_eq!(g.ramp(1.0), Color::Rgb(255, 0, 0));
+    }
+
+    /// The one-row graph must still show a spike's heat: at the tip (cf≈1) a
+    /// hot column is the crit colour, not the safe base. This is the property
+    /// the gradient could regress if it coloured purely by vertical position.
+    #[test]
+    fn tip_of_a_hot_bar_is_hot() {
+        let g = g();
+        assert_eq!(g.cell_color(1.0, 1.0), Color::Rgb(255, 0, 0));
+        // Base of the same bar is the safe colour — that's the gradient.
+        assert_eq!(g.cell_color(1.0, 0.0), Color::Rgb(0, 255, 0));
     }
 }

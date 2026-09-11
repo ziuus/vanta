@@ -29,6 +29,24 @@ const fn rgb(r: u8, g: u8, b: u8) -> Color {
     Color::Rgb(r, g, b)
 }
 
+/// Linear blend from `a` to `b`, `t` in 0..1.
+///
+/// Every palette here is truecolor, so this is exact in practice. An indexed
+/// or named colour has no meaningful midpoint, so it snaps at the halfway
+/// point rather than inventing one — a wrong-but-stable colour beats a
+/// gradient that flickers between two palette entries.
+pub fn blend(a: Color, b: Color, t: f32) -> Color {
+    let t = t.clamp(0.0, 1.0);
+    match (a, b) {
+        (Color::Rgb(ar, ag, ab), Color::Rgb(br, bg, bb)) => {
+            let mix = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * t).round() as u8;
+            Color::Rgb(mix(ar, br), mix(ag, bg), mix(ab, bb))
+        }
+        _ if t < 0.5 => a,
+        _ => b,
+    }
+}
+
 impl Theme {
     pub fn from_name(name: &str) -> Self {
         match name {
@@ -181,5 +199,35 @@ impl Theme {
         } else {
             self.accent
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn blend_hits_both_ends_exactly() {
+        let a = rgb(0, 0, 0);
+        let b = rgb(200, 100, 50);
+        assert_eq!(blend(a, b, 0.0), a);
+        assert_eq!(blend(a, b, 1.0), b);
+        assert_eq!(blend(a, b, 0.5), rgb(100, 50, 25));
+    }
+
+    #[test]
+    fn blend_clamps_out_of_range_t() {
+        let a = rgb(10, 10, 10);
+        let b = rgb(20, 20, 20);
+        assert_eq!(blend(a, b, -5.0), a);
+        assert_eq!(blend(a, b, 5.0), b);
+    }
+
+    #[test]
+    fn blend_snaps_for_non_rgb() {
+        // No meaningful midpoint between palette entries — must not panic or
+        // invent one.
+        assert_eq!(blend(Color::Red, Color::Blue, 0.2), Color::Red);
+        assert_eq!(blend(Color::Red, Color::Blue, 0.8), Color::Blue);
     }
 }

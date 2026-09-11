@@ -162,71 +162,80 @@ pub fn fmt_uptime(secs: u64) -> String {
 
 // ── Distro logo ────────────────────────────────────────────────
 
+/// Every logo is exactly this wide. The render column is sized from it, and
+/// `logo_rows_are_uniform` enforces it — a single long row used to push its
+/// line out past the others and read as a rendering glitch.
+pub const LOGO_W: usize = 11;
+
+/// Art is drawn with half/quadrant blocks plus the four geometric triangles
+/// (◢◣◤◥). Both ranges are near-universal in terminal fonts, and the
+/// triangles are what keep a diagonal from stair-stepping: a block-only edge
+/// can only step a whole cell at a time.
 fn logo_lines(id: &str) -> Vec<&'static str> {
     match id {
         "arch" | "archarm" | "endeavouros" | "manjaro" | "cachyos" => vec![
-            "     ▄     ",
-            "    ▟█▙    ",
-            "   ▟███▙   ",
-            "  ▟█████▙  ",
-            " ▟███▀▀███▙",
-            "▟██▀    ▀██▙",
+            "     ▲     ",
+            "    ◢█◣    ",
+            "   ◢███◣   ",
+            "  ◢█████◣  ",
+            " ◢███◤◥███◣",
+            "◢█◤     ◥█◣",
         ],
         "ubuntu" | "pop" | "linuxmint" => vec![
             "   ▄▄▄▄▄   ",
-            " ▄█▀   ▀█▄ ",
-            "██   ●   ██",
-            "██  ●  ●  ██",
-            " ▀█▄   ▄█▀ ",
+            " ◢█▀   ▀█◣ ",
+            "▐█   ▄   █▌",
+            "▐█  ▀ ▀  █▌",
+            " ◥█▄   ▄█◤ ",
             "   ▀▀▀▀▀   ",
         ],
         "fedora" | "nobara" => vec![
-            "   ▄▄▄▄▄▄  ",
-            "  █    ██  ",
-            "  █  ▄▄▄▄  ",
-            "▄▄█▄▄█     ",
-            "█    █     ",
-            "▀▀▀▀▀      ",
+            "  ▄▄▄▄▄▄▄  ",
+            " ◢█▀   ▀█◣ ",
+            "▐█  ▄▄▄█▌  ",
+            "▐█  █▌ ▀   ",
+            " ◥█▄█▌     ",
+            "   ▀▀▀     ",
         ],
         "debian" | "raspbian" => vec![
-            "  ▄▄▄▄▄    ",
-            " █    ▀█   ",
-            " █  ▄▄ █   ",
-            " █  ▀▀▀    ",
-            " ▀█▄       ",
-            "   ▀▀      ",
+            "   ▄▄▄▄▄   ",
+            "  ◢█▀ ▀█◣  ",
+            " ▐█  ▄  █▌ ",
+            " ▐█ ▐█▌    ",
+            "  ◥█▄▄█◤   ",
+            "     ▀▀    ",
         ],
         "nixos" => vec![
-            " ▚▖   ▗▞  ▗",
-            "  ▚▖ ▗▞▀▀▀▀",
-            "▀▀▀▚▖▞▘    ",
-            "    ▞▚▖▀▀▀▀",
-            "▄▄▄▄▘ ▚▖   ",
-            "  ▞▘   ▚▖  ",
+            "  ◥█◣ ◢█◤  ",
+            "▀▀▀◥█◣█◤▀▀▀",
+            "   ◢█◤◥█◣  ",
+            "  ◢█◤ ◥█◣  ",
+            "▄▄◢█◤ ◥█◣▄▄",
+            "  ◥█◣ ◢█◤  ",
         ],
         "gentoo" => vec![
-            "   ▄▄▄▄▄   ",
-            " ▄█▀   ▀█▄ ",
-            "██  ▄▄▄  ██",
-            " ▀▀▀  ▄▄█▀ ",
-            "   ▄██▀    ",
+            "  ▄▄▄▄▄▄   ",
+            " ◢█▀  ▀█◣  ",
+            "▐█  ▄▄  █▌ ",
+            " ◥▀▀  ▄█◤  ",
+            "   ◢██◤    ",
             "  ▀▀       ",
         ],
         "opensuse" | "opensuse-tumbleweed" | "opensuse-leap" => vec![
             "  ▄▄▄▄▄▄▄  ",
-            " █  ▄▄▄▄▄█ ",
-            "█  █ ▀█    ",
-            "█  █▄▄█  ▄█",
-            " █▄▄▄▄▄▄▄█ ",
-            "           ",
+            " ◢█▀▀▀▀▀█◣ ",
+            "▐█  ▄▄  █▌ ",
+            "▐█ ▐██▌ ▄█▌",
+            " ◥█▄▄▄▄▄█◤ ",
+            "   ▀▀▀▀▀   ",
         ],
         _ => vec![
             "   ▄▄▄▄▄   ",
-            "  █ ▀ ▀ █  ",
-            "  █  ▄  █  ",
-            " ▄█▄▄▄▄▄█▄ ",
-            " █▄▄▄▄▄▄▄█ ",
-            "           ",
+            "  ◢█▀▀▀█◣  ",
+            " ▐█ ▀ ▀ █▌ ",
+            " ▐█  ▄  █▌ ",
+            "  ◥█▄▄▄█◤  ",
+            "  ▀▀▀▀▀▀▀  ",
         ],
     }
 }
@@ -238,17 +247,24 @@ pub fn render_neofetch(f: &mut Frame, area: Rect, theme: &Theme, sum: &Summary, 
     }
     let facts = &*FACTS;
     let logo = logo_lines(&facts.os_id);
-    let logo_w: u16 = if area.width >= 44 { 13 } else { 0 };
+    // +2 for the leading indent and a column of air before the facts.
+    let logo_w: u16 = if area.width >= 44 {
+        LOGO_W as u16 + 2
+    } else {
+        0
+    };
 
     if logo_w > 0 {
         let pad = area.height.saturating_sub(logo.len() as u16) / 2;
         let mut lines: Vec<Line> = (0..pad).map(|_| Line::from("")).collect();
-        lines.extend(logo.iter().map(|l| {
+        let n = logo.len().max(1) as f32;
+        lines.extend(logo.iter().enumerate().map(|(i, l)| {
+            // Accent at the crown fading to secondary at the base: a flat fill
+            // makes the block art read as one undifferentiated blob.
+            let col = crate::theme::blend(theme.accent, theme.secondary, i as f32 / n);
             Line::from(Span::styled(
                 *l,
-                Style::default()
-                    .fg(theme.accent)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().fg(col).add_modifier(Modifier::BOLD),
             ))
         }));
         f.render_widget(
@@ -344,4 +360,67 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, sum: &Summary) {
     let cols = Layout::horizontal([Constraint::Ratio(3, 5), Constraint::Ratio(2, 5)]).split(area);
     f.render_widget(Paragraph::new(left), cols[0]);
     f.render_widget(Paragraph::new(right), cols[1]);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Ids covering every arm of `logo_lines`, including the fallback.
+    const IDS: [&str; 9] = [
+        "arch",
+        "ubuntu",
+        "fedora",
+        "debian",
+        "nixos",
+        "gentoo",
+        "opensuse",
+        "",
+        "some-unknown-distro",
+    ];
+
+    /// A row wider than its neighbours pokes out past the logo column and
+    /// reads as a rendering glitch; a short one leaves a ragged edge. Both
+    /// shipped before this test existed.
+    #[test]
+    fn logo_rows_are_uniform() {
+        for id in IDS {
+            for (i, line) in logo_lines(id).iter().enumerate() {
+                assert_eq!(
+                    line.chars().count(),
+                    LOGO_W,
+                    "logo {:?} row {} is {:?}",
+                    id,
+                    i,
+                    line
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn every_logo_has_the_same_height() {
+        for id in IDS {
+            assert_eq!(logo_lines(id).len(), 6, "logo {:?}", id);
+        }
+    }
+
+    /// The art must stay in ranges terminal fonts actually cover: half and
+    /// quadrant blocks (U+2580..U+259F) and the geometric triangles
+    /// (U+25E2..U+25E5). A stray glyph outside them is what turns a logo into
+    /// tofu on someone else's font.
+    #[test]
+    fn logo_glyphs_are_block_or_triangle() {
+        for id in IDS {
+            for line in logo_lines(id) {
+                for c in line.chars() {
+                    let ok = c == ' '
+                        || ('\u{2580}'..='\u{259F}').contains(&c)
+                        || ('\u{25E2}'..='\u{25E5}').contains(&c)
+                        || c == '\u{25B2}';
+                    assert!(ok, "logo {:?} has {:?} (U+{:04X})", id, c, c as u32);
+                }
+            }
+        }
+    }
 }
