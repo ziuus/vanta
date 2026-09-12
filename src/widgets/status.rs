@@ -165,8 +165,11 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
     }
     let fx = facts();
 
-    let key = |k: &str| Span::styled(format!("{:<9}", k), Style::default().fg(theme.dim));
+    let key = |k: &str| Span::styled(format!("{:<8}", k), Style::default().fg(theme.dim));
     let val = |v: String, c: ratatui::style::Color| {
+        Span::styled(format!("{:<14}", crate::widgets::meter::ellipsize(&v, 14)), Style::default().fg(c).add_modifier(Modifier::BOLD))
+    };
+    let val_unbounded = |v: String, c: ratatui::style::Color| {
         Span::styled(v, Style::default().fg(c).add_modifier(Modifier::BOLD))
     };
 
@@ -177,24 +180,24 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
             key("WIFI"),
             val(ssid.clone(), theme.accent),
             Span::styled(
-                format!("  {} {}%", signal_bars(*sig), sig),
+                format!("{} {}%", signal_bars(*sig), sig),
                 Style::default().fg(if *sig < 40 { theme.yellow } else { theme.dim }),
             ),
         ]));
     }
     if let Some(ip) = &fx.ip {
-        lines.push(Line::from(vec![key("IP"), val(ip.clone(), theme.text)]));
+        lines.push(Line::from(vec![key("IP"), val_unbounded(ip.clone(), theme.text)]));
     }
     if let Some(n) = fx.packages {
         let upd = fx.updates.unwrap_or(0);
         let mut spans = vec![key("PKGS"), val(n.to_string(), theme.text)];
         if upd > 0 {
             spans.push(Span::styled(
-                format!("  {} updates", upd),
+                format!("{} updates", upd),
                 Style::default().fg(theme.yellow),
             ));
         } else if fx.updates.is_some() {
-            spans.push(Span::styled("  up to date", Style::default().fg(theme.dim)));
+            spans.push(Span::styled("up to date", Style::default().fg(theme.dim)));
         }
         lines.push(Line::from(spans));
     }
@@ -202,7 +205,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
         lines.push(Line::from(vec![
             key("DOCKER"),
             val(format!("{}/{}", run_n, all_n), theme.text),
-            Span::styled(" running", Style::default().fg(theme.dim)),
+            Span::styled("running", Style::default().fg(theme.dim)),
         ]));
     }
     let cpu = cpu::snapshot();
@@ -220,13 +223,13 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
             key("LOAD"),
             val(format!("{:.2} {:.2} {:.2}", one, five, fifteen), col),
             Span::styled(
-                format!("  /{}", cores as usize),
+                format!("/{}", cores as usize),
                 Style::default().fg(theme.dim),
             ),
         ]));
         lines.push(Line::from(vec![
             key("PROCS"),
-            val(crate::monitors::processes::count().to_string(), theme.text),
+            val_unbounded(crate::monitors::processes::count().to_string(), theme.text),
         ]));
     }
 
@@ -247,14 +250,16 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
         ];
         if let Some(w) = b.watts {
             spans.push(Span::styled(
-                format!("  {:.1}W", w),
+                format!("{:<8.1}", w),
                 Style::default().fg(theme.dim),
             ));
+        } else {
+            spans.push(Span::styled(format!("{:<8}", ""), Style::default()));
         }
         if let Some(s) = b.eta_secs.filter(|s| *s > 0 && *s < 48 * 3600) {
             spans.push(Span::styled(
                 format!(
-                    "  {}h{:02}m {}",
+                    "{}h{:02}m {}",
                     s / 3600,
                     (s % 3600) / 60,
                     if b.charging { "to full" } else { "left" }
@@ -277,7 +282,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
         if cpu.temps.len() > limit {
             t_str.push_str(" …");
         }
-        lines.push(Line::from(vec![key("TEMPS"), val(t_str, theme.temp(max))]));
+        lines.push(Line::from(vec![key("TEMPS"), val_unbounded(t_str, theme.temp(max))]));
     }
 
     if lines.is_empty() {

@@ -610,7 +610,7 @@ impl App {
         let s = &self.summary;
         let base = Style::default().bg(t.bg);
         let dim = base.fg(t.dim);
-        let sep = Span::styled("  ·  ", dim);
+        let sep = Span::styled("   ", dim);
 
         let mut worst = 0u8; // 0 ok, 1 warn, 2 crit
         let mut level = |pct: f64| {
@@ -681,14 +681,13 @@ impl App {
         let mut left: Vec<Span> = vec![
             Span::styled(" vanta", base.fg(t.accent).add_modifier(Modifier::BOLD)),
             Span::styled(" ● ", base.fg(dot)),
-            Span::styled(" ", base),
         ];
         for (i, (k, v, c)) in metrics.iter().enumerate() {
             if i > 0 {
                 left.push(sep.clone());
             }
             left.push(Span::styled(format!("{} ", k), dim));
-            left.push(Span::styled(v.clone(), base.fg(*c)));
+            left.push(Span::styled(v.clone(), base.fg(*c).add_modifier(Modifier::BOLD)));
         }
 
         let mut right: Vec<Span> = Vec::new();
@@ -717,7 +716,7 @@ impl App {
         let (rw, avail) = (width(&right), area.width as usize);
         // Narrow terminal: shed metrics from the right (least important last)
         // until the page nav fits. Each metric is 3 spans (sep, key, value).
-        while width(&left) + rw >= avail && left.len() > 3 + 3 {
+        while width(&left) + rw >= avail && left.len() > 2 + 3 {
             left.truncate(left.len() - 3);
         }
         let lw = width(&left);

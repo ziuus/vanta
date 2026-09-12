@@ -385,12 +385,11 @@ pub fn render_neofetch(f: &mut Frame, area: Rect, theme: &Theme, sum: &Summary, 
 
     let max_rows = kv_area.height as usize;
     let kv: Vec<_> = kv.into_iter().take(max_rows).collect();
-    let vpad = kv_area.height.saturating_sub(kv.len() as u16) / 2;
-    let max_v = (kv_area.width as usize).saturating_sub(9);
-    let mut rows: Vec<Line> = (0..vpad).map(|_| Line::from("")).collect();
+    let max_v = (kv_area.width as usize).saturating_sub(10);
+    let mut rows: Vec<Line> = Vec::new();
     for (k, v) in kv {
         rows.push(Line::from(vec![
-            Span::styled(format!("{:>7} ", k), Style::default().fg(theme.dim)),
+            Span::styled(format!("{:<9} ", k), Style::default().fg(theme.dim)),
             Span::styled(
                 meter::ellipsize(&v, max_v),
                 Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
