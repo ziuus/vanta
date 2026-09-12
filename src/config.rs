@@ -26,6 +26,10 @@ pub struct UiConfig {
     pub clock_24h: bool,
     /// Visualizer style: bars | mirror | wave | peaks.
     pub visualizer: String,
+    /// Gauge style: arc | bars | vertical.
+    pub gauge_style: String,
+    /// History graph style: block | braille.
+    pub graph_style: String,
 }
 
 impl Default for UiConfig {
@@ -37,6 +41,8 @@ impl Default for UiConfig {
             startup_mode: "dashboard".to_string(),
             clock_24h: true,
             visualizer: "bars".to_string(),
+            gauge_style: "arc".to_string(),
+            graph_style: "block".to_string(),
         }
     }
 }

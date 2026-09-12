@@ -54,6 +54,10 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, config: &Config) {
             "T",
             "next theme               v    visualizer (bars/mirror/wave/peaks)",
         ),
+        key(
+            "g G",
+            "gauge style / graph style (arc·bars·vertical / block·braille)",
+        ),
         key("+ -", "sample faster / slower   ?    this help"),
         key("q", "quit"),
         blank.clone(),

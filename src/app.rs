@@ -200,6 +200,8 @@ impl App {
         let mode = DashboardMode::from_str(&config.ui.startup_mode);
         let sampler_interval = monitors::start(Duration::from_secs_f64(config.ui.refresh_rate));
         music_viz::set_style(&config.ui.visualizer);
+        crate::widgets::gauge::set_style(&config.ui.gauge_style);
+        crate::widgets::block_graph::set_style(&config.ui.graph_style);
         let custom_widgets = CustomWidgetManager::start_all(&config.custom_widgets);
         let mut app = Self {
             running: true,
@@ -332,6 +334,18 @@ impl App {
                 self.config.ui.visualizer = music_viz::style_name().to_string();
                 self.config.save();
                 self.toast(format!("visualizer · {}", music_viz::style_name()));
+            }
+            KeyCode::Char('g') => {
+                crate::widgets::gauge::cycle_style();
+                self.config.ui.gauge_style = crate::widgets::gauge::style_name().to_string();
+                self.config.save();
+                self.toast(format!("gauges · {}", crate::widgets::gauge::style_name()));
+            }
+            KeyCode::Char('G') => {
+                crate::widgets::block_graph::cycle_style();
+                self.config.ui.graph_style = crate::widgets::block_graph::style_name().to_string();
+                self.config.save();
+                self.toast(format!("graphs · {}", crate::widgets::block_graph::style_name()));
             }
             KeyCode::Char('+') | KeyCode::Char('=') => self.adjust_refresh(true),
             KeyCode::Char('-') | KeyCode::Char('_') => self.adjust_refresh(false),
