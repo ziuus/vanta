@@ -162,25 +162,98 @@ pub fn fmt_uptime(secs: u64) -> String {
 
 // ── Distro logo ────────────────────────────────────────────────
 
-/// Every logo is exactly this wide. The render column is sized from it, and
-/// `logo_rows_are_uniform` enforces it — a single long row used to push its
-/// line out past the others and read as a rendering glitch.
+/// Every logo is exactly this wide (in cells). The render column is sized from
+/// it, and `logo_rows_are_uniform` enforces it.
 pub const LOGO_W: usize = 11;
 
-/// Art is drawn with half/quadrant blocks plus the four geometric triangles
-/// (◢◣◤◥). Both ranges are near-universal in terminal fonts, and the
-/// triangles are what keep a diagonal from stair-stepping: a block-only edge
-/// can only step a whole cell at a time.
-fn logo_lines(id: &str) -> Vec<&'static str> {
+/// Pack a bitmap into braille lines at 2×4 dots per cell — the same subpixel
+/// trick the graphs use, which renders as a solid shape on a capable font
+/// rather than the stair-stepped block art it replaces. Any non-space cell in
+/// a row is a lit dot; short rows are padded, so the input can be ragged.
+fn braille_art<S: AsRef<str>>(bitmap: &[S]) -> Vec<String> {
+    // Dot bit index for [row][col] within a cell, per the Unicode layout.
+    const BITS: [[u8; 2]; 4] = [[0, 3], [1, 4], [2, 5], [6, 7]];
+    let width = bitmap
+        .iter()
+        .map(|r| r.as_ref().chars().count())
+        .max()
+        .unwrap_or(0);
+    let grid: Vec<Vec<bool>> = bitmap
+        .iter()
+        .map(|r| {
+            let mut v: Vec<bool> = r.as_ref().chars().map(|c| c != ' ').collect();
+            v.resize(width, false);
+            v
+        })
+        .collect();
+    let rows = grid.len();
+    let lit = |x: usize, y: usize| y < rows && x < width && grid[y][x];
+    let cell_w = width.div_ceil(2);
+    let cell_h = rows.div_ceil(4);
+    (0..cell_h)
+        .map(|cy| {
+            (0..cell_w)
+                .map(|cx| {
+                    let mut pat = 0u8;
+                    for (dy, row) in BITS.iter().enumerate() {
+                        for (dx, bit) in row.iter().enumerate() {
+                            if lit(cx * 2 + dx, cy * 4 + dy) {
+                                pat |= 1 << bit;
+                            }
+                        }
+                    }
+                    char::from_u32(0x2800 + pat as u32).unwrap_or(' ')
+                })
+                .collect::<String>()
+        })
+        .collect()
+}
+
+/// The Arch mountain, generated as a slim triangle with an inverted-V notch at
+/// the base — 22×24 dots → 11×6 cells, matching `LOGO_W`. Procedural so the
+/// edges are exact instead of hand-stair-stepped.
+fn arch_bitmap() -> Vec<String> {
+    const W: usize = 22;
+    const H: usize = 24;
+    let cx = (W as f64 - 1.0) / 2.0;
+    let base_half = 10.0;
+    (0..H)
+        .map(|y| {
+            let t = y as f64 / (H as f64 - 1.0); // 0 apex .. 1 base
+            let half = t * base_half;
+            // Inverted-V notch rising through the lower ~45% from the base.
+            let notch_span = 0.45;
+            let notch = if t > 1.0 - notch_span {
+                (t - (1.0 - notch_span)) / notch_span * 3.4
+            } else {
+                0.0
+            };
+            (0..W)
+                .map(|x| {
+                    let dx = (x as f64 - cx).abs();
+                    if dx <= half && dx > notch {
+                        'X'
+                    } else {
+                        ' '
+                    }
+                })
+                .collect::<String>()
+        })
+        .collect()
+}
+
+/// Lines for a distro logo. Arch renders as smooth braille; the rest still use
+/// the block art until each can be redrawn and visually verified.
+fn logo_lines(id: &str) -> Vec<String> {
     match id {
-        "arch" | "archarm" | "endeavouros" | "manjaro" | "cachyos" => vec![
-            "     ▲     ",
-            "    ◢█◣    ",
-            "   ◢███◣   ",
-            "  ◢█████◣  ",
-            " ◢███◤◥███◣",
-            "◢█◤     ◥█◣",
-        ],
+        "arch" | "archarm" | "endeavouros" | "manjaro" | "cachyos" => braille_art(&arch_bitmap()),
+        _ => block_logo(id).into_iter().map(String::from).collect(),
+    }
+}
+
+/// Block/half-block art, one entry per row, all `LOGO_W` wide.
+fn block_logo(id: &str) -> Vec<&'static str> {
+    match id {
         "ubuntu" | "pop" | "linuxmint" => vec![
             "   ▄▄▄▄▄   ",
             " ◢█▀   ▀█◣ ",
@@ -246,7 +319,9 @@ pub fn render_neofetch(f: &mut Frame, area: Rect, theme: &Theme, sum: &Summary, 
         return;
     }
     let facts = &*FACTS;
-    let logo = logo_lines(&facts.os_id);
+    // VANTA_LOGO forces a distro logo, for previewing art on any machine.
+    let os_id = std::env::var("VANTA_LOGO").unwrap_or_else(|_| facts.os_id.clone());
+    let logo = logo_lines(&os_id);
     // +2 for the leading indent and a column of air before the facts.
     let logo_w: u16 = if area.width >= 44 {
         LOGO_W as u16 + 2
@@ -260,10 +335,10 @@ pub fn render_neofetch(f: &mut Frame, area: Rect, theme: &Theme, sum: &Summary, 
         let n = logo.len().max(1) as f32;
         lines.extend(logo.iter().enumerate().map(|(i, l)| {
             // Accent at the crown fading to secondary at the base: a flat fill
-            // makes the block art read as one undifferentiated blob.
+            // makes the art read as one undifferentiated blob.
             let col = crate::theme::blend(theme.accent, theme.secondary, i as f32 / n);
             Line::from(Span::styled(
-                *l,
+                l.clone(),
                 Style::default().fg(col).add_modifier(Modifier::BOLD),
             ))
         }));
@@ -406,21 +481,31 @@ mod tests {
     }
 
     /// The art must stay in ranges terminal fonts actually cover: half and
-    /// quadrant blocks (U+2580..U+259F) and the geometric triangles
-    /// (U+25E2..U+25E5). A stray glyph outside them is what turns a logo into
-    /// tofu on someone else's font.
+    /// quadrant blocks (U+2580..U+259F), the geometric triangles
+    /// (U+25E2..U+25E5), and braille (U+2800..U+28FF). A stray glyph outside
+    /// them is what turns a logo into tofu on someone else's font.
     #[test]
-    fn logo_glyphs_are_block_or_triangle() {
+    fn logo_glyphs_are_block_triangle_or_braille() {
         for id in IDS {
             for line in logo_lines(id) {
                 for c in line.chars() {
                     let ok = c == ' '
                         || ('\u{2580}'..='\u{259F}').contains(&c)
                         || ('\u{25E2}'..='\u{25E5}').contains(&c)
+                        || ('\u{2800}'..='\u{28FF}').contains(&c)
                         || c == '\u{25B2}';
                     assert!(ok, "logo {:?} has {:?} (U+{:04X})", id, c, c as u32);
                 }
             }
         }
+    }
+
+    /// The braille packer: an all-lit 2×4 block is the full cell ⣿; a lit left
+    /// column alone is ⡇ (dots 1-2-3-7). Guards the bit layout.
+    #[test]
+    fn braille_art_packs_dots() {
+        assert_eq!(braille_art(&["XX", "XX", "XX", "XX"]), vec!["⣿"]);
+        assert_eq!(braille_art(&["X ", "X ", "X ", "X "]), vec!["⡇"]);
+        assert_eq!(braille_art(&["  ", "  ", "  ", "  "]), vec!["⠀"]);
     }
 }
