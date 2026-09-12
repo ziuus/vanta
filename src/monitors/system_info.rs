@@ -242,11 +242,165 @@ fn arch_bitmap() -> Vec<String> {
         .collect()
 }
 
+fn circle_family_bitmap(radius: f64, thickness: f64, cutouts: &[(f64, f64, f64)]) -> Vec<String> {
+    const W: usize = 22;
+    const H: usize = 24;
+    let cx = (W as f64 - 1.0) / 2.0;
+    let cy = (H as f64 - 1.0) / 2.0;
+    (0..H)
+        .map(|y| {
+            (0..W)
+                .map(|x| {
+                    let dx = x as f64 - cx;
+                    let dy = y as f64 - cy;
+                    let r = (dx * dx + dy * dy).sqrt();
+                    let mut hit = r <= radius && r >= radius - thickness;
+                    if hit {
+                        for &(kx, ky, kr) in cutouts {
+                            let ddx = x as f64 - kx;
+                            let ddy = y as f64 - ky;
+                            if (ddx * ddx + ddy * ddy).sqrt() <= kr {
+                                hit = false;
+                                break;
+                            }
+                        }
+                    }
+                    if hit { 'X' } else { ' ' }
+                })
+                .collect::<String>()
+        })
+        .collect()
+}
+
+fn ubuntu_bitmap() -> Vec<String> {
+    // Ubuntu: 3 cutouts around the ring
+    circle_family_bitmap(11.0, 3.5, &[
+        (2.0, 11.5, 2.5),
+        (17.0, 3.0, 2.5),
+        (17.0, 20.0, 2.5),
+    ])
+}
+
+fn fedora_bitmap() -> Vec<String> {
+    // Fedora: simple ring, we'll just make a partial cutout
+    circle_family_bitmap(10.5, 4.0, &[
+        (10.5, 11.5, 2.0),
+        (18.0, 11.5, 6.0),
+    ])
+}
+
+fn opensuse_bitmap() -> Vec<String> {
+    // OpenSUSE: ring with a top-right cutout for the lizard head
+    circle_family_bitmap(11.0, 3.0, &[
+        (16.0, 6.0, 4.0),
+    ])
+}
+
+fn static_bitmap(s: &str) -> Vec<String> {
+    s.lines()
+        .filter(|l| !l.is_empty())
+        .map(String::from)
+        .collect()
+}
+
+fn debian_bitmap() -> Vec<String> {
+    static_bitmap("
+                      
+                      
+          XXXX        
+          XXXX        
+      XXXX    XXXX    
+      XXXX    XXXX    
+    XXXX        XXXX  
+    XXXX        XXXX  
+    XXXX  XXXX  XXXX  
+    XXXX  XXXX  XXXX  
+  XXXX  XXXX      XXXX
+  XXXX  XXXX      XXXX
+  XXXX  XXXX        XX
+  XXXX  XXXX        XX
+  XXXX  XXXX        XX
+  XXXX  XXXX        XX
+  XXXX    XXXXXXXXXX  
+  XXXX    XXXXXXXXXX  
+    XXXX              
+    XXXX              
+      XXXXXXXX        
+      XXXXXXXX        
+                      
+                      
+")
+}
+
+fn nixos_bitmap() -> Vec<String> {
+    static_bitmap("
+          XX  XX      
+          XX  XX      
+    XXXX  XX  XX  XXXX
+  XXXXXX  XX  XX  XXXX
+  XX  XX  XX  XX  XX  
+  XX  XX  XX  XX  XX  
+  XX  XX  XX  XX  XX  
+    XXXX  XXXXXX  XXXX
+      XX  XXXXXX  XX  
+      XX  XX  XX  XX  
+      XX  XX  XX  XX  
+          XX  XX      
+          XX  XX      
+      XX  XX  XX  XX  
+      XX  XX  XX  XX  
+      XX  XXXXXX  XX  
+    XXXX  XXXXXX  XXXX
+  XX  XX  XX  XX  XX  
+  XX  XX  XX  XX  XX  
+  XX  XX  XX  XX  XX  
+  XXXXXX  XX  XX  XXXX
+    XXXX  XX  XX  XXXX
+          XX  XX      
+          XX  XX      
+")
+}
+
+fn gentoo_bitmap() -> Vec<String> {
+    static_bitmap("
+                      
+                      
+        XXXXXX        
+        XXXXXX        
+    XXXX      XXXX    
+    XXXX      XXXX    
+  XXXX  XXXXXX  XXXX  
+  XXXX  XXXXXX  XXXX  
+  XXXX  XXXX  XXXX    
+  XXXX  XXXX  XXXX    
+    XXXX  XXXX        
+    XXXX  XXXX        
+  XXXX  XXXX          
+  XXXX  XXXX          
+  XXXX  XXXX          
+  XXXX  XXXX          
+  XXXX  XXXX  XXXXXX  
+  XXXX  XXXX  XXXXXX  
+    XXXX          XXXX
+    XXXX          XXXX
+      XXXXXXXXXXXXXX  
+      XXXXXXXXXXXXXX  
+                      
+                      
+")
+}
+
 /// Lines for a distro logo. Arch renders as smooth braille; the rest still use
 /// the block art until each can be redrawn and visually verified.
 fn logo_lines(id: &str) -> Vec<String> {
     match id {
         "arch" | "archarm" | "endeavouros" | "manjaro" | "cachyos" => braille_art(&arch_bitmap()),
+        "ubuntu" | "pop" | "linuxmint" => braille_art(&ubuntu_bitmap()),
+        "fedora" | "nobara" => braille_art(&fedora_bitmap()),
+        "opensuse" | "opensuse-tumbleweed" | "opensuse-leap" => braille_art(&opensuse_bitmap()),
+        "debian" | "raspbian" => braille_art(&debian_bitmap()),
+        "nixos" => braille_art(&nixos_bitmap()),
+        "gentoo" => braille_art(&gentoo_bitmap()),
         _ => block_logo(id).into_iter().map(String::from).collect(),
     }
 }
