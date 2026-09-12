@@ -182,6 +182,9 @@ pub struct App {
     pub focused_panel: Option<PanelId>,
     pub panel_states: PanelStates,
     pub show_help: bool,
+    pub show_settings: bool,
+    pub settings_row: usize,
+    pub settings_scroll: usize,
     /// A focused panel expanded to fill the page (Enter / Esc).
     pub zoomed: Option<PanelId>,
     pub summary: Summary,
@@ -212,6 +215,9 @@ impl App {
             focused_panel: None,
             panel_states: PanelStates::default(),
             show_help: false,
+            show_settings: false,
+            settings_row: 0,
+            settings_scroll: 0,
             zoomed: None,
             summary: Summary::default(),
             toast: None,
@@ -268,7 +274,7 @@ impl App {
         }
     }
 
-    fn adjust_refresh(&mut self, faster: bool) {
+    pub fn adjust_refresh(&mut self, faster: bool) {
         let cur = self.config.ui.refresh_rate;
         let next = if faster { cur / 2.0 } else { cur * 2.0 }.clamp(0.1, 10.0);
         self.config.ui.refresh_rate = next;
@@ -310,6 +316,11 @@ impl App {
             return;
         }
 
+        if self.show_settings {
+            crate::screens::settings::handle_key(self, key.code);
+            return;
+        }
+
         if self.show_help {
             match key.code {
                 KeyCode::Char('q') | KeyCode::Char('Q') => self.running = false,
@@ -325,6 +336,7 @@ impl App {
                 self.running = false
             }
             KeyCode::Char('?') | KeyCode::F(1) => self.show_help = true,
+            KeyCode::Char('S') | KeyCode::Char(',') => self.show_settings = true,
             KeyCode::Char('1') => self.set_mode(DashboardMode::Dashboard),
             KeyCode::Char('2') => self.set_mode(DashboardMode::Monitor),
             KeyCode::Char('3') => self.set_mode(DashboardMode::Aesthetic),
@@ -369,7 +381,7 @@ impl App {
             KeyCode::Char('n') | KeyCode::Char('N') => media::control(Action::Next),
             KeyCode::Char('p') | KeyCode::Char('P') => media::control(Action::Previous),
             KeyCode::Char('>') | KeyCode::Char('.') => media::control(Action::VolumeUp),
-            KeyCode::Char('<') | KeyCode::Char(',') => media::control(Action::VolumeDown),
+            KeyCode::Char('<') => media::control(Action::VolumeDown),
 
             _ => self.handle_panel_key(key.code),
         }
@@ -402,7 +414,6 @@ impl App {
             key,
             KeyCode::Char('/')
                 | KeyCode::Char('s')
-                | KeyCode::Char('S')
                 | KeyCode::Char('r')
                 | KeyCode::Char('t')
                 | KeyCode::Char('c')
@@ -468,7 +479,7 @@ impl App {
             }
             KeyCode::Right if self.panel_states.process_tree_mode => self.set_collapsed(false),
             KeyCode::Left if self.panel_states.process_tree_mode => self.set_collapsed(true),
-            KeyCode::Char('s') | KeyCode::Char('S') => {
+            KeyCode::Char('s') => {
                 let ps = &mut self.panel_states;
                 ps.process_sort_field = ps.process_sort_field.next();
                 ps.process_scroll_offset = 0;
@@ -602,6 +613,9 @@ impl App {
 
         if self.show_help {
             screens::help::render(f, area, &self.theme, &self.config);
+        }
+        if self.show_settings {
+            screens::settings::render(f, area, self);
         }
     }
 
