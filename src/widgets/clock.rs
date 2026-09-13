@@ -10,28 +10,58 @@ use crate::theme::Theme;
 /// 3×5 glyphs. `#` is lit. Colon is 1 wide.
 const GLYPH_H: usize = 5;
 
-fn glyph(c: char) -> [&'static str; GLYPH_H] {
-    match c {
-        '0' => ["###", "# #", "# #", "# #", "###"],
-        '1' => [" ##", "  #", "  #", "  #", "  #"],
-        '2' => ["###", "  #", "###", "#  ", "###"],
-        '3' => ["###", "  #", "###", "  #", "###"],
-        '4' => ["# #", "# #", "###", "  #", "  #"],
-        '5' => ["###", "#  ", "###", "  #", "###"],
-        '6' => ["###", "#  ", "###", "# #", "###"],
-        '7' => ["###", "  #", "  #", "  #", "  #"],
-        '8' => ["###", "# #", "###", "# #", "###"],
-        '9' => ["###", "# #", "###", "  #", "###"],
-        ':' => [" ", "#", " ", "#", " "],
-        _ => ["   ", "   ", "   ", "   ", "   "],
+fn glyph(c: char, font: &str) -> [&'static str; GLYPH_H] {
+    match font {
+        "rounded" => match c {
+            '0' => [" # ", "# #", "# #", "# #", " # "],
+            '1' => ["  #", "  #", "  #", "  #", "  #"],
+            '2' => ["###", "  #", " # ", "#  ", "###"],
+            '3' => ["###", "  #", " ##", "  #", "###"],
+            '4' => ["# #", "# #", "###", "  #", "  #"],
+            '5' => ["###", "#  ", "###", "  #", "###"],
+            '6' => [" ##", "#  ", "###", "# #", "###"],
+            '7' => ["###", "  #", "  #", "  #", "  #"],
+            '8' => [" # ", "# #", " # ", "# #", " # "],
+            '9' => ["###", "# #", "###", "  #", " ##"],
+            ':' => [" ", "#", " ", "#", " "],
+            _ => ["   ", "   ", "   ", "   ", "   "],
+        },
+        "digital" => match c {
+            '0' => ["###", "# #", "# #", "# #", "###"],
+            '1' => [" ##", "  #", "  #", "  #", "###"],
+            '2' => ["###", "  #", "###", "#  ", "###"],
+            '3' => ["###", "  #", "###", "  #", "###"],
+            '4' => ["# #", "# #", "###", "  #", "  #"],
+            '5' => ["###", "#  ", "###", "  #", "###"],
+            '6' => ["###", "#  ", "###", "# #", "###"],
+            '7' => ["###", "  #", "  #", "  #", "  #"],
+            '8' => ["###", "# #", "###", "# #", "###"],
+            '9' => ["###", "# #", "###", "  #", "###"],
+            ':' => [" ", "#", " ", "#", " "],
+            _ => ["   ", "   ", "   ", "   ", "   "],
+        },
+        _ => match c { // standard
+            '0' => ["###", "# #", "# #", "# #", "###"],
+            '1' => [" ##", "  #", "  #", "  #", "  #"],
+            '2' => ["###", "  #", "###", "#  ", "###"],
+            '3' => ["###", "  #", "###", "  #", "###"],
+            '4' => ["# #", "# #", "###", "  #", "  #"],
+            '5' => ["###", "#  ", "###", "  #", "###"],
+            '6' => ["###", "#  ", "###", "# #", "###"],
+            '7' => ["###", "  #", "  #", "  #", "  #"],
+            '8' => ["###", "# #", "###", "# #", "###"],
+            '9' => ["###", "# #", "###", "  #", "###"],
+            ':' => [" ", "#", " ", "#", " "],
+            _ => ["   ", "   ", "   ", "   ", "   "],
+        }
     }
 }
 
 /// Width in cells of `text` rendered at horizontal scale `sx`, with one
 /// `sx`-wide gap between glyphs.
-fn text_width(text: &str, sx: usize) -> usize {
+fn text_width(text: &str, sx: usize, font: &str) -> usize {
     let glyphs = text.chars().count();
-    let cells: usize = text.chars().map(|c| glyph(c)[0].len()).sum();
+    let cells: usize = text.chars().map(|c| glyph(c, "standard")[0].len()).sum();
     (cells + glyphs.saturating_sub(1)) * sx
 }
 
@@ -42,6 +72,7 @@ fn big_lines(
     sx: usize,
     sy: usize,
     colon_on: bool,
+    font: &str,
     theme: &Theme,
 ) -> Vec<Line<'static>> {
     let digit = Style::default()
@@ -60,7 +91,7 @@ fn big_lines(
                 spans.push(Span::raw(" ".repeat(sx)));
             }
             let style = if c == ':' { colon } else { digit };
-            for px in glyph(c)[row].chars() {
+            for px in glyph(c, font)[row].chars() {
                 let cell = if px == '#' { "█" } else { " " };
                 spans.push(Span::styled(cell.repeat(sx), style));
             }
@@ -75,9 +106,9 @@ fn big_lines(
 
 /// Pick the largest scale whose glyph block fits. Cells are ~1:2, so sx = 2·sy
 /// keeps the 3×5 glyph at its intended proportions; (1,1) is the thin fallback.
-fn pick_scale(text: &str, w: usize, h: usize) -> Option<(usize, usize)> {
+fn pick_scale(text: &str, w: usize, h: usize, font: &str) -> Option<(usize, usize)> {
     for &(sx, sy) in &[(6usize, 3usize), (4, 2), (2, 1), (1, 1)] {
-        if text_width(text, sx) <= w && GLYPH_H * sy <= h {
+        if text_width(text, sx, font) <= w && GLYPH_H * sy <= h {
             return Some((sx, sy));
         }
     }
@@ -86,7 +117,7 @@ fn pick_scale(text: &str, w: usize, h: usize) -> Option<(usize, usize)> {
 
 /// Big clock. Layout: block-digit time, then a date line beneath. Falls back
 /// to plain text when the area is too small for glyphs.
-pub fn render(f: &mut Frame, area: Rect, theme: &Theme, h24: bool) {
+pub fn render(f: &mut Frame, area: Rect, theme: &Theme, h24: bool, font: &str) {
     if area.height == 0 || area.width < 8 {
         return;
     }
@@ -110,10 +141,10 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, h24: bool) {
         )
     };
     let suffix = (!h24).then(|| now.format("%P").to_string());
-    let choice = pick_scale(&full, w, glyph_h_avail)
+    let choice = pick_scale(&full, w, glyph_h_avail, font)
         .map(|s| (full.clone(), s, None))
         .or_else(|| {
-            pick_scale(&short, w, glyph_h_avail)
+            pick_scale(&short, w, glyph_h_avail, font)
                 .map(|s| (short.clone(), s, Some(now.format("%S").to_string())))
         });
 
@@ -143,7 +174,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, h24: bool) {
         return;
     };
 
-    let mut lines = big_lines(&text, sx, sy, colon_on, theme);
+    let mut lines = big_lines(&text, sx, sy, colon_on, font, theme);
     // Small seconds (when dropped) and am/pm tag sit at the bottom-right of the glyphs.
     let mut tag = seconds.unwrap_or_default();
     if let Some(s) = &suffix {
@@ -162,7 +193,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, h24: bool) {
     }
     let block_h = lines.len() as u16 + 2; // blank + date
     let top = area.y + area.height.saturating_sub(block_h) / 2;
-    let glyph_w = text_width(&text, sx) as u16;
+    let glyph_w = text_width(&text, sx, font) as u16;
     let left = area.x + area.width.saturating_sub(glyph_w) / 2;
     let n = lines.len() as u16;
     f.render_widget(
@@ -189,14 +220,14 @@ mod tests {
     #[test]
     fn glyph_widths_and_scale_selection() {
         // 6 digits × 3 + 2 colons × 1 + 7 gaps = 27 cells at scale 1.
-        assert_eq!(text_width("12:34:56", 1), 27);
-        assert_eq!(text_width("12:34:56", 2), 54);
-        assert_eq!(pick_scale("12:34:56", 60, 5), Some((2, 1)));
-        assert_eq!(pick_scale("12:34:56", 120, 10), Some((4, 2)));
-        assert_eq!(pick_scale("12:34:56", 30, 5), Some((1, 1)));
-        assert_eq!(pick_scale("12:34:56", 20, 5), None);
+        assert_eq!(text_width("12:34:56", 1, "standard"), 27);
+        assert_eq!(text_width("12:34:56", 2, "standard"), 54);
+        assert_eq!(pick_scale("12:34:56", 60, 5, "standard"), Some((2, 1)));
+        assert_eq!(pick_scale("12:34:56", 120, 10, "standard"), Some((4, 2)));
+        assert_eq!(pick_scale("12:34:56", 30, 5, "standard"), Some((1, 1)));
+        assert_eq!(pick_scale("12:34:56", 20, 5, "standard"), None);
         for c in "0123456789:".chars() {
-            assert!(glyph(c).iter().all(|row| row.len() == glyph(c)[0].len()));
+            assert!(glyph(c, "standard").iter().all(|row| row.len() == glyph(c, "standard")[0].len()));
         }
     }
 }

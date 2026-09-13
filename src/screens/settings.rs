@@ -19,6 +19,7 @@ fn centered(area: Rect, w: u16, h: u16) -> Rect {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum SettingType {
+    ClockFont,
     Theme,
     GaugeStyle,
     GraphStyle,
@@ -45,6 +46,7 @@ pub const SETTINGS_ITEMS: &[(SettingType, &str)] = &[
     (SettingType::GaugeStyle, "Gauge Style"),
     (SettingType::GraphStyle, "Graph Style"),
     (SettingType::Visualizer, "Visualizer"),
+    (SettingType::ClockFont, "Clock Font"),
     (SettingType::RefreshRate, "Refresh Rate (s)"),
     (SettingType::Fps, "FPS"),
     (SettingType::Clock24h, "24h Clock"),
@@ -100,6 +102,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
             SettingType::GaugeStyle => app.config.ui.gauge_style.clone(),
             SettingType::GraphStyle => app.config.ui.graph_style.clone(),
             SettingType::Visualizer => app.config.ui.visualizer.clone(),
+            SettingType::ClockFont => app.config.ui.clock_font.clone(),
             SettingType::RefreshRate => format!("{:.1}", app.config.ui.refresh_rate),
             SettingType::Fps => app.config.ui.fps.to_string(),
             SettingType::Clock24h => if app.config.ui.clock_24h { "yes".to_string() } else { "no".to_string() },
@@ -211,6 +214,11 @@ fn change_setting(app: &mut App, forward: bool) {
             let cur = app.config.ui.fps;
             let next = if forward { cur + 5 } else { cur.saturating_sub(5) };
             app.config.ui.fps = next.clamp(5, 120);
+        }
+        SettingType::ClockFont => {
+            let fonts = ["standard", "rounded", "digital"];
+            let pos = fonts.iter().position(|&x| x == app.config.ui.clock_font).unwrap_or(0);
+            app.config.ui.clock_font = if forward { fonts[(pos + 1) % fonts.len()].to_string() } else { fonts[(pos + fonts.len() - 1) % fonts.len()].to_string() };
         }
         SettingType::Clock24h => app.config.ui.clock_24h = !app.config.ui.clock_24h,
         SettingType::WidgetCpu => app.config.widgets.cpu = !app.config.widgets.cpu,

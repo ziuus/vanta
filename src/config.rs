@@ -24,6 +24,8 @@ pub struct UiConfig {
     pub startup_mode: String,
     /// 24-hour clock (false = 12-hour with am/pm).
     pub clock_24h: bool,
+    /// Clock font: standard | rounded | digital
+    pub clock_font: String,
     /// Visualizer style: bars | mirror | wave | peaks.
     pub visualizer: String,
     /// Gauge style: arc | bars | vertical.
@@ -40,6 +42,7 @@ impl Default for UiConfig {
             theme: "dark".to_string(),
             startup_mode: "dashboard".to_string(),
             clock_24h: true,
+            clock_font: "standard".to_string(),
             visualizer: "bars".to_string(),
             gauge_style: "arc".to_string(),
             graph_style: "block".to_string(),

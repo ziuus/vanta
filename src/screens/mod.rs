@@ -96,7 +96,7 @@ pub fn render_panel(f: &mut Frame, area: Rect, app: &crate::app::App, id: crate:
         P::Storage => disk::render_storage(f, inner, theme),
         P::Network => network::render(f, inner, theme),
         P::Gpu => gpu::render(f, inner, theme),
-        P::Clock => clock::render(f, inner, theme, app.config.ui.clock_24h),
+        P::Clock => clock::render(f, inner, theme, app.config.ui.clock_24h, &app.config.ui.clock_font),
         P::Media => media::render(f, inner, theme),
         P::Visualizer => music_viz::render(f, inner, theme, app.frame),
         P::Status => status::render(f, inner, theme),

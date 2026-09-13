@@ -37,9 +37,9 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, _tick: u64) {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
-        .as_millis() as f32;
-    let A = now * 0.0012; // X rotation speed
-    let B = now * 0.0008; // Y rotation speed
+        .as_secs_f64();
+    let A = (now * 1.2) as f32; // X rotation speed
+    let B = (now * 0.8) as f32; // Y rotation speed
 
     let (sinA, cosA) = A.sin_cos();
     let (sinB, cosB) = B.sin_cos();

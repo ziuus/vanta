@@ -802,6 +802,7 @@ impl App {
                     hint("<>", "volume");
                     hint("v", "visualizer");
                     hint("T", "theme");
+                    hint("S", "settings");
                     hint("+/-", "refresh");
                 }
             }
