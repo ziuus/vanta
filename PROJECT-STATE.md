@@ -23,3 +23,14 @@
   - Allow users to define custom workspaces in `~/.config/vanta/config.toml`.
   - Allow users to map and position components (widgets) into custom grids/splits.
   - Support for adding external/custom components.
+
+## Aesthetics & Integration Epic (TUI Ecosystem)
+- Add ASCII images and video rendering capabilities.
+- Integrate aesthetic terminal screensavers / effects (e.g. cmatrix, cbonsai, nyancat, asciiquarium, pipes.sh).
+- Provide embedded or tight integration with tools like btop/bpytop, lazygit, eza/lsd, yt-dlp, and cava (audio visualization).
+
+## UI/UX Refinement
+- Improve calendar to match `lvsk` minimal aesthetic (clean typography, wk column, spacious layout).
+- Refine font weight / apparent size of Topbar and Processes (terminal fonts are fixed, but we can use lowercase/dimming to simulate smaller typography).
+- Donut spinner animation loop (fix static state).
+- In-workspace native editing of Agenda/Todo.
