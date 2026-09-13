@@ -8,6 +8,7 @@ pub mod weather;
 pub mod tasks;
 pub mod agenda;
 pub mod news;
+pub mod obsidian;
 pub mod processes;
 pub mod system_info;
 
@@ -93,6 +94,8 @@ pub fn start(interval: Duration) -> Arc<AtomicU64> {
     agenda::start();
     let url = crate::config::Config::load().widgets.news_feed;
     news::start(url);
+    let vault = crate::config::Config::load().ui.obsidian_vault;
+    obsidian::start(vault);
     handle
 }
 

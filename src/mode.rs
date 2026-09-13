@@ -9,6 +9,7 @@ pub enum DashboardMode {
     Monitor,
     /// Pure eye candy: clock, calendar, visualizer, matrix rain, 3D demo.
     Aesthetic,
+    Obsidian,
 }
 
 impl DashboardMode {
@@ -17,6 +18,7 @@ impl DashboardMode {
             Self::Dashboard => "Dashboard",
             Self::Monitor => "Monitor",
             Self::Aesthetic => "Aesthetic",
+            Self::Obsidian => "Obsidian",
         }
     }
 
@@ -28,6 +30,7 @@ impl DashboardMode {
             "dashboard" => Self::Dashboard,
             "monitor" => Self::Monitor,
             "aesthetic" => Self::Aesthetic,
+            "obsidian" => Self::Obsidian,
             // Legacy names → nearest page
             "processes" => Self::Monitor,
             "media" => Self::Aesthetic,
@@ -40,6 +43,7 @@ impl DashboardMode {
             Self::Dashboard => "dashboard",
             Self::Monitor => "monitor",
             Self::Aesthetic => "aesthetic",
+            Self::Obsidian => "obsidian",
         }
     }
 
@@ -49,6 +53,7 @@ impl DashboardMode {
             Self::Dashboard => '1',
             Self::Monitor => '2',
             Self::Aesthetic => '3',
+            Self::Obsidian => '4',
         }
     }
 }

@@ -2,6 +2,7 @@ pub mod aesthetic;
 pub mod dashboard;
 pub mod help;
 pub mod settings;
+pub mod obsidian;
 pub mod monitor;
 
 use ratatui::layout::{Alignment, Rect};

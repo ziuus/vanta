@@ -100,6 +100,7 @@ impl PanelId {
                 (PanelId::System, true),
                 (PanelId::Processes, true),
             ],
+            DashboardMode::Obsidian => vec![],
             DashboardMode::Aesthetic => vec![
                 (PanelId::Clock, true),
                 (PanelId::Calendar, true),
@@ -164,6 +165,8 @@ pub struct PanelStates {
     pub process_search_active: bool,
     pub process_tree_mode: bool,
     pub process_compact_cmd: bool,
+    pub obsidian_scroll: usize,
+    pub obsidian_selected: usize,
     pub process_selected_pid: Option<u32>,
     pub process_collapsed: HashSet<u32>,
 }
@@ -179,6 +182,8 @@ impl Default for PanelStates {
             process_search_active: false,
             process_tree_mode: false,
             process_compact_cmd: true,
+            obsidian_scroll: 0,
+            obsidian_selected: 0,
             process_selected_pid: None,
             process_collapsed: HashSet::new(),
         }
@@ -352,6 +357,7 @@ impl App {
             KeyCode::Char('1') => self.set_mode(DashboardMode::Dashboard),
             KeyCode::Char('2') => self.set_mode(DashboardMode::Monitor),
             KeyCode::Char('3') => self.set_mode(DashboardMode::Aesthetic),
+            KeyCode::Char('4') => self.set_mode(DashboardMode::Obsidian),
             KeyCode::Char('T') => self.cycle_theme(),
             KeyCode::Char('v') | KeyCode::Char('V') => {
                 music_viz::cycle_style();
@@ -432,6 +438,18 @@ impl App {
                 | KeyCode::Char('k')
                 | KeyCode::Char('K')
         );
+        if self.mode == DashboardMode::Obsidian {
+            match key {
+                KeyCode::Up | KeyCode::Char('k') => {
+                    self.panel_states.obsidian_selected = self.panel_states.obsidian_selected.saturating_sub(1);
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    self.panel_states.obsidian_selected = self.panel_states.obsidian_selected.saturating_add(1);
+                }
+                _ => {}
+            }
+        }
+        
         if self.mode == DashboardMode::Monitor && process_hotkey {
             self.focused_panel = Some(PanelId::Processes);
         }
@@ -619,6 +637,7 @@ impl App {
             (None, DashboardMode::Dashboard) => screens::dashboard::render(f, main, self),
             (None, DashboardMode::Monitor) => screens::monitor::render(f, main, self),
             (None, DashboardMode::Aesthetic) => screens::aesthetic::render(f, main, self),
+            (None, DashboardMode::Obsidian) => screens::obsidian::render(f, main, self),
         }
 
         self.render_status(f, status_bar);
@@ -721,6 +740,7 @@ impl App {
             DashboardMode::Dashboard,
             DashboardMode::Monitor,
             DashboardMode::Aesthetic,
+            DashboardMode::Obsidian,
         ] {
             let style = if m == self.mode {
                 Style::default()

@@ -22,6 +22,7 @@ pub struct UiConfig {
     pub fps: u32,
     pub theme: String,
     pub startup_mode: String,
+    pub obsidian_vault: String,
     /// 24-hour clock (false = 12-hour with am/pm).
     pub clock_24h: bool,
     /// Clock font: standard | rounded | digital
@@ -44,6 +45,7 @@ impl Default for UiConfig {
             fps: 30,
             theme: "dark".to_string(),
             startup_mode: "dashboard".to_string(),
+            obsidian_vault: "~/Documents/Obsidian".to_string(),
             clock_24h: true,
             clock_font: "standard".to_string(),
             clock_style: "solid".to_string(),
