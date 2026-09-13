@@ -73,6 +73,8 @@ pub struct WidgetConfig {
     pub weather: bool,
     pub tasks: bool,
     pub agenda: bool,
+    pub news: bool,
+    pub news_feed: String,
 }
 
 impl Default for WidgetConfig {
@@ -93,6 +95,8 @@ impl Default for WidgetConfig {
             weather: true,
             tasks: true,
             agenda: true,
+            news: true,
+            news_feed: "https://news.ycombinator.com/rss".to_string(),
         }
     }
 }

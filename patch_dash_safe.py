@@ -1,7 +1,6 @@
 import re
 with open("src/screens/dashboard.rs", "r") as f: content = f.read()
 
-# Replace middle col layout
 new_layout = """            Constraint::Min(6),                                // TOP PROCESSES
             Constraint::Length(if cfg.tasks { 10 } else { 0 }),    // TASKS
             Constraint::Length(if cfg.agenda { 8 } else { 0 }),   // AGENDA
@@ -9,27 +8,7 @@ new_layout = """            Constraint::Min(6),                                /
         ]).spacing(1)"""
 content = re.sub(r'            Constraint::Min\(6\),                                // TOP PROCESSES\n        \]\)\.spacing\(1\)', new_layout, content, count=1)
 
-# Add rendering at the end of middle col processing
-new_rendering = """        if cfg.processes {
-            let inner = panel(f, rows[3], "processes", theme, focus(PanelId::Processes));
-            let ps = &app.process_state;
-            crate::monitors::processes::render(
-                f,
-                inner,
-                theme,
-                ps.process_scroll_offset,
-                ps.process_sort_field,
-                ps.process_sort_asc,
-                &ps.process_search,
-                ps.process_search_active,
-                ps.process_tree_mode,
-                &ps.process_collapsed,
-                ps.process_selected_pid,
-                ps.process_compact_cmd,
-            );
-        }
-
-        if cfg.tasks {
+render_tasks = """        if cfg.tasks {
             let snap = crate::monitors::tasks::snapshot();
             let open = snap.tasks.iter().filter(|t| !t.completed).count();
             let tasks_rt = format!(" {} open ", open);
@@ -52,5 +31,6 @@ new_rendering = """        if cfg.processes {
             crate::widgets::news::render(f, inner, theme);
         }
     }"""
-content = re.sub(r'        if cfg.processes \{.*?crate::monitors::processes::render\(\n                f,\n                inner,\n                theme,\n                ps.process_scroll_offset,\n                ps.process_sort_field,\n                ps.process_sort_asc,\n                &ps.process_search,\n                ps.process_search_active,\n                ps.process_tree_mode,\n                &ps.process_collapsed,\n                ps.process_selected_pid,\n                ps.process_compact_cmd,\n            \);\n        \}\n    \}', new_rendering, content, flags=re.DOTALL)
+content = re.sub(r'            crate::monitors::processes::render\(\n                f,\n                inner,\n                theme,\n                ps\.process_scroll_offset,\n                ps\.process_sort_field,\n                ps\.process_sort_asc,\n                &ps\.process_search,\n                ps\.process_search_active,\n                ps\.process_tree_mode,\n                &ps\.process_collapsed,\n                ps\.process_selected_pid,\n                ps\.process_compact_cmd,\n            \);\n        \}\n    \}', r'            crate::monitors::processes::render(\n                f,\n                inner,\n                theme,\n                ps.process_scroll_offset,\n                ps.process_sort_field,\n                ps.process_sort_asc,\n                &ps.process_search,\n                ps.process_search_active,\n                ps.process_tree_mode,\n                &ps.process_collapsed,\n                ps.process_selected_pid,\n                ps.process_compact_cmd,\n            );\n        }\n\n' + render_tasks, content, count=1)
+
 with open("src/screens/dashboard.rs", "w") as f: f.write(content)

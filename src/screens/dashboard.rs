@@ -125,6 +125,9 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
             Constraint::Length(if cfg.media { 6 } else { 0 }), // MEDIA
             Constraint::Length(if cfg.music_viz { 9 } else { 0 }), // VISUALIZER
             Constraint::Min(6),                                // TOP PROCESSES
+            Constraint::Length(if cfg.tasks { 10 } else { 0 }),    // TASKS
+            Constraint::Length(if cfg.agenda { 8 } else { 0 }),   // AGENDA
+            Constraint::Length(if cfg.news { 8 } else { 0 }),      // NEWS
         ]).spacing(1)
         .split(cols[1]);
 

@@ -132,6 +132,7 @@ pub fn render_panel(f: &mut Frame, area: Rect, app: &crate::app::App, id: crate:
         P::Weather => crate::widgets::weather::render(f, inner, theme),
         P::Tasks => crate::widgets::tasks::render(f, inner, theme),
         P::Agenda => crate::widgets::agenda::render(f, inner, theme),
+        P::News => crate::widgets::news::render(f, inner, theme),
         P::Processes => {
             let ps = &app.panel_states;
             crate::monitors::processes::render(
