@@ -14,21 +14,47 @@ use crate::theme::Theme;
 
 /// Panel chrome shared by every page: rounded border, small-caps title,
 /// accent highlight when focused. Returns the inner area.
-pub fn panel(f: &mut Frame, area: Rect, title: &str, theme: &Theme, focused: bool) -> Rect {
+pub fn panel_full(
+    f: &mut Frame,
+    area: Rect,
+    title: &str,
+    right_title: Option<&str>,
+    footer: Option<&str>,
+    theme: &Theme,
+    focused: bool,
+) -> Rect {
     let (border, text) = if focused {
         (theme.accent, theme.accent)
     } else {
         (theme.surface, theme.dim)
     };
+    
     let title_style = Style::default().fg(text).add_modifier(Modifier::BOLD);
-    let block = Block::default()
+    let mut block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(border))
-        .title(Span::styled(format!(" {} ", title), title_style));
+        .title_top(Line::from(Span::styled(format!(" {} ", title), title_style)));
+
+    if let Some(rt) = right_title {
+        let rt_style = Style::default().fg(theme.dim);
+        block = block.title_top(Line::from(Span::styled(format!(" {} ", rt), rt_style)).alignment(Alignment::Right));
+    }
+    
+    if let Some(ft) = footer {
+        if focused {
+            let ft_style = Style::default().fg(theme.accent);
+            block = block.title_bottom(Line::from(Span::styled(format!(" {} ", ft), ft_style)).alignment(Alignment::Center));
+        }
+    }
+    
     let inner = block.inner(area);
     f.render_widget(block, area);
     inner
+}
+
+pub fn panel(f: &mut Frame, area: Rect, title: &str, theme: &Theme, focused: bool) -> Rect {
+    panel_full(f, area, title, None, None, theme, focused)
 }
 
 /// Centred notice for when a page can't fit. `need` is the page area; the

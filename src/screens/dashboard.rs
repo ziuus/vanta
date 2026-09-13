@@ -6,7 +6,7 @@ use ratatui::Frame;
 
 use crate::app::{App, PanelId};
 use crate::monitors::{cpu, disk, memory, network, processes, system_info};
-use crate::screens::{panel, too_small};
+use crate::screens::{panel, panel_full, too_small};
 use crate::widgets::{calendar, clock, gauge, matrix, media, meter, music_viz, status};
 
 const MIN: (u16, u16) = (96, 30);
@@ -104,7 +104,8 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
         gauge::render(f, inner, theme, &metrics);
 
         if cfg.cpu {
-            let inner = panel(f, rows[2], "cpu", theme, focus(PanelId::Cpu));
+            let cpu_rt = format!(" {:.1}% ", sum.cpu_pct);
+            let inner = panel_full(f, rows[2], "cpu", Some(&cpu_rt), None, theme, focus(PanelId::Cpu));
             cpu::render(f, inner, theme);
         } else {
             let inner = panel(f, rows[2], "matrix", theme, false);
@@ -139,13 +140,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
             let inner = panel(f, rows[2], "visualizer", theme, focus(PanelId::Visualizer));
             music_viz::render(f, inner, theme, app.frame);
         }
-        let inner = panel(
-            f,
-            rows[3],
-            "top processes",
-            theme,
-            focus(PanelId::Processes),
-        );
+        let inner = panel_full(f, rows[3], "top processes", None, Some("↑ ↓ scroll • k kill"), theme, focus(PanelId::Processes));
         if cfg.processes {
             render_top_procs(f, inner, theme);
         } else {
@@ -173,17 +168,20 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
         status::render(f, inner, theme);
 
         if cfg.weather {
-            let inner = panel(f, rows[1], "weather", theme, focus(PanelId::Weather));
+            let weather_rt = if crate::monitors::weather::snapshot().ready { format!(" {} ", crate::monitors::weather::snapshot().location) } else { " offline ".to_string() };
+            let inner = panel_full(f, rows[1], "weather", Some(&weather_rt), None, theme, focus(PanelId::Weather));
             crate::widgets::weather::render(f, inner, theme);
         }
 
         if mem_h > 0 {
-            let inner = panel(f, rows[2], "memory", theme, focus(PanelId::Memory));
+            let mem_rt = format!(" {:.1}% ", sum.mem_pct);
+            let inner = panel_full(f, rows[2], "memory", Some(&mem_rt), None, theme, focus(PanelId::Memory));
             memory::render(f, inner, theme);
         }
 
         if cfg.network {
-            let inner = panel(f, rows[3], "network", theme, focus(PanelId::Network));
+            let net_rt = format!(" ↓{:.0} ↑{:.0} kb/s ", sum.rx_kbps, sum.tx_kbps);
+            let inner = panel_full(f, rows[3], "network", Some(&net_rt), None, theme, focus(PanelId::Network));
             network::render(f, inner, theme);
         } else {
             let inner = panel(f, rows[3], "matrix", theme, false);
@@ -191,7 +189,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
         }
 
         if cfg.calendar {
-            let inner = panel(f, rows[4], "calendar", theme, focus(PanelId::Calendar));
+            let inner = panel_full(f, rows[4], "calendar", None, Some("← → month"), theme, focus(PanelId::Calendar));
             calendar::render(f, inner, theme, app.panel_states.calendar_month_offset);
         }
     }

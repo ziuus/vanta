@@ -2,7 +2,7 @@ use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::Frame;
 
 use crate::app::{App, PanelId};
-use crate::screens::{panel, too_small};
+use crate::screens::{panel, panel_full, too_small};
 use crate::widgets::{calendar, clock, matrix, music_viz, video};
 
 const MIN: (u16, u16) = (70, 24);
@@ -35,7 +35,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
     let top = Layout::horizontal([Constraint::Ratio(3, 5), Constraint::Ratio(2, 5)]).split(rows[0]);
     let inner = panel(f, top[0], "clock", theme, focus(PanelId::Clock));
     clock::render(f, inner, theme, app.config.ui.clock_24h, &app.config.ui.clock_font, &app.config.ui.clock_style);
-    let inner = panel(f, top[1], "calendar", theme, focus(PanelId::Calendar));
+    let inner = panel_full(f, top[1], "calendar", None, Some("← → month"), theme, focus(PanelId::Calendar));
     calendar::render(f, inner, theme, app.panel_states.calendar_month_offset);
 
     match (cfg.matrix, cfg.video) {

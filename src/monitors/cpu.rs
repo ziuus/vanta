@@ -9,7 +9,7 @@ use ratatui::Frame;
 
 use crate::monitors::history::History;
 use crate::theme::Theme;
-use crate::widgets::block_graph::BlockGraph;
+use ratatui::widgets::Sparkline;
 use crate::widgets::meter;
 
 #[derive(Clone, Default)]
@@ -142,10 +142,12 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
     f.render_widget(Paragraph::new(Line::from(header)), chunks[0]);
 
     let hist = HISTORY.lock().unwrap().recent(chunks[1].width as usize);
+    let hist_u64: Vec<u64> = hist.iter().map(|&v| v as u64).collect();
     f.render_widget(
-        BlockGraph::new(&hist)
-            .max(100.0)
-            .colors(theme.accent, theme.yellow, theme.red),
+        Sparkline::default()
+            .data(&hist_u64)
+            .max(100)
+            .style(Style::default().fg(theme.accent)),
         chunks[1],
     );
 
