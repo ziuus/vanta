@@ -29,13 +29,13 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
         Constraint::Length(clock_h),
         Constraint::Min(6),
         Constraint::Length(viz_h),
-    ])
+    ]).spacing(1)
     .split(area);
 
-    let top = Layout::horizontal([Constraint::Ratio(3, 5), Constraint::Ratio(2, 5)]).split(rows[0]);
+    let top = Layout::horizontal([Constraint::Ratio(3, 5), Constraint::Ratio(2, 5)]).spacing(1).split(rows[0]);
     let inner = panel(f, top[0], "clock", theme, focus(PanelId::Clock));
     clock::render(f, inner, theme, app.config.ui.clock_24h, &app.config.ui.clock_font, &app.config.ui.clock_style);
-    let inner = panel_full(f, top[1], "calendar", None, Some("← → month"), theme, focus(PanelId::Calendar));
+    let inner = panel_full(f, top[1], "calendar", None, None, theme, focus(PanelId::Calendar));
     calendar::render(f, inner, theme, app.panel_states.calendar_month_offset);
 
     match (cfg.matrix, cfg.video) {
@@ -44,7 +44,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
                 Constraint::Ratio(1, 4),
                 Constraint::Ratio(1, 2),
                 Constraint::Ratio(1, 4),
-            ])
+            ]).spacing(1)
             .split(rows[1]);
             let inner = panel(f, mid[0], "matrix", theme, focus(PanelId::Matrix));
             matrix::render(f, inner, theme);

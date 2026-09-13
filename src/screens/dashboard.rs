@@ -40,13 +40,13 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
     };
 
     let [main_area, custom_area] =
-        Layout::vertical([Constraint::Min(0), Constraint::Length(custom_row_h)]).areas(area);
+        Layout::vertical([Constraint::Min(0), Constraint::Length(custom_row_h)]).spacing(1).areas(area);
 
     let cols = Layout::horizontal([
         Constraint::Ratio(1, 3),
         Constraint::Ratio(1, 3),
         Constraint::Ratio(1, 3),
-    ])
+    ]).spacing(1)
     .split(main_area);
 
     // ── LEFT: hardware ─────────────────────────────────────────
@@ -57,7 +57,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
             Constraint::Length(gauge::H as u16 + 2),                   // GAUGES
             Constraint::Min(8),                                        // CPU
             Constraint::Length(if cfg.disk { mounts + 2 } else { 0 }), // STORAGE
-        ])
+        ]).spacing(1)
         .split(cols[0]);
 
         let inner = panel(f, rows[0], "system", theme, focus(PanelId::System));
@@ -125,7 +125,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
             Constraint::Length(if cfg.media { 6 } else { 0 }), // MEDIA
             Constraint::Length(if cfg.music_viz { 9 } else { 0 }), // VISUALIZER
             Constraint::Min(6),                                // TOP PROCESSES
-        ])
+        ]).spacing(1)
         .split(cols[1]);
 
         if cfg.clock {
@@ -140,7 +140,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
             let inner = panel(f, rows[2], "visualizer", theme, focus(PanelId::Visualizer));
             music_viz::render(f, inner, theme, app.frame);
         }
-        let inner = panel_full(f, rows[3], "top processes", None, Some("↑ ↓ scroll • k kill"), theme, focus(PanelId::Processes));
+        let inner = panel_full(f, rows[3], "top processes", None, None, theme, focus(PanelId::Processes));
         if cfg.processes {
             render_top_procs(f, inner, theme);
         } else {
@@ -161,7 +161,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
             Constraint::Length(mem_h),                             // MEMORY (tall terminals)
             Constraint::Min(8),                                    // NETWORK
             Constraint::Length(if cfg.calendar { 11 } else { 0 }), // CALENDAR
-        ])
+        ]).spacing(1)
         .split(cols[2]);
 
         let inner = panel(f, rows[0], "status", theme, focus(PanelId::Status));
@@ -189,7 +189,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
         }
 
         if cfg.calendar {
-            let inner = panel_full(f, rows[4], "calendar", None, Some("← → month"), theme, focus(PanelId::Calendar));
+            let inner = panel_full(f, rows[4], "calendar", None, None, theme, focus(PanelId::Calendar));
             calendar::render(f, inner, theme, app.panel_states.calendar_month_offset);
         }
     }
@@ -213,7 +213,7 @@ fn render_custom_row(f: &mut Frame, area: Rect, app: &App, n_custom: usize) {
 
     // Equal-width columns.
     let constraints: Vec<Constraint> = (0..n).map(|_| Constraint::Ratio(1, n as u32)).collect();
-    let cols = Layout::horizontal(constraints).split(area);
+    let cols = Layout::horizontal(constraints).spacing(1).split(area);
 
     // Iterate over enabled widgets (same order as in for_mode()).
     let mut slot = 0usize;
