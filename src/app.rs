@@ -69,6 +69,7 @@ pub enum PanelId {
     Agenda,
     News,
     WriterNotes,
+    Files,
     /// A user-defined custom widget at the given index in `CustomWidgetManager`.
     Custom(usize),
 }
@@ -106,6 +107,7 @@ impl PanelId {
                 (PanelId::Tasks, w.tasks),
                 (PanelId::Agenda, w.agenda),
                 (PanelId::WriterNotes, true),
+                (PanelId::Files, true),
             ],
             DashboardMode::Aesthetic => vec![
                 (PanelId::Clock, true),
@@ -157,6 +159,7 @@ impl PanelId {
             &PanelId::Agenda => "agenda",
             &PanelId::News => "news",
             &PanelId::WriterNotes => "notes",
+            &PanelId::Files => "files",
         }
     }
 }
@@ -174,6 +177,7 @@ pub struct PanelStates {
     pub process_compact_cmd: bool,
     pub writer_scroll: usize,
     pub writer_selected: usize,
+    pub files_selected: usize,
     pub process_selected_pid: Option<u32>,
     pub process_collapsed: HashSet<u32>,
 }
@@ -191,6 +195,7 @@ impl Default for PanelStates {
             process_compact_cmd: true,
             writer_scroll: 0,
             writer_selected: 0,
+            files_selected: 0,
             process_selected_pid: None,
             process_collapsed: HashSet::new(),
         }
@@ -446,13 +451,49 @@ impl App {
                 | KeyCode::Char('K')
         );
         if self.mode == DashboardMode::Writer {
-            match key {
-                KeyCode::Up | KeyCode::Char('k') => {
-                    self.panel_states.writer_selected = self.panel_states.writer_selected.saturating_sub(1);
-                }
-                KeyCode::Down | KeyCode::Char('j') => {
-                    self.panel_states.writer_selected = self.panel_states.writer_selected.saturating_add(1);
-                }
+            match self.focused_panel {
+                Some(PanelId::WriterNotes) => match key {
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        self.panel_states.writer_selected = self.panel_states.writer_selected.saturating_sub(1);
+                    }
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        self.panel_states.writer_selected = self.panel_states.writer_selected.saturating_add(1);
+                    }
+                    _ => {}
+                },
+                Some(PanelId::Files) => match key {
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        self.panel_states.files_selected = self.panel_states.files_selected.saturating_sub(1);
+                        let snap = crate::monitors::files::snapshot();
+                        if let Some(item) = snap.items.get(self.panel_states.files_selected) {
+                            crate::monitors::files::update_preview(&item.path);
+                        }
+                    }
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        self.panel_states.files_selected = self.panel_states.files_selected.saturating_add(1);
+                        let snap = crate::monitors::files::snapshot();
+                        if let Some(item) = snap.items.get(self.panel_states.files_selected) {
+                            crate::monitors::files::update_preview(&item.path);
+                        }
+                    }
+                    KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => {
+                        let snap = crate::monitors::files::snapshot();
+                        if let Some(item) = snap.items.get(self.panel_states.files_selected) {
+                            if item.is_dir {
+                                crate::monitors::files::chdir(&item.path);
+                                self.panel_states.files_selected = 0;
+                            }
+                        }
+                    }
+                    KeyCode::Backspace | KeyCode::Left | KeyCode::Char('h') => {
+                        let snap = crate::monitors::files::snapshot();
+                        if let Some(parent) = snap.current_dir.parent() {
+                            crate::monitors::files::chdir(parent);
+                            self.panel_states.files_selected = 0;
+                        }
+                    }
+                    _ => {}
+                },
                 _ => {}
             }
         }

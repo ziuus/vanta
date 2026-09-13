@@ -6,7 +6,7 @@ use ratatui::Frame;
 
 use crate::app::{App, PanelId};
 use crate::monitors::obsidian;
-use crate::screens::panel_full;
+use crate::screens::{panel, panel_full};
 
 pub fn render(f: &mut Frame, area: Rect, app: &mut App) {
     let snap = obsidian::snapshot();
@@ -17,16 +17,22 @@ pub fn render(f: &mut Frame, area: Rect, app: &mut App) {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
-            Constraint::Percentage(25), // Productivity (Tasks, Agenda, News)
-            Constraint::Percentage(25), // Notes List
-            Constraint::Percentage(50), // Notes Content
+            Constraint::Percentage(25), // Productivity
+            Constraint::Percentage(75), // Notes + Files
         ])
         .spacing(2)
         .split(area);
 
     let prod_area = chunks[0];
-    let list_area = chunks[1];
-    let content_area = chunks[2];
+    let right_area = chunks[1];
+
+    let right_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(right_area);
+
+    let notes_area = right_chunks[0];
+    let files_area = right_chunks[1];
 
     // Left Productivity Column
     let rows = Layout::vertical([
@@ -58,13 +64,18 @@ pub fn render(f: &mut Frame, area: Rect, app: &mut App) {
         crate::widgets::news::render(f, inner, theme);
     }
 
-    // Middle Notes List Column
-    let mut list_lines = Vec::new();
-    list_lines.push(Line::from(vec![
-        Span::styled(" RECENT NOTES", Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)),
-    ]));
-    list_lines.push(Line::from(""));
+    // Top Right: Notes
+    let notes_inner = panel(f, notes_area, "obsidian (meraldian)", theme, focus(PanelId::WriterNotes));
+    let note_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(33), Constraint::Percentage(67)])
+        .spacing(1)
+        .split(notes_inner);
 
+    let list_area = note_chunks[0];
+    let content_area = note_chunks[1];
+
+    let mut list_lines = Vec::new();
     let num_notes = snap.notes.len();
     if num_notes == 0 {
         list_lines.push(Line::from(vec![
@@ -87,19 +98,17 @@ pub fn render(f: &mut Frame, area: Rect, app: &mut App) {
                     Span::styled(&note.title, Style::default().fg(theme.dim)),
                 ]));
             }
-            list_lines.push(Line::from(""));
         }
     }
 
-    let is_focused = focus(PanelId::WriterNotes);
-    let border_color = if is_focused { theme.accent } else { theme.surface };
+    let is_notes_focused = focus(PanelId::WriterNotes);
+    let border_color = if is_notes_focused { theme.accent } else { theme.surface };
     f.render_widget(
         Paragraph::new(list_lines)
             .block(Block::default().borders(Borders::RIGHT).border_style(Style::default().fg(border_color))),
         list_area,
     );
 
-    // Right Content Column
     let mut content_lines = Vec::new();
     if num_notes > 0 {
         let selected = app.panel_states.writer_selected;
@@ -117,4 +126,9 @@ pub fn render(f: &mut Frame, area: Rect, app: &mut App) {
         Paragraph::new(content_lines).wrap(Wrap { trim: false }),
         content_area,
     );
+
+    // Bottom Right: Files (Yazi)
+    let files_inner = panel(f, files_area, "yazi (file manager)", theme, focus(PanelId::Files));
+    let files_focused = focus(PanelId::Files);
+    crate::widgets::files::render(f, files_inner, theme, files_focused, &mut app.panel_states.files_selected);
 }

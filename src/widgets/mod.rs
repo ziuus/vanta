@@ -13,3 +13,4 @@ pub mod weather;
 pub mod tasks;
 pub mod agenda;
 pub mod news;
+pub mod files;
