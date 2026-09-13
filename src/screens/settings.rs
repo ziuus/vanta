@@ -36,6 +36,7 @@ pub enum SettingType {
     WidgetMusicViz,
     WidgetProcesses,
     WidgetMedia,
+    WidgetMatrix,
     WidgetVideo,
 }
 
@@ -57,6 +58,7 @@ pub const SETTINGS_ITEMS: &[(SettingType, &str)] = &[
     (SettingType::WidgetMusicViz, "Show Visualizer"),
     (SettingType::WidgetProcesses, "Show Processes"),
     (SettingType::WidgetMedia, "Show Media"),
+    (SettingType::WidgetMatrix, "Show Matrix"),
     (SettingType::WidgetVideo, "Show Video"),
 ];
 
@@ -111,6 +113,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
             SettingType::WidgetMusicViz => if app.config.widgets.music_viz { "on".to_string() } else { "off".to_string() },
             SettingType::WidgetProcesses => if app.config.widgets.processes { "on".to_string() } else { "off".to_string() },
             SettingType::WidgetMedia => if app.config.widgets.media { "on".to_string() } else { "off".to_string() },
+            SettingType::WidgetMatrix => if app.config.widgets.matrix { "on".to_string() } else { "off".to_string() },
             SettingType::WidgetVideo => if app.config.widgets.video { "on".to_string() } else { "off".to_string() },
         };
         
@@ -175,7 +178,7 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyCode) {
         }
         Left | Char('h') => change_setting(app, false),
         Right | Char('l') | Enter => change_setting(app, true),
-        Esc | Char('q') | Char('S') | Char(',') => app.show_settings = false,
+        Esc | Char('q') | Char('S') => app.show_settings = false,
         _ => {}
     }
 }
@@ -220,6 +223,7 @@ fn change_setting(app: &mut App, forward: bool) {
         SettingType::WidgetMusicViz => app.config.widgets.music_viz = !app.config.widgets.music_viz,
         SettingType::WidgetProcesses => app.config.widgets.processes = !app.config.widgets.processes,
         SettingType::WidgetMedia => app.config.widgets.media = !app.config.widgets.media,
+        SettingType::WidgetMatrix => app.config.widgets.matrix = !app.config.widgets.matrix,
         SettingType::WidgetVideo => app.config.widgets.video = !app.config.widgets.video,
     }
     app.config.save();

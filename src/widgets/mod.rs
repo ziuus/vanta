@@ -3,6 +3,7 @@ pub mod braille_image;
 pub mod calendar;
 pub mod clock;
 pub mod gauge;
+pub mod matrix;
 pub mod media;
 pub mod meter;
 pub mod music_viz;
