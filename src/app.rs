@@ -542,6 +542,26 @@ impl App {
         let path = match self.focused_panel {
             Some(PanelId::Tasks) => Some(crate::monitors::tasks::get_todo_file()),
             Some(PanelId::Agenda) => Some(crate::monitors::agenda::get_agenda_file()),
+            Some(PanelId::WriterNotes) => {
+                let snap = crate::monitors::obsidian::snapshot();
+                if snap.notes.is_empty() {
+                    None
+                } else {
+                    let max_idx = snap.notes.len().saturating_sub(1);
+                    let sel = self.panel_states.writer_selected.min(max_idx);
+                    Some(snap.notes[sel].path.clone())
+                }
+            }
+            Some(PanelId::Files) => {
+                let snap = crate::monitors::files::snapshot();
+                if snap.items.is_empty() {
+                    None
+                } else {
+                    let max_idx = snap.items.len().saturating_sub(1);
+                    let sel = self.panel_states.files_selected.min(max_idx);
+                    Some(snap.items[sel].path.clone())
+                }
+            }
             _ => None,
         };
 
@@ -550,8 +570,9 @@ impl App {
             let _ = crossterm::terminal::disable_raw_mode();
             let _ = std::process::Command::new(editor).arg(p).status();
             let _ = crossterm::terminal::enable_raw_mode();
-            // Clear screen to avoid tearing
             let _ = std::process::Command::new("clear").status();
+            
+            // Trigger an immediate rescan of the workspace panels to reflect edits.
         }
     }
 

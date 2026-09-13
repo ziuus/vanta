@@ -179,7 +179,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
 
     if let Some((ssid, sig)) = &fx.wifi {
         lines.push(Line::from(vec![
-            key("WIFI"),
+            key("wifi"),
             val(ssid.clone(), theme.accent),
             Span::styled(
                 format!("{} {}%", signal_bars(*sig), sig),
@@ -189,13 +189,13 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
     }
     if let Some(ip) = &fx.ip {
         lines.push(Line::from(vec![
-            key("IP"),
+            key("ip"),
             val_unbounded(ip.clone(), theme.text),
         ]));
     }
     if let Some(n) = fx.packages {
         let upd = fx.updates.unwrap_or(0);
-        let mut spans = vec![key("PKGS"), val(n.to_string(), theme.text)];
+        let mut spans = vec![key("pkgs"), val(n.to_string(), theme.text)];
         if upd > 0 {
             spans.push(Span::styled(
                 format!("{} updates", upd),
@@ -208,7 +208,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
     }
     if let Some((run_n, all_n)) = fx.docker {
         lines.push(Line::from(vec![
-            key("DOCKER"),
+            key("docker"),
             val(format!("{}/{}", run_n, all_n), theme.text),
             Span::styled("running", Style::default().fg(theme.dim)),
         ]));
@@ -225,7 +225,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
             theme.accent
         };
         lines.push(Line::from(vec![
-            key("LOAD"),
+            key("load"),
             val(format!("{:.2} {:.2} {:.2}", one, five, fifteen), col),
             Span::styled(
                 format!("/{}", cores as usize),
@@ -233,7 +233,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
             ),
         ]));
         lines.push(Line::from(vec![
-            key("PROCS"),
+            key("procs"),
             val_unbounded(crate::monitors::processes::count().to_string(), theme.text),
         ]));
     }
@@ -247,7 +247,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
             theme.red
         };
         let mut spans = vec![
-            key("BAT"),
+            key("bat"),
             val(
                 format!("{}%{}", b.pct, if b.charging { " ⚡" } else { "" }),
                 col,
@@ -288,7 +288,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
             t_str.push_str(" …");
         }
         lines.push(Line::from(vec![
-            key("TEMPS"),
+            key("temps"),
             val_unbounded(t_str, theme.temp(max)),
         ]));
     }

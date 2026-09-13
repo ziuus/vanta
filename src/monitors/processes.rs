@@ -519,16 +519,16 @@ pub fn render(
         Span::styled(s, if on { hs_on } else { hs })
     };
     let mut hdr = vec![
-        h("PID", c_pid, Some(SortField::Pid), true),
+        h("pid", c_pid, Some(SortField::Pid), true),
         Span::styled(" ", hs),
         h(
-            if tree_mode { "NAME ⌥tree" } else { "NAME" },
+            if tree_mode { "name ⌥tree" } else { "name" },
             c_name,
             Some(SortField::Name),
             false,
         ),
         Span::styled(" ", hs),
-        h("CPU%", c_cpu, Some(SortField::Cpu), true),
+        h("cpu%", c_cpu, Some(SortField::Cpu), true),
         Span::styled(" ", hs),
         h("MEM%", c_mem, Some(SortField::Mem), true),
         Span::styled(" ", hs),
@@ -536,15 +536,15 @@ pub fn render(
         Span::styled(" ", hs),
         h("S", c_st, None, true),
         Span::styled(" ", hs),
-        h("USER", c_usr, None, true),
+        h("user", c_usr, None, true),
         Span::styled(" ", hs),
         h("THR", c_thr, None, true),
     ];
     if show_io {
         hdr.push(Span::styled(" ", hs));
-        hdr.push(h("R/s", 6, None, true));
+        hdr.push(h("r/s", 6, None, true));
         hdr.push(Span::styled(" ", hs));
-        hdr.push(h("W/s", 6, None, true));
+        hdr.push(h("w/s", 6, None, true));
     }
     if c_cmd > 4 {
         hdr.push(Span::styled(" ", hs));

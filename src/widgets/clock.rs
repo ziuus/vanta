@@ -63,7 +63,7 @@ fn glyph(c: char, font: &str) -> [&'static str; GLYPH_H] {
 /// `sx`-wide gap between glyphs.
 fn text_width(text: &str, sx: usize, font: &str) -> usize {
     let glyphs = text.chars().count();
-    let cells: usize = text.chars().map(|c| glyph(c, font)[0].len()).sum();
+    let cells: usize = text.chars().map(|c| glyph(c, "standard")[0].len()).sum();
     (cells + glyphs.saturating_sub(1)) * sx
 }
 
@@ -92,7 +92,7 @@ fn big_lines(
                 spans.push(Span::raw(" ".repeat(sx)));
             }
             let style = if c == ':' { colon } else { digit };
-            for px in glyph(c, font)[row].chars() {
+            for px in glyph(c, "standard")[row].chars() {
                 let cell = if px == '#' {
                     match clock_style {
                         "dotted" => "⣿",
@@ -296,9 +296,9 @@ mod tests {
         assert_eq!(pick_scale("12:34:56", 30, 5, "standard"), Some((1, 1)));
         assert_eq!(pick_scale("12:34:56", 20, 5, "standard"), None);
         for c in "0123456789:".chars() {
-            assert!(glyph(c, font)
+            assert!(glyph(c, "standard")
                 .iter()
-                .all(|row| row.len() == glyph(c, font)[0].len()));
+                .all(|row| row.len() == glyph(c, "standard")[0].len()));
         }
     }
 }

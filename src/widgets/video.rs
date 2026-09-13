@@ -1,4 +1,4 @@
-use std::time::{SystemTime, UNIX_EPOCH};
+
 
 use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Color, Style};
@@ -34,10 +34,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, _tick: u64) {
     let mut b_buffer = vec![' '; width * height];
     let mut c_buffer = vec![theme.accent; width * height];
 
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs_f64();
+    let now = (_tick as f64) / 30.0;
     let A = (now * 1.2) as f32; // X rotation speed
     let B = (now * 0.8) as f32; // Y rotation speed
 
