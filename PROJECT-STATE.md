@@ -15,3 +15,11 @@
 ## Next Steps
 - Revisit Calendar and Weather widgets if the user desires left-aligned instead of center-aligned text to minimize edge padding.
 - Monitor NPM package usage (v0.4.0 recently pushed via CI).
+
+## Major Epic: Dynamic Layout Engine
+- **Goal**: Maximum customizability for the end user.
+- **Features Planned**:
+  - Migrate from hardcoded `src/screens` to a data-driven layout engine.
+  - Allow users to define custom workspaces in `~/.config/vanta/config.toml`.
+  - Allow users to map and position components (widgets) into custom grids/splits.
+  - Support for adding external/custom components.
