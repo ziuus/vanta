@@ -2,7 +2,7 @@ pub mod aesthetic;
 pub mod dashboard;
 pub mod help;
 pub mod settings;
-pub mod obsidian;
+pub mod writer;
 pub mod monitor;
 
 use ratatui::layout::{Alignment, Rect};
@@ -134,6 +134,7 @@ pub fn render_panel(f: &mut Frame, area: Rect, app: &crate::app::App, id: crate:
         P::Tasks => crate::widgets::tasks::render(f, inner, theme),
         P::Agenda => crate::widgets::agenda::render(f, inner, theme),
         P::News => crate::widgets::news::render(f, inner, theme),
+        P::WriterNotes => {}
         P::Processes => {
             let ps = &app.panel_states;
             crate::monitors::processes::render(

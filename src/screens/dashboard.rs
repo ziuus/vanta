@@ -40,13 +40,13 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
     };
 
     let [main_area, custom_area] =
-        Layout::vertical([Constraint::Min(0), Constraint::Length(custom_row_h)]).spacing(1).areas(area);
+        Layout::vertical([Constraint::Min(0), Constraint::Length(custom_row_h)]).areas(area);
 
     let cols = Layout::horizontal([
         Constraint::Ratio(1, 3),
         Constraint::Ratio(1, 3),
         Constraint::Ratio(1, 3),
-    ]).spacing(1)
+    ])
     .split(main_area);
 
     // ── LEFT: hardware ─────────────────────────────────────────
@@ -57,8 +57,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
             Constraint::Length(gauge::H as u16 + 2),                   // GAUGES
             Constraint::Min(8),                                        // CPU
             Constraint::Length(if cfg.disk { mounts + 2 } else { 0 }), // STORAGE
-            Constraint::Length(if cfg.calendar { 11 } else { 0 }),     // CALENDAR (moved)
-        ]).spacing(1)
+        ])
         .split(cols[0]);
 
         let inner = panel(f, rows[0], "system", theme, focus(PanelId::System));
@@ -117,27 +116,21 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
             let inner = panel(f, rows[3], "storage", theme, focus(PanelId::Storage));
             disk::render_storage(f, inner, theme);
         }
-        if cfg.calendar {
-            let inner = panel_full(f, rows[4], "calendar", None, None, theme, focus(PanelId::Calendar));
-            calendar::render(f, inner, theme, app.panel_states.calendar_month_offset);
-        }
     }
 
     // ── CENTER: ambient ────────────────────────────────────────
     {
         let rows = Layout::vertical([
-            Constraint::Length(if cfg.clock { if app.config.ui.timezones.is_empty() { 9 } else { 9 + app.config.ui.timezones.len() as u16 + 2 } } else { 0 }), // CLOCK
+            Constraint::Length(if cfg.clock { 9 } else { 0 }), // CLOCK: 5 glyph + gap + date
             Constraint::Length(if cfg.media { 6 } else { 0 }), // MEDIA
             Constraint::Length(if cfg.music_viz { 9 } else { 0 }), // VISUALIZER
-            Constraint::Length(if cfg.tasks { 10 } else { 0 }),    // TASKS
-            Constraint::Length(if cfg.news { 8 } else { 0 }),      // NEWS
-            Constraint::Min(4),                                // TOP PROCESSES
-        ]).spacing(1)
+            Constraint::Min(6),                                // TOP PROCESSES
+        ])
         .split(cols[1]);
 
         if cfg.clock {
             let inner = panel(f, rows[0], "clock", theme, focus(PanelId::Clock));
-            clock::render(f, inner, theme, app.config.ui.clock_24h, &app.config.ui.clock_font, &app.config.ui.clock_style, &app.config.ui.timezones);
+            clock::render(f, inner, theme, app.config.ui.clock_24h, &app.config.ui.clock_font, &app.config.ui.clock_style, &[]);
         }
         if cfg.media {
             let inner = panel(f, rows[1], "now playing", theme, focus(PanelId::Media));
@@ -147,7 +140,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
             let inner = panel(f, rows[2], "visualizer", theme, focus(PanelId::Visualizer));
             music_viz::render(f, inner, theme, app.frame);
         }
-        let inner = panel_full(f, rows[3], "top processes", None, None, theme, focus(PanelId::Processes));
+        let inner = panel_full(f, rows[3], "top processes", None, Some("↑ ↓ scroll • k kill"), theme, focus(PanelId::Processes));
         if cfg.processes {
             render_top_procs(f, inner, theme);
         } else {
@@ -157,14 +150,18 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
 
     // ── RIGHT: environment ─────────────────────────────────────
     {
-        let mem_h = if cfg.memory { 7 } else { 0 };
+        let mem_h = if cfg.memory && main_area.height >= 42 {
+            7
+        } else {
+            0
+        };
         let rows = Layout::vertical([
             Constraint::Length(9),                                 // STATUS
             Constraint::Length(if cfg.weather { 9 } else { 0 }),   // WEATHER
-            Constraint::Length(if cfg.agenda { 10 } else { 0 }),   // AGENDA (moved here)
-            Constraint::Min(mem_h),                                // MEMORY
-            Constraint::Min(6),                                    // NETWORK
-        ]).spacing(1)
+            Constraint::Length(mem_h),                             // MEMORY (tall terminals)
+            Constraint::Min(8),                                    // NETWORK
+            Constraint::Length(if cfg.calendar { 11 } else { 0 }), // CALENDAR
+        ])
         .split(cols[2]);
 
         let inner = panel(f, rows[0], "status", theme, focus(PanelId::Status));
@@ -175,28 +172,25 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
             let inner = panel_full(f, rows[1], "weather", Some(&weather_rt), None, theme, focus(PanelId::Weather));
             crate::widgets::weather::render(f, inner, theme);
         }
-        
-        if cfg.agenda {
-            let snap = crate::monitors::agenda::snapshot();
-            let count = snap.events.len();
-            let agenda_rt = if count == 0 { " no events ".to_string() } else { format!(" {} upcoming ", count) };
-            let inner = panel_full(f, rows[2], "agenda", Some(&agenda_rt), None, theme, focus(PanelId::Agenda));
-            crate::widgets::agenda::render(f, inner, theme);
-        }
 
         if mem_h > 0 {
             let mem_rt = format!(" {:.1}% ", sum.mem_pct);
-            let inner = panel_full(f, rows[3], "memory", Some(&mem_rt), None, theme, focus(PanelId::Memory));
+            let inner = panel_full(f, rows[2], "memory", Some(&mem_rt), None, theme, focus(PanelId::Memory));
             memory::render(f, inner, theme);
         }
 
         if cfg.network {
             let net_rt = format!(" ↓{:.0} ↑{:.0} kb/s ", sum.rx_kbps, sum.tx_kbps);
-            let inner = panel_full(f, rows[4], "network", Some(&net_rt), None, theme, focus(PanelId::Network));
+            let inner = panel_full(f, rows[3], "network", Some(&net_rt), None, theme, focus(PanelId::Network));
             network::render(f, inner, theme);
         } else {
-            let inner = panel(f, rows[4], "matrix", theme, false);
+            let inner = panel(f, rows[3], "matrix", theme, false);
             matrix::render(f, inner, theme);
+        }
+
+        if cfg.calendar {
+            let inner = panel_full(f, rows[4], "calendar", None, Some("← → month"), theme, focus(PanelId::Calendar));
+            calendar::render(f, inner, theme, app.panel_states.calendar_month_offset);
         }
     }
 
@@ -219,7 +213,7 @@ fn render_custom_row(f: &mut Frame, area: Rect, app: &App, n_custom: usize) {
 
     // Equal-width columns.
     let constraints: Vec<Constraint> = (0..n).map(|_| Constraint::Ratio(1, n as u32)).collect();
-    let cols = Layout::horizontal(constraints).spacing(1).split(area);
+    let cols = Layout::horizontal(constraints).split(area);
 
     // Iterate over enabled widgets (same order as in for_mode()).
     let mut slot = 0usize;
