@@ -34,7 +34,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
 
     let top = Layout::horizontal([Constraint::Ratio(3, 5), Constraint::Ratio(2, 5)]).spacing(1).split(rows[0]);
     let inner = panel(f, top[0], "clock", theme, focus(PanelId::Clock));
-    clock::render(f, inner, theme, app.config.ui.clock_24h, &app.config.ui.clock_font, &app.config.ui.clock_style);
+    clock::render(f, inner, theme, app.config.ui.clock_24h, &app.config.ui.clock_font, &app.config.ui.clock_style, &app.config.ui.timezones);
     let inner = panel_full(f, top[1], "calendar", None, None, theme, focus(PanelId::Calendar));
     calendar::render(f, inner, theme, app.panel_states.calendar_month_offset);
 

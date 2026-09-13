@@ -121,7 +121,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
     // ── CENTER: ambient ────────────────────────────────────────
     {
         let rows = Layout::vertical([
-            Constraint::Length(if cfg.clock { 9 } else { 0 }), // CLOCK: 5 glyph + gap + date
+            Constraint::Length(if cfg.clock { if app.config.ui.timezones.is_empty() { 9 } else { 9 + app.config.ui.timezones.len() as u16 + 2 } } else { 0 }), // CLOCK
             Constraint::Length(if cfg.media { 6 } else { 0 }), // MEDIA
             Constraint::Length(if cfg.music_viz { 9 } else { 0 }), // VISUALIZER
             Constraint::Min(6),                                // TOP PROCESSES
@@ -130,7 +130,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
 
         if cfg.clock {
             let inner = panel(f, rows[0], "clock", theme, focus(PanelId::Clock));
-            clock::render(f, inner, theme, app.config.ui.clock_24h, &app.config.ui.clock_font, &app.config.ui.clock_style);
+            clock::render(f, inner, theme, app.config.ui.clock_24h, &app.config.ui.clock_font, &app.config.ui.clock_style, &app.config.ui.timezones);
         }
         if cfg.media {
             let inner = panel(f, rows[1], "now playing", theme, focus(PanelId::Media));

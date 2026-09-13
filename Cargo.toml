@@ -21,6 +21,7 @@ dbus = "0.9"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
 ureq = { version = "3.4.1", features = ["json"] }
 serde_json = "1.0.151"
+chrono-tz = "0.10.4"
 
 [profile.release]
 opt-level = 3

@@ -28,6 +28,7 @@ pub struct UiConfig {
     pub clock_font: String,
     /// Clock style (fill): solid | dotted | hollow
     pub clock_style: String,
+    pub timezones: Vec<String>,
     /// Visualizer style: bars | mirror | wave | peaks.
     pub visualizer: String,
     /// Gauge style: arc | bars | vertical.
@@ -46,6 +47,7 @@ impl Default for UiConfig {
             clock_24h: true,
             clock_font: "standard".to_string(),
             clock_style: "solid".to_string(),
+            timezones: vec!["UTC".to_string(), "America/New_York".to_string(), "Asia/Tokyo".to_string()],
             visualizer: "bars".to_string(),
             gauge_style: "arc".to_string(),
             graph_style: "block".to_string(),
