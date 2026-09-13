@@ -1,13 +1,13 @@
 use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Paragraph, Block, Borders};
+use ratatui::widgets::{Block, Borders, Paragraph};
 use ratatui::Frame;
 
 use chrono::Local;
 
-use crate::theme::Theme;
 use crate::monitors::agenda;
+use crate::theme::Theme;
 
 pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
     if area.height < 3 || area.width < 20 {
@@ -18,12 +18,14 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
     let mut lines = Vec::new();
 
     if snap.events.is_empty() {
-        lines.push(Line::from(vec![
-            Span::styled(" No upcoming events.", Style::default().fg(theme.dim)),
-        ]));
-        lines.push(Line::from(vec![
-            Span::styled(" Sync ~/.config/vanta/agenda.ics", Style::default().fg(theme.dim)),
-        ]));
+        lines.push(Line::from(vec![Span::styled(
+            " No upcoming events.",
+            Style::default().fg(theme.dim),
+        )]));
+        lines.push(Line::from(vec![Span::styled(
+            " Sync ~/.config/vanta/agenda.ics",
+            Style::default().fg(theme.dim),
+        )]));
     } else {
         // Table header
         lines.push(Line::from(vec![
@@ -34,11 +36,12 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
         lines.push(Line::from(vec![])); // empty line for spaciousness
 
         let display_count = (area.height.saturating_sub(2) / 2) as usize; // double spacing
-        
+
         let now = Local::now();
 
         for event in snap.events.iter().take(display_count) {
-            let is_active = event.start_time <= now && event.end_time.unwrap_or(event.start_time) >= now;
+            let is_active =
+                event.start_time <= now && event.end_time.unwrap_or(event.start_time) >= now;
             let time_str = if is_active {
                 "NOW".to_string()
             } else {
@@ -69,9 +72,12 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
             lines.push(Line::from(vec![
                 Span::styled(format!("  {}", time_str), Style::default().fg(time_color)),
                 Span::raw(" ".repeat(pad)),
-                Span::styled(format!("{} ", event.summary), Style::default().fg(title_color)),
+                Span::styled(
+                    format!("{} ", event.summary),
+                    Style::default().fg(title_color),
+                ),
             ]));
-            
+
             lines.push(Line::from(vec![])); // double spaced
         }
     }

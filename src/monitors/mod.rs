@@ -1,17 +1,17 @@
+pub mod agenda;
 pub mod cpu;
 pub mod disk;
+pub mod files;
 pub mod gpu;
 pub mod history;
 pub mod memory;
 pub mod network;
-pub mod weather;
-pub mod tasks;
-pub mod agenda;
 pub mod news;
 pub mod obsidian;
-pub mod files;
 pub mod processes;
 pub mod system_info;
+pub mod tasks;
+pub mod weather;
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
@@ -97,7 +97,11 @@ pub fn start(interval: Duration) -> Arc<AtomicU64> {
     news::start(url);
     let vault = crate::config::Config::load().ui.obsidian_vault;
     obsidian::start(vault);
-    crate::monitors::files::init(&std::path::PathBuf::from("."));
+    let mut home = std::path::PathBuf::from(".");
+    if let Ok(h) = std::env::var("HOME") {
+        home = std::path::PathBuf::from(h);
+    }
+    crate::monitors::files::init(&home);
     handle
 }
 

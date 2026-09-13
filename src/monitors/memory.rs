@@ -75,10 +75,7 @@ fn row<'a>(label: &'a str, used: u64, total: u64, pct: f64, width: u16, theme: &
         Span::styled(format!("{}  ", stats), Style::default().fg(theme.text)),
         Span::styled(on, Style::default().fg(c)),
         Span::styled(off, Style::default().fg(theme.surface)),
-        Span::styled(
-            format!(" {}", pct_str),
-            Style::default().fg(c),
-        ),
+        Span::styled(format!(" {}", pct_str), Style::default().fg(c)),
     ])
 }
 

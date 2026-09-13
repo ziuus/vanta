@@ -1,5 +1,5 @@
-use std::sync::{LazyLock, Mutex};
 use std::path::PathBuf;
+use std::sync::{LazyLock, Mutex};
 use std::time::SystemTime;
 
 #[derive(Clone)]
@@ -26,7 +26,8 @@ pub struct ObsidianSnapshot {
     pub notes: Vec<Note>,
 }
 
-static SNAP: LazyLock<Mutex<ObsidianSnapshot>> = LazyLock::new(|| Mutex::new(ObsidianSnapshot::default()));
+static SNAP: LazyLock<Mutex<ObsidianSnapshot>> =
+    LazyLock::new(|| Mutex::new(ObsidianSnapshot::default()));
 
 pub fn snapshot() -> ObsidianSnapshot {
     SNAP.lock().unwrap().clone()
@@ -40,12 +41,12 @@ pub fn start(vault_path_str: String) {
                 vault_path = PathBuf::from(home).join(&vault_path_str[2..]);
             }
         }
-        
+
         let mut notes = Vec::new();
-        
+
         let mut dirs = vec![vault_path];
         let mut depth = 0;
-        
+
         while !dirs.is_empty() && depth < 4 {
             let mut next_dirs = Vec::new();
             for dir in dirs {
@@ -60,10 +61,19 @@ pub fn start(vault_path_str: String) {
                                 }
                             } else if entry.path().extension().is_some_and(|e| e == "md") {
                                 let path = entry.path();
-                                let title = path.file_stem().unwrap_or_default().to_string_lossy().into_owned();
+                                let title = path
+                                    .file_stem()
+                                    .unwrap_or_default()
+                                    .to_string_lossy()
+                                    .into_owned();
                                 let modified = meta.modified().unwrap_or(SystemTime::UNIX_EPOCH);
                                 let content = std::fs::read_to_string(&path).unwrap_or_default();
-                                notes.push(Note { path, title, modified, content });
+                                notes.push(Note {
+                                    path,
+                                    title,
+                                    modified,
+                                    content,
+                                });
                             }
                         }
                     }
@@ -75,9 +85,9 @@ pub fn start(vault_path_str: String) {
 
         notes.sort_by(|a, b| b.modified.cmp(&a.modified));
         notes.truncate(50);
-        
+
         *SNAP.lock().unwrap() = ObsidianSnapshot { notes };
-        
+
         std::thread::sleep(std::time::Duration::from_secs(5));
     });
 }

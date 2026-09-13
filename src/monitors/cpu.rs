@@ -9,8 +9,8 @@ use ratatui::Frame;
 
 use crate::monitors::history::History;
 use crate::theme::Theme;
-use ratatui::widgets::Sparkline;
 use crate::widgets::meter;
+use ratatui::widgets::Sparkline;
 
 #[derive(Clone, Default)]
 pub struct CpuSnapshot {
@@ -109,10 +109,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
 
     let color = theme.usage(snap.usage as f64);
     let mut header = vec![
-        Span::styled(
-            format!("{:>3.0}%", snap.usage),
-            Style::default().fg(color),
-        ),
+        Span::styled(format!("{:>3.0}%", snap.usage), Style::default().fg(color)),
         Span::styled(
             format!(
                 "  load {:.2} {:.2} {:.2}",

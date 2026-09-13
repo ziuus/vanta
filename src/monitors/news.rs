@@ -1,7 +1,7 @@
-use std::sync::{LazyLock, Mutex};
-use rss::Channel;
 use chrono::{DateTime, Utc};
+use rss::Channel;
 use std::io::BufReader;
+use std::sync::{LazyLock, Mutex};
 
 #[derive(Clone, Default)]
 pub struct NewsItem {
@@ -30,10 +30,16 @@ pub fn start(feed_url: String) {
                 let mut items = Vec::new();
                 for item in channel.items().iter().take(10) {
                     let title = item.title().unwrap_or("No Title").to_string();
-                    let published_at = item.pub_date().and_then(|d| DateTime::parse_from_rfc2822(d).ok()).map(|d| d.with_timezone(&Utc));
-                    items.push(NewsItem { title, published_at });
+                    let published_at = item
+                        .pub_date()
+                        .and_then(|d| DateTime::parse_from_rfc2822(d).ok())
+                        .map(|d| d.with_timezone(&Utc));
+                    items.push(NewsItem {
+                        title,
+                        published_at,
+                    });
                 }
-                
+
                 *SNAP.lock().unwrap() = NewsSnapshot {
                     channel_title: channel.title().to_string(),
                     items,

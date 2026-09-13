@@ -9,8 +9,8 @@ use ratatui::Frame;
 
 use crate::monitors::history::History;
 use crate::theme::Theme;
-use ratatui::widgets::Sparkline;
 use crate::widgets::meter;
+use ratatui::widgets::Sparkline;
 
 const HIST: usize = 240;
 

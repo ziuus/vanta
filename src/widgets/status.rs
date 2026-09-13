@@ -167,11 +167,13 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
 
     let key = |k: &str| Span::styled(format!("{:<8}", k), Style::default().fg(theme.dim));
     let val = |v: String, c: ratatui::style::Color| {
-        Span::styled(format!("{:<14}", crate::widgets::meter::ellipsize(&v, 14)), Style::default().fg(c))
+        Span::styled(
+            format!("{:<14}", crate::widgets::meter::ellipsize(&v, 14)),
+            Style::default().fg(c),
+        )
     };
-    let val_unbounded = |v: String, c: ratatui::style::Color| {
-        Span::styled(v, Style::default().fg(c))
-    };
+    let val_unbounded =
+        |v: String, c: ratatui::style::Color| Span::styled(v, Style::default().fg(c));
 
     let mut lines: Vec<Line> = Vec::new();
 
@@ -186,7 +188,10 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
         ]));
     }
     if let Some(ip) = &fx.ip {
-        lines.push(Line::from(vec![key("IP"), val_unbounded(ip.clone(), theme.text)]));
+        lines.push(Line::from(vec![
+            key("IP"),
+            val_unbounded(ip.clone(), theme.text),
+        ]));
     }
     if let Some(n) = fx.packages {
         let upd = fx.updates.unwrap_or(0);
@@ -282,7 +287,10 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
         if cpu.temps.len() > limit {
             t_str.push_str(" …");
         }
-        lines.push(Line::from(vec![key("TEMPS"), val_unbounded(t_str, theme.temp(max))]));
+        lines.push(Line::from(vec![
+            key("TEMPS"),
+            val_unbounded(t_str, theme.temp(max)),
+        ]));
     }
 
     if lines.is_empty() {

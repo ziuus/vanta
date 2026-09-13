@@ -265,7 +265,11 @@ fn circle_family_bitmap(radius: f64, thickness: f64, cutouts: &[(f64, f64, f64)]
                             }
                         }
                     }
-                    if hit { 'X' } else { ' ' }
+                    if hit {
+                        'X'
+                    } else {
+                        ' '
+                    }
                 })
                 .collect::<String>()
         })
@@ -274,26 +278,21 @@ fn circle_family_bitmap(radius: f64, thickness: f64, cutouts: &[(f64, f64, f64)]
 
 fn ubuntu_bitmap() -> Vec<String> {
     // Ubuntu: 3 cutouts around the ring
-    circle_family_bitmap(11.0, 3.5, &[
-        (2.0, 11.5, 2.5),
-        (17.0, 3.0, 2.5),
-        (17.0, 20.0, 2.5),
-    ])
+    circle_family_bitmap(
+        11.0,
+        3.5,
+        &[(2.0, 11.5, 2.5), (17.0, 3.0, 2.5), (17.0, 20.0, 2.5)],
+    )
 }
 
 fn fedora_bitmap() -> Vec<String> {
     // Fedora: simple ring, we'll just make a partial cutout
-    circle_family_bitmap(10.5, 4.0, &[
-        (10.5, 11.5, 2.0),
-        (18.0, 11.5, 6.0),
-    ])
+    circle_family_bitmap(10.5, 4.0, &[(10.5, 11.5, 2.0), (18.0, 11.5, 6.0)])
 }
 
 fn opensuse_bitmap() -> Vec<String> {
     // OpenSUSE: ring with a top-right cutout for the lizard head
-    circle_family_bitmap(11.0, 3.0, &[
-        (16.0, 6.0, 4.0),
-    ])
+    circle_family_bitmap(11.0, 3.0, &[(16.0, 6.0, 4.0)])
 }
 
 fn static_bitmap(s: &str) -> Vec<String> {
@@ -304,7 +303,8 @@ fn static_bitmap(s: &str) -> Vec<String> {
 }
 
 fn debian_bitmap() -> Vec<String> {
-    static_bitmap("
+    static_bitmap(
+        "
                       
                       
           XXXX        
@@ -329,11 +329,13 @@ fn debian_bitmap() -> Vec<String> {
       XXXXXXXX        
                       
                       
-")
+",
+    )
 }
 
 fn nixos_bitmap() -> Vec<String> {
-    static_bitmap("
+    static_bitmap(
+        "
           XX  XX      
           XX  XX      
     XXXX  XX  XX  XXXX
@@ -358,11 +360,13 @@ fn nixos_bitmap() -> Vec<String> {
     XXXX  XX  XX  XXXX
           XX  XX      
           XX  XX      
-")
+",
+    )
 }
 
 fn gentoo_bitmap() -> Vec<String> {
-    static_bitmap("
+    static_bitmap(
+        "
                       
                       
         XXXXXX        
@@ -387,7 +391,8 @@ fn gentoo_bitmap() -> Vec<String> {
       XXXXXXXXXXXXXX  
                       
                       
-")
+",
+    )
 }
 
 /// Lines for a distro logo. Arch renders as smooth braille; the rest still use
@@ -491,10 +496,7 @@ pub fn render_neofetch(f: &mut Frame, area: Rect, theme: &Theme, sum: &Summary, 
             // Accent at the crown fading to secondary at the base: a flat fill
             // makes the art read as one undifferentiated blob.
             let col = crate::theme::blend(theme.accent, theme.secondary, i as f32 / n);
-            Line::from(Span::styled(
-                l.clone(),
-                Style::default().fg(col),
-            ))
+            Line::from(Span::styled(l.clone(), Style::default().fg(col)))
         }));
         f.render_widget(
             Paragraph::new(lines),
@@ -544,10 +546,7 @@ pub fn render_neofetch(f: &mut Frame, area: Rect, theme: &Theme, sum: &Summary, 
     for (k, v) in kv {
         rows.push(Line::from(vec![
             Span::styled(format!("{:<9} ", k), Style::default().fg(theme.dim)),
-            Span::styled(
-                meter::ellipsize(&v, max_v),
-                Style::default().fg(theme.text),
-            ),
+            Span::styled(meter::ellipsize(&v, max_v), Style::default().fg(theme.text)),
         ]));
     }
     f.render_widget(Paragraph::new(rows), kv_area);

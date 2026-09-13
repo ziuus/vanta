@@ -1,7 +1,7 @@
-use std::sync::{Arc, RwLock, OnceLock};
-use std::time::Duration;
-use std::thread;
 use serde::Deserialize;
+use std::sync::{Arc, OnceLock, RwLock};
+use std::thread;
+use std::time::Duration;
 
 #[derive(Clone, Default)]
 pub struct WeatherSnapshot {
@@ -69,7 +69,7 @@ pub fn start() {
                 "https://api.open-meteo.com/v1/forecast?latitude={}&longitude={}&current=temperature_2m,weather_code,is_day",
                 lat, lon
             );
-            
+
             if let Ok(res) = ureq::get(&url).call() {
                 if let Ok(text) = res.into_body().read_to_string() {
                     if let Ok(json) = serde_json::from_str::<OpenMeteoResp>(&text) {
@@ -82,7 +82,7 @@ pub fn start() {
                     }
                 }
             }
-            
+
             thread::sleep(Duration::from_secs(15 * 60));
         }
     });

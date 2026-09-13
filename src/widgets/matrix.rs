@@ -153,9 +153,7 @@ impl Widget for Rain<'_> {
                 let t = 1.0 - k as f32 / d.len as f32;
                 let t = t * t;
                 let style = if k == 0 {
-                    Style::default()
-                        .fg(self.theme.text)
-                        
+                    Style::default().fg(self.theme.text)
                 } else {
                     let mix = |a: f32, b: f32| (b + (a - b) * t) as u8;
                     Style::default().fg(Color::Rgb(mix(ar, br), mix(ag, bg), mix(ab, bb)))

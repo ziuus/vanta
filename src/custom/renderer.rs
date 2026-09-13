@@ -131,9 +131,7 @@ fn render_value(f: &mut Frame, area: Rect, raw: &str, cfg: &CustomWidgetConfig, 
     f.render_widget(
         Paragraph::new(Line::from(Span::styled(
             display,
-            Style::default()
-                .fg(theme.accent)
-                ,
+            Style::default().fg(theme.accent),
         )))
         .alignment(Alignment::Center),
         Rect::new(area.x, y, area.width, 1),

@@ -1,13 +1,13 @@
-use ratatui::layout::{Rect, Alignment};
+use ratatui::layout::{Alignment, Rect};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Paragraph, Block, Borders};
+use ratatui::widgets::{Block, Borders, Paragraph};
 use ratatui::Frame;
 
 use chrono::Utc;
 
-use crate::theme::Theme;
 use crate::monitors::news;
+use crate::theme::Theme;
 
 pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
     if area.height < 3 || area.width < 20 {
@@ -22,9 +22,10 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
         for _ in 0..top {
             lines.push(Line::from(""));
         }
-        lines.push(Line::from(vec![
-            Span::styled(" Fetching news...", Style::default().fg(theme.dim)),
-        ]));
+        lines.push(Line::from(vec![Span::styled(
+            " Fetching news...",
+            Style::default().fg(theme.dim),
+        )]));
         let paragraph = Paragraph::new(lines)
             .block(Block::default().borders(Borders::NONE))
             .alignment(Alignment::Center);
@@ -33,14 +34,15 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
     }
 
     if snap.items.is_empty() {
-        lines.push(Line::from(vec![
-            Span::styled(" No news available.", Style::default().fg(theme.dim)),
-        ]));
+        lines.push(Line::from(vec![Span::styled(
+            " No news available.",
+            Style::default().fg(theme.dim),
+        )]));
     } else {
         lines.push(Line::from(vec![])); // empty top line for spaciousness
 
-        let display_count = (area.height.saturating_sub(1) / 2).max(1).min(3) as usize; 
-        
+        let display_count = (area.height.saturating_sub(1) / 2).max(1).min(3) as usize;
+
         let now = Utc::now();
 
         for item in snap.items.iter().take(display_count) {
@@ -59,9 +61,13 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
 
             // Calculate max width for the title
             let marker = " • ";
-            let time_len = if time_str.is_empty() { 0 } else { time_str.len() + 3 }; // " (2h ago)"
+            let time_len = if time_str.is_empty() {
+                0
+            } else {
+                time_str.len() + 3
+            }; // " (2h ago)"
             let max_title_width = (area.width as usize).saturating_sub(marker.len() + time_len + 1);
-            
+
             let mut title = item.title.clone();
             if title.len() > max_title_width {
                 title.truncate(max_title_width.saturating_sub(3));
@@ -74,7 +80,10 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
             ];
 
             if !time_str.is_empty() {
-                spans.push(Span::styled(format!(" ({})", time_str), Style::default().fg(theme.dim)));
+                spans.push(Span::styled(
+                    format!(" ({})", time_str),
+                    Style::default().fg(theme.dim),
+                ));
             }
 
             lines.push(Line::from(spans));

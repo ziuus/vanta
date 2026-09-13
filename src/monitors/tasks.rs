@@ -16,7 +16,8 @@ pub struct TasksSnapshot {
     pub last_modified: u64,
 }
 
-static SNAP: LazyLock<Mutex<TasksSnapshot>> = LazyLock::new(|| Mutex::new(TasksSnapshot::default()));
+static SNAP: LazyLock<Mutex<TasksSnapshot>> =
+    LazyLock::new(|| Mutex::new(TasksSnapshot::default()));
 
 pub fn snapshot() -> TasksSnapshot {
     SNAP.lock().unwrap().clone()
@@ -37,7 +38,7 @@ pub fn get_todo_file() -> PathBuf {
 pub fn start() {
     std::thread::spawn(|| loop {
         let file_path = get_todo_file();
-        
+
         let modified = fs::metadata(&file_path)
             .and_then(|m| m.modified())
             .unwrap_or(SystemTime::now())
@@ -58,14 +59,25 @@ pub fn start() {
                 let mut tasks = Vec::new();
                 for line in content.lines() {
                     let line = line.trim();
-                    if line.starts_with("- [ ]") || line.starts_with("- [x]") || line.starts_with("- [X]") {
+                    if line.starts_with("- [ ]")
+                        || line.starts_with("- [x]")
+                        || line.starts_with("- [X]")
+                    {
                         let completed = line.contains("[x]") || line.contains("[X]");
                         let text = line[5..].trim().to_string();
-                        let urgent = text.contains("!") || text.contains("urgent") || text.contains("ASAP");
-                        tasks.push(Task { completed, text, urgent });
+                        let urgent =
+                            text.contains("!") || text.contains("urgent") || text.contains("ASAP");
+                        tasks.push(Task {
+                            completed,
+                            text,
+                            urgent,
+                        });
                     }
                 }
-                *SNAP.lock().unwrap() = TasksSnapshot { tasks, last_modified: modified };
+                *SNAP.lock().unwrap() = TasksSnapshot {
+                    tasks,
+                    last_modified: modified,
+                };
             }
         }
         std::thread::sleep(std::time::Duration::from_secs(2));

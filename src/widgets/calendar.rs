@@ -76,12 +76,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, month_offset: i32) {
     let head_pad = (CAL_W as usize).saturating_sub(title.len() + nav.len()) / 2;
     lines.push(Line::from(vec![
         Span::raw(" ".repeat(head_pad)),
-        Span::styled(
-            title,
-            Style::default()
-                .fg(title_col)
-                ,
-        ),
+        Span::styled(title, Style::default().fg(title_col)),
         Span::styled(nav, Style::default().fg(theme.dim)),
     ]));
     lines.push(Line::from(""));
@@ -111,10 +106,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, month_offset: i32) {
                 // Diamond marker + inverse fill, so today reads at a glance.
                 spans.push(Span::styled(
                     format!("{:>2}", day),
-                    Style::default()
-                        .fg(theme.bg)
-                        .bg(theme.accent)
-                        ,
+                    Style::default().fg(theme.bg).bg(theme.accent),
                 ));
                 spans.push(Span::styled("\u{25c6}", Style::default().fg(theme.accent)));
             } else {

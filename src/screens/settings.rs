@@ -83,11 +83,11 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
     ];
 
     let w = 54;
-    
+
     // Add settings items
     let start_idx = app.settings_scroll;
     let max_visible = 18; // approx max rows to fit
-    
+
     for (i, (stype, label)) in SETTINGS_ITEMS.iter().enumerate() {
         if i < start_idx || i >= start_idx + max_visible {
             continue;
@@ -98,7 +98,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
         } else {
             base
         };
-        
+
         let val_str = match stype {
             SettingType::Theme => app.config.ui.theme.clone(),
             SettingType::GaugeStyle => app.config.ui.gauge_style.clone(),
@@ -108,25 +108,103 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
             SettingType::ClockStyle => app.config.ui.clock_style.clone(),
             SettingType::RefreshRate => format!("{:.1}", app.config.ui.refresh_rate),
             SettingType::Fps => app.config.ui.fps.to_string(),
-            SettingType::Clock24h => if app.config.ui.clock_24h { "yes".to_string() } else { "no".to_string() },
-            SettingType::WidgetCpu => if app.config.widgets.cpu { "on".to_string() } else { "off".to_string() },
-            SettingType::WidgetMemory => if app.config.widgets.memory { "on".to_string() } else { "off".to_string() },
-            SettingType::WidgetDisk => if app.config.widgets.disk { "on".to_string() } else { "off".to_string() },
-            SettingType::WidgetNetwork => if app.config.widgets.network { "on".to_string() } else { "off".to_string() },
-            SettingType::WidgetGpu => if app.config.widgets.gpu { "on".to_string() } else { "off".to_string() },
-            SettingType::WidgetClock => if app.config.widgets.clock { "on".to_string() } else { "off".to_string() },
-            SettingType::WidgetCalendar => if app.config.widgets.calendar { "on".to_string() } else { "off".to_string() },
-            SettingType::WidgetMusicViz => if app.config.widgets.music_viz { "on".to_string() } else { "off".to_string() },
-            SettingType::WidgetProcesses => if app.config.widgets.processes { "on".to_string() } else { "off".to_string() },
-            SettingType::WidgetMedia => if app.config.widgets.media { "on".to_string() } else { "off".to_string() },
-            SettingType::WidgetMatrix => if app.config.widgets.matrix { "on".to_string() } else { "off".to_string() },
-            SettingType::WidgetVideo => if app.config.widgets.video { "on".to_string() } else { "off".to_string() },
+            SettingType::Clock24h => {
+                if app.config.ui.clock_24h {
+                    "yes".to_string()
+                } else {
+                    "no".to_string()
+                }
+            }
+            SettingType::WidgetCpu => {
+                if app.config.widgets.cpu {
+                    "on".to_string()
+                } else {
+                    "off".to_string()
+                }
+            }
+            SettingType::WidgetMemory => {
+                if app.config.widgets.memory {
+                    "on".to_string()
+                } else {
+                    "off".to_string()
+                }
+            }
+            SettingType::WidgetDisk => {
+                if app.config.widgets.disk {
+                    "on".to_string()
+                } else {
+                    "off".to_string()
+                }
+            }
+            SettingType::WidgetNetwork => {
+                if app.config.widgets.network {
+                    "on".to_string()
+                } else {
+                    "off".to_string()
+                }
+            }
+            SettingType::WidgetGpu => {
+                if app.config.widgets.gpu {
+                    "on".to_string()
+                } else {
+                    "off".to_string()
+                }
+            }
+            SettingType::WidgetClock => {
+                if app.config.widgets.clock {
+                    "on".to_string()
+                } else {
+                    "off".to_string()
+                }
+            }
+            SettingType::WidgetCalendar => {
+                if app.config.widgets.calendar {
+                    "on".to_string()
+                } else {
+                    "off".to_string()
+                }
+            }
+            SettingType::WidgetMusicViz => {
+                if app.config.widgets.music_viz {
+                    "on".to_string()
+                } else {
+                    "off".to_string()
+                }
+            }
+            SettingType::WidgetProcesses => {
+                if app.config.widgets.processes {
+                    "on".to_string()
+                } else {
+                    "off".to_string()
+                }
+            }
+            SettingType::WidgetMedia => {
+                if app.config.widgets.media {
+                    "on".to_string()
+                } else {
+                    "off".to_string()
+                }
+            }
+            SettingType::WidgetMatrix => {
+                if app.config.widgets.matrix {
+                    "on".to_string()
+                } else {
+                    "off".to_string()
+                }
+            }
+            SettingType::WidgetVideo => {
+                if app.config.widgets.video {
+                    "on".to_string()
+                } else {
+                    "off".to_string()
+                }
+            }
         };
-        
+
         let inner_w = (w - 2) as usize;
         let padding = inner_w.saturating_sub(label.len() + val_str.len() + 8);
         let pad_str = " ".repeat(padding);
-        
+
         lines.push(Line::from(vec![
             Span::styled(if is_selected { " > " } else { "   " }, line_style),
             Span::styled(format!("{} ", label), line_style),
@@ -145,9 +223,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
                 .border_style(Style::default().fg(theme.accent))
                 .title(Span::styled(
                     " settings ",
-                    Style::default()
-                        .fg(theme.accent)
-                        ,
+                    Style::default().fg(theme.accent),
                 ))
                 .style(base),
         ),
@@ -194,8 +270,8 @@ fn change_setting(app: &mut App, forward: bool) {
     match stype {
         SettingType::Theme => {
             app.cycle_theme();
-            // cycle_theme already saves and toasts, but we want modal to stay open 
-            // Theme cycling goes forward only via cycle_theme? 
+            // cycle_theme already saves and toasts, but we want modal to stay open
+            // Theme cycling goes forward only via cycle_theme?
             // Wait, we can implement backwards by iterating themes, but cycle_theme is sufficient
         }
         SettingType::GaugeStyle => {
@@ -215,18 +291,36 @@ fn change_setting(app: &mut App, forward: bool) {
         }
         SettingType::Fps => {
             let cur = app.config.ui.fps;
-            let next = if forward { cur + 5 } else { cur.saturating_sub(5) };
+            let next = if forward {
+                cur + 5
+            } else {
+                cur.saturating_sub(5)
+            };
             app.config.ui.fps = next.clamp(5, 120);
         }
         SettingType::ClockFont => {
             let fonts = ["standard", "rounded", "digital"];
-            let pos = fonts.iter().position(|&x| x == app.config.ui.clock_font).unwrap_or(0);
-            app.config.ui.clock_font = if forward { fonts[(pos + 1) % fonts.len()].to_string() } else { fonts[(pos + fonts.len() - 1) % fonts.len()].to_string() };
+            let pos = fonts
+                .iter()
+                .position(|&x| x == app.config.ui.clock_font)
+                .unwrap_or(0);
+            app.config.ui.clock_font = if forward {
+                fonts[(pos + 1) % fonts.len()].to_string()
+            } else {
+                fonts[(pos + fonts.len() - 1) % fonts.len()].to_string()
+            };
         }
         SettingType::ClockStyle => {
             let styles = ["solid", "dotted", "hollow"];
-            let pos = styles.iter().position(|&x| x == app.config.ui.clock_style).unwrap_or(0);
-            app.config.ui.clock_style = if forward { styles[(pos + 1) % styles.len()].to_string() } else { styles[(pos + styles.len() - 1) % styles.len()].to_string() };
+            let pos = styles
+                .iter()
+                .position(|&x| x == app.config.ui.clock_style)
+                .unwrap_or(0);
+            app.config.ui.clock_style = if forward {
+                styles[(pos + 1) % styles.len()].to_string()
+            } else {
+                styles[(pos + styles.len() - 1) % styles.len()].to_string()
+            };
         }
         SettingType::Clock24h => app.config.ui.clock_24h = !app.config.ui.clock_24h,
         SettingType::WidgetCpu => app.config.widgets.cpu = !app.config.widgets.cpu,
@@ -237,7 +331,9 @@ fn change_setting(app: &mut App, forward: bool) {
         SettingType::WidgetClock => app.config.widgets.clock = !app.config.widgets.clock,
         SettingType::WidgetCalendar => app.config.widgets.calendar = !app.config.widgets.calendar,
         SettingType::WidgetMusicViz => app.config.widgets.music_viz = !app.config.widgets.music_viz,
-        SettingType::WidgetProcesses => app.config.widgets.processes = !app.config.widgets.processes,
+        SettingType::WidgetProcesses => {
+            app.config.widgets.processes = !app.config.widgets.processes
+        }
         SettingType::WidgetMedia => app.config.widgets.media = !app.config.widgets.media,
         SettingType::WidgetMatrix => app.config.widgets.matrix = !app.config.widgets.matrix,
         SettingType::WidgetVideo => app.config.widgets.video = !app.config.widgets.video,

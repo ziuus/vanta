@@ -1,4 +1,4 @@
-use chrono::{Local, Utc, Timelike};
+use chrono::{Local, Timelike, Utc};
 use chrono_tz::Tz;
 use ratatui::layout::{Alignment, Rect};
 use ratatui::style::Style;
@@ -41,7 +41,8 @@ fn glyph(c: char, font: &str) -> [&'static str; GLYPH_H] {
             ':' => [" ", "#", " ", "#", " "],
             _ => ["   ", "   ", "   ", "   ", "   "],
         },
-        _ => match c { // standard
+        _ => match c {
+            // standard
             '0' => ["###", "# #", "# #", "# #", "###"],
             '1' => [" ##", "  #", "  #", "  #", "  #"],
             '2' => ["###", "  #", "###", "#  ", "###"],
@@ -54,7 +55,7 @@ fn glyph(c: char, font: &str) -> [&'static str; GLYPH_H] {
             '9' => ["###", "# #", "###", "  #", "###"],
             ':' => [" ", "#", " ", "#", " "],
             _ => ["   ", "   ", "   ", "   ", "   "],
-        }
+        },
     }
 }
 
@@ -77,9 +78,7 @@ fn big_lines(
     font: &str,
     theme: &Theme,
 ) -> Vec<Line<'static>> {
-    let digit = Style::default()
-        .fg(theme.accent)
-        ;
+    let digit = Style::default().fg(theme.accent);
     let colon = Style::default().fg(if colon_on {
         theme.accent
     } else {
@@ -100,7 +99,9 @@ fn big_lines(
                         "hollow" => "▒",
                         _ => "█",
                     }
-                } else { " " };
+                } else {
+                    " "
+                };
                 spans.push(Span::styled(cell.repeat(sx), style));
             }
         }
@@ -125,7 +126,15 @@ fn pick_scale(text: &str, w: usize, h: usize, font: &str) -> Option<(usize, usiz
 
 /// Big clock. Layout: block-digit time, then a date line beneath. Falls back
 /// to plain text when the area is too small for glyphs.
-pub fn render(f: &mut Frame, area: Rect, theme: &Theme, h24: bool, font: &str, style: &str, timezones: &[String]) {
+pub fn render(
+    f: &mut Frame,
+    area: Rect,
+    theme: &Theme,
+    h24: bool,
+    font: &str,
+    style: &str,
+    timezones: &[String],
+) {
     if area.height == 0 || area.width < 8 {
         return;
     }
@@ -135,7 +144,11 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, h24: bool, font: &str, s
 
     let w = area.width as usize;
     // Reserve a row for the date when there's room for glyphs + date.
-    let tz_height = if timezones.is_empty() { 0 } else { timezones.len() + 2 };
+    let tz_height = if timezones.is_empty() {
+        0
+    } else {
+        timezones.len() + 2
+    };
     let glyph_h_avail = (area.height as usize).saturating_sub(2 + tz_height);
 
     let (full, short) = if h24 {
@@ -163,9 +176,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, h24: bool, font: &str, s
         f.render_widget(
             Paragraph::new(Line::from(Span::styled(
                 full,
-                Style::default()
-                    .fg(theme.accent)
-                    ,
+                Style::default().fg(theme.accent),
             )))
             .alignment(Alignment::Center),
             Rect::new(area.x, top, area.width, 1),
@@ -220,7 +231,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, h24: bool, font: &str, s
             Rect::new(area.x, date_y, area.width, 1),
         );
     }
-    
+
     // Render timezones
     if !timezones.is_empty() && area.height >= date_y - area.y + 2 + timezones.len() as u16 {
         let mut tz_lines = Vec::new();
@@ -230,16 +241,27 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, h24: bool, font: &str, s
             Span::raw(" ".repeat(area.width.saturating_sub(12) as usize)),
             Span::styled("TIME", Style::default().fg(theme.dim)),
         ]));
-        
+
         for tz_str in timezones {
             if let Ok(tz) = tz_str.parse::<Tz>() {
                 let time_in_tz = Utc::now().with_timezone(&tz);
-                let time_fmt = if h24 { time_in_tz.format("%H:%M:%S") } else { time_in_tz.format("%I:%M:%S %p") };
-                let tz_name = if tz_str.len() > 15 { &tz_str[..15] } else { tz_str };
-                
+                let time_fmt = if h24 {
+                    time_in_tz.format("%H:%M:%S")
+                } else {
+                    time_in_tz.format("%I:%M:%S %p")
+                };
+                let tz_name = if tz_str.len() > 15 {
+                    &tz_str[..15]
+                } else {
+                    tz_str
+                };
+
                 let time_str = time_fmt.to_string();
-                let pad = area.width.saturating_sub((tz_name.len() + time_str.len()) as u16) as usize;
-                
+                let pad = area
+                    .width
+                    .saturating_sub((tz_name.len() + time_str.len()) as u16)
+                    as usize;
+
                 tz_lines.push(Line::from(vec![
                     Span::styled(tz_name, Style::default().fg(theme.text)),
                     Span::raw(" ".repeat(pad)),
@@ -247,10 +269,15 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, h24: bool, font: &str, s
                 ]));
             }
         }
-        
+
         f.render_widget(
             Paragraph::new(tz_lines),
-            Rect::new(area.x, date_y + 1, area.width, area.height.saturating_sub(date_y + 1 - area.y)),
+            Rect::new(
+                area.x,
+                date_y + 1,
+                area.width,
+                area.height.saturating_sub(date_y + 1 - area.y),
+            ),
         );
     }
 }
@@ -269,7 +296,9 @@ mod tests {
         assert_eq!(pick_scale("12:34:56", 30, 5, "standard"), Some((1, 1)));
         assert_eq!(pick_scale("12:34:56", 20, 5, "standard"), None);
         for c in "0123456789:".chars() {
-            assert!(glyph(c, font).iter().all(|row| row.len() == glyph(c, font)[0].len()));
+            assert!(glyph(c, font)
+                .iter()
+                .all(|row| row.len() == glyph(c, font)[0].len()));
         }
     }
 }

@@ -1,9 +1,9 @@
 pub mod aesthetic;
 pub mod dashboard;
 pub mod help;
+pub mod monitor;
 pub mod settings;
 pub mod workspace;
-pub mod monitor;
 
 use ratatui::layout::{Alignment, Rect};
 use ratatui::style::Style;
@@ -29,26 +29,34 @@ pub fn panel_full(
     } else {
         (theme.surface, theme.dim)
     };
-    
+
     let title_style = Style::default().fg(text);
     let mut block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(border))
-        .title_top(Line::from(Span::styled(format!(" {} ", title), title_style)));
+        .title_top(Line::from(Span::styled(
+            format!(" {} ", title),
+            title_style,
+        )));
 
     if let Some(rt) = right_title {
         let rt_style = Style::default().fg(theme.dim);
-        block = block.title_top(Line::from(Span::styled(format!(" {} ", rt), rt_style)).alignment(Alignment::Right));
+        block = block.title_top(
+            Line::from(Span::styled(format!(" {} ", rt), rt_style)).alignment(Alignment::Right),
+        );
     }
-    
+
     if let Some(ft) = footer {
         if focused {
             let ft_style = Style::default().fg(theme.accent);
-            block = block.title_bottom(Line::from(Span::styled(format!(" {} ", ft), ft_style)).alignment(Alignment::Center));
+            block = block.title_bottom(
+                Line::from(Span::styled(format!(" {} ", ft), ft_style))
+                    .alignment(Alignment::Center),
+            );
         }
     }
-    
+
     let inner = block.inner(area);
     f.render_widget(block, area);
     inner
@@ -123,7 +131,15 @@ pub fn render_panel(f: &mut Frame, area: Rect, app: &crate::app::App, id: crate:
         P::Storage => disk::render_storage(f, inner, theme),
         P::Network => network::render(f, inner, theme),
         P::Gpu => gpu::render(f, inner, theme),
-        P::Clock => clock::render(f, inner, theme, app.config.ui.clock_24h, &app.config.ui.clock_font, &app.config.ui.clock_style, &app.config.ui.timezones),
+        P::Clock => clock::render(
+            f,
+            inner,
+            theme,
+            app.config.ui.clock_24h,
+            &app.config.ui.clock_font,
+            &app.config.ui.clock_style,
+            &app.config.ui.timezones,
+        ),
         P::Media => media::render(f, inner, theme),
         P::Visualizer => music_viz::render(f, inner, theme, app.frame),
         P::Status => status::render(f, inner, theme),

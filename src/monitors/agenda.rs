@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::sync::{LazyLock, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use chrono::{DateTime, Local, TimeZone, Utc, NaiveDateTime};
+use chrono::{DateTime, Local, NaiveDateTime, TimeZone, Utc};
 use ical::IcalParser;
 
 #[derive(Clone, Default)]
@@ -20,7 +20,8 @@ pub struct AgendaSnapshot {
     pub last_modified: u64,
 }
 
-static SNAP: LazyLock<Mutex<AgendaSnapshot>> = LazyLock::new(|| Mutex::new(AgendaSnapshot::default()));
+static SNAP: LazyLock<Mutex<AgendaSnapshot>> =
+    LazyLock::new(|| Mutex::new(AgendaSnapshot::default()));
 
 pub fn snapshot() -> AgendaSnapshot {
     SNAP.lock().unwrap().clone()
@@ -62,7 +63,7 @@ fn parse_ical_date(dt: &str) -> Option<DateTime<Local>> {
 pub fn start() {
     std::thread::spawn(|| loop {
         let file_path = get_agenda_file();
-        
+
         let modified = std::fs::metadata(&file_path)
             .and_then(|m| m.modified())
             .unwrap_or(SystemTime::now())
@@ -82,7 +83,7 @@ pub fn start() {
             if let Ok(file) = File::open(&file_path) {
                 let buf = BufReader::new(file);
                 let parser = IcalParser::new(buf);
-                
+
                 let mut events = Vec::new();
                 for calendar in parser.flatten() {
                     for event in calendar.events {
@@ -124,9 +125,12 @@ pub fn start() {
                         }
                     }
                 }
-                
+
                 events.sort_by_key(|e| e.start_time);
-                *SNAP.lock().unwrap() = AgendaSnapshot { events, last_modified: modified };
+                *SNAP.lock().unwrap() = AgendaSnapshot {
+                    events,
+                    last_modified: modified,
+                };
             }
         }
         std::thread::sleep(std::time::Duration::from_secs(10));

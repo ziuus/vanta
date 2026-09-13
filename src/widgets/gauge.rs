@@ -277,11 +277,7 @@ fn ring(pct: f64, label: &str, value: &str, col: Color, theme: &Theme) -> Vec<Li
         line.spans = spans;
     };
     put(&mut rows[H - 2], label, Style::default().fg(theme.dim));
-    put(
-        &mut rows[H - 1],
-        value,
-        Style::default().fg(col),
-    );
+    put(&mut rows[H - 1], value, Style::default().fg(col));
     rows
 }
 

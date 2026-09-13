@@ -43,9 +43,9 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
         Layout::vertical([Constraint::Min(0), Constraint::Length(custom_row_h)]).areas(area);
 
     let cols = Layout::horizontal([
-        Constraint::Ratio(1, 3),
-        Constraint::Ratio(1, 3),
-        Constraint::Ratio(1, 3),
+        Constraint::Percentage(app.panel_states.dash_ratios[0]),
+        Constraint::Percentage(app.panel_states.dash_ratios[1]),
+        Constraint::Percentage(app.panel_states.dash_ratios[2]),
     ])
     .split(main_area);
 
@@ -105,7 +105,15 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
 
         if cfg.cpu {
             let cpu_rt = format!(" {:.1}% ", sum.cpu_pct);
-            let inner = panel_full(f, rows[2], "cpu", Some(&cpu_rt), None, theme, focus(PanelId::Cpu));
+            let inner = panel_full(
+                f,
+                rows[2],
+                "cpu",
+                Some(&cpu_rt),
+                None,
+                theme,
+                focus(PanelId::Cpu),
+            );
             cpu::render(f, inner, theme);
         } else {
             let inner = panel(f, rows[2], "matrix", theme, false);
@@ -130,7 +138,15 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
 
         if cfg.clock {
             let inner = panel(f, rows[0], "clock", theme, focus(PanelId::Clock));
-            clock::render(f, inner, theme, app.config.ui.clock_24h, &app.config.ui.clock_font, &app.config.ui.clock_style, &[]);
+            clock::render(
+                f,
+                inner,
+                theme,
+                app.config.ui.clock_24h,
+                &app.config.ui.clock_font,
+                &app.config.ui.clock_style,
+                &[],
+            );
         }
         if cfg.media {
             let inner = panel(f, rows[1], "now playing", theme, focus(PanelId::Media));
@@ -140,7 +156,15 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
             let inner = panel(f, rows[2], "visualizer", theme, focus(PanelId::Visualizer));
             music_viz::render(f, inner, theme, app.frame);
         }
-        let inner = panel_full(f, rows[3], "top processes", None, Some("↑ ↓ scroll • k kill"), theme, focus(PanelId::Processes));
+        let inner = panel_full(
+            f,
+            rows[3],
+            "top processes",
+            None,
+            Some("↑ ↓ scroll • k kill"),
+            theme,
+            focus(PanelId::Processes),
+        );
         if cfg.processes {
             render_top_procs(f, inner, theme);
         } else {
@@ -168,20 +192,48 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
         status::render(f, inner, theme);
 
         if cfg.weather {
-            let weather_rt = if crate::monitors::weather::snapshot().ready { format!(" {} ", crate::monitors::weather::snapshot().location) } else { " offline ".to_string() };
-            let inner = panel_full(f, rows[1], "weather", Some(&weather_rt), None, theme, focus(PanelId::Weather));
+            let weather_rt = if crate::monitors::weather::snapshot().ready {
+                format!(" {} ", crate::monitors::weather::snapshot().location)
+            } else {
+                " offline ".to_string()
+            };
+            let inner = panel_full(
+                f,
+                rows[1],
+                "weather",
+                Some(&weather_rt),
+                None,
+                theme,
+                focus(PanelId::Weather),
+            );
             crate::widgets::weather::render(f, inner, theme);
         }
 
         if mem_h > 0 {
             let mem_rt = format!(" {:.1}% ", sum.mem_pct);
-            let inner = panel_full(f, rows[2], "memory", Some(&mem_rt), None, theme, focus(PanelId::Memory));
+            let inner = panel_full(
+                f,
+                rows[2],
+                "memory",
+                Some(&mem_rt),
+                None,
+                theme,
+                focus(PanelId::Memory),
+            );
             memory::render(f, inner, theme);
         }
 
         if cfg.network {
             let net_rt = format!(" ↓{:.0} ↑{:.0} kb/s ", sum.rx_kbps, sum.tx_kbps);
-            let inner = panel_full(f, rows[3], "network", Some(&net_rt), None, theme, focus(PanelId::Network));
+            let inner = panel_full(
+                f,
+                rows[3],
+                "network",
+                Some(&net_rt),
+                None,
+                theme,
+                focus(PanelId::Network),
+            );
             network::render(f, inner, theme);
         } else {
             let inner = panel(f, rows[3], "matrix", theme, false);
@@ -189,7 +241,15 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
         }
 
         if cfg.calendar {
-            let inner = panel_full(f, rows[4], "calendar", None, Some("← → month"), theme, focus(PanelId::Calendar));
+            let inner = panel_full(
+                f,
+                rows[4],
+                "calendar",
+                None,
+                Some("← → month"),
+                theme,
+                focus(PanelId::Calendar),
+            );
             calendar::render(f, inner, theme, app.panel_states.calendar_month_offset);
         }
     }

@@ -433,9 +433,7 @@ fn pad(s: &str, width: usize) -> String {
 
 fn state_style(ch: char, theme: &Theme) -> Style {
     match ch {
-        'R' => Style::default()
-            .fg(theme.green)
-            ,
+        'R' => Style::default().fg(theme.green),
         'D' | 'Z' => Style::default().fg(theme.red),
         'T' | 't' => Style::default().fg(theme.yellow),
         _ => Style::default().fg(theme.dim),
@@ -504,10 +502,7 @@ pub fn render(
 
     // ── Header ──
     let hs = Style::default().fg(theme.dim).bg(theme.surface);
-    let hs_on = Style::default()
-        .fg(theme.accent)
-        .bg(theme.surface)
-        ;
+    let hs_on = Style::default().fg(theme.accent).bg(theme.surface);
     let arrow = if sort_asc { "▴" } else { "▾" };
     let h = |label: &str, width: usize, field: Option<SortField>, right: bool| -> Span<'static> {
         let on = field == Some(sort_field);
@@ -693,10 +688,7 @@ pub fn render(
     let mut l1: Vec<Span> = Vec::new();
     if search_active || !search.is_empty() {
         l1.push(Span::styled(" / ", ds.fg(theme.accent)));
-        l1.push(Span::styled(
-            search.to_string(),
-            ds.fg(theme.text),
-        ));
+        l1.push(Span::styled(search.to_string(), ds.fg(theme.text)));
         if search_active {
             l1.push(Span::styled("▏", ds.fg(theme.accent)));
         }
@@ -707,10 +699,7 @@ pub fn render(
     } else if let Some(r) = sel {
         let p = &r.info;
         let mem_pct = p.mem_kb as f64 / total_mem_kb * 100.0;
-        l1.push(Span::styled(
-            format!(" {} ", p.name),
-            ds.fg(theme.text),
-        ));
+        l1.push(Span::styled(format!(" {} ", p.name), ds.fg(theme.text)));
         l1.push(Span::styled(
             format!(
                 "pid {}  ppid {}  cpu {}%  mem {:.1}% ({})  thr {}  io ↓{} ↑{}   {}/{} · {} procs",

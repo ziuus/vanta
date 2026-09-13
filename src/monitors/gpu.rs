@@ -242,9 +242,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
     let mut head = vec![
         Span::styled(
             format!("{:>3.0}%", util),
-            Style::default()
-                .fg(theme.usage(util))
-                ,
+            Style::default().fg(theme.usage(util)),
         ),
         Span::styled(format!("  {}", gpu.name), Style::default().fg(theme.text)),
     ];

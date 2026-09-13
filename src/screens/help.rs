@@ -24,19 +24,11 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, config: &Config) {
     let base = Style::default().bg(bg);
     let key = |k: &str, d: &str| {
         Line::from(vec![
-            Span::styled(
-                format!("   {:<9}", k),
-                base.fg(theme.accent),
-            ),
+            Span::styled(format!("   {:<9}", k), base.fg(theme.accent)),
             Span::styled(d.to_string(), base.fg(theme.text)),
         ])
     };
-    let head = |s: &str| {
-        Line::from(Span::styled(
-            format!(" {}", s),
-            base.fg(theme.secondary),
-        ))
-    };
+    let head = |s: &str| Line::from(Span::styled(format!(" {}", s), base.fg(theme.secondary)));
     let blank = Line::from(Span::styled("", base));
 
     let themes = THEME_NAMES.join(", ");
@@ -116,9 +108,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, config: &Config) {
                 .border_style(Style::default().fg(theme.accent))
                 .title(Span::styled(
                     " vanta · help ",
-                    Style::default()
-                        .fg(theme.accent)
-                        ,
+                    Style::default().fg(theme.accent),
                 ))
                 .style(base),
         ),

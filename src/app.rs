@@ -178,6 +178,8 @@ pub struct PanelStates {
     pub writer_scroll: usize,
     pub writer_selected: usize,
     pub files_selected: usize,
+    pub dash_ratios: [u16; 3],
+    pub work_ratio: u16,
     pub process_selected_pid: Option<u32>,
     pub process_collapsed: HashSet<u32>,
 }
@@ -196,6 +198,8 @@ impl Default for PanelStates {
             writer_scroll: 0,
             writer_selected: 0,
             files_selected: 0,
+            dash_ratios: [33, 34, 33],
+            work_ratio: 25,
             process_selected_pid: None,
             process_collapsed: HashSet::new(),
         }
@@ -352,6 +356,7 @@ impl App {
 
         if self.show_help {
             match key.code {
+                KeyCode::Char('e') | KeyCode::Char('E') => self.edit_focused_file(),
                 KeyCode::Char('q') | KeyCode::Char('Q') => self.running = false,
                 KeyCode::Char('T') => self.cycle_theme(),
                 _ => self.show_help = false,
@@ -360,6 +365,13 @@ impl App {
         }
 
         match key.code {
+            KeyCode::Left if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.resize_focused(-2)
+            }
+            KeyCode::Right if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.resize_focused(2)
+            }
+            KeyCode::Char('e') | KeyCode::Char('E') => self.edit_focused_file(),
             KeyCode::Char('q') | KeyCode::Char('Q') => self.running = false,
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.running = false
@@ -387,7 +399,10 @@ impl App {
                 crate::widgets::block_graph::cycle_style();
                 self.config.ui.graph_style = crate::widgets::block_graph::style_name().to_string();
                 self.config.save();
-                self.toast(format!("graphs · {}", crate::widgets::block_graph::style_name()));
+                self.toast(format!(
+                    "graphs · {}",
+                    crate::widgets::block_graph::style_name()
+                ));
             }
             KeyCode::Char('+') | KeyCode::Char('=') => self.adjust_refresh(true),
             KeyCode::Char('-') | KeyCode::Char('_') => self.adjust_refresh(false),
@@ -454,23 +469,27 @@ impl App {
             match self.focused_panel {
                 Some(PanelId::WriterNotes) => match key {
                     KeyCode::Up | KeyCode::Char('k') => {
-                        self.panel_states.writer_selected = self.panel_states.writer_selected.saturating_sub(1);
+                        self.panel_states.writer_selected =
+                            self.panel_states.writer_selected.saturating_sub(1);
                     }
                     KeyCode::Down | KeyCode::Char('j') => {
-                        self.panel_states.writer_selected = self.panel_states.writer_selected.saturating_add(1);
+                        self.panel_states.writer_selected =
+                            self.panel_states.writer_selected.saturating_add(1);
                     }
                     _ => {}
                 },
                 Some(PanelId::Files) => match key {
                     KeyCode::Up | KeyCode::Char('k') => {
-                        self.panel_states.files_selected = self.panel_states.files_selected.saturating_sub(1);
+                        self.panel_states.files_selected =
+                            self.panel_states.files_selected.saturating_sub(1);
                         let snap = crate::monitors::files::snapshot();
                         if let Some(item) = snap.items.get(self.panel_states.files_selected) {
                             crate::monitors::files::update_preview(&item.path);
                         }
                     }
                     KeyCode::Down | KeyCode::Char('j') => {
-                        self.panel_states.files_selected = self.panel_states.files_selected.saturating_add(1);
+                        self.panel_states.files_selected =
+                            self.panel_states.files_selected.saturating_add(1);
                         let snap = crate::monitors::files::snapshot();
                         if let Some(item) = snap.items.get(self.panel_states.files_selected) {
                             crate::monitors::files::update_preview(&item.path);
@@ -497,7 +516,7 @@ impl App {
                 _ => {}
             }
         }
-        
+
         if self.mode == DashboardMode::Monitor && process_hotkey {
             self.focused_panel = Some(PanelId::Processes);
         }
@@ -516,6 +535,76 @@ impl App {
             }
             Some(PanelId::Processes) => self.process_key(key),
             _ => {}
+        }
+    }
+
+    fn edit_focused_file(&mut self) {
+        let path = match self.focused_panel {
+            Some(PanelId::Tasks) => Some(crate::monitors::tasks::get_todo_file()),
+            Some(PanelId::Agenda) => Some(crate::monitors::agenda::get_agenda_file()),
+            _ => None,
+        };
+
+        if let Some(p) = path {
+            let editor = std::env::var("EDITOR").unwrap_or_else(|_| "nano".to_string());
+            let _ = crossterm::terminal::disable_raw_mode();
+            let _ = std::process::Command::new(editor).arg(p).status();
+            let _ = crossterm::terminal::enable_raw_mode();
+            // Clear screen to avoid tearing
+            let _ = std::process::Command::new("clear").status();
+        }
+    }
+
+    fn resize_focused(&mut self, delta: i16) {
+        if self.mode == DashboardMode::Dashboard {
+            let id = if let Some(i) = self.focused_panel {
+                i
+            } else {
+                return;
+            };
+            let col = match id {
+                PanelId::System | PanelId::Gauges | PanelId::Cpu | PanelId::Disk => 0,
+                PanelId::Clock | PanelId::Media | PanelId::Visualizer | PanelId::Processes => 1,
+                PanelId::Status
+                | PanelId::Weather
+                | PanelId::Memory
+                | PanelId::Network
+                | PanelId::Calendar => 2,
+                _ => return,
+            };
+            if col == 0 {
+                self.panel_states.dash_ratios[0] =
+                    (self.panel_states.dash_ratios[0] as i16 + delta).clamp(10, 80) as u16;
+                self.panel_states.dash_ratios[1] =
+                    (100 - self.panel_states.dash_ratios[0] - self.panel_states.dash_ratios[2])
+                        .clamp(10, 80) as u16;
+            } else if col == 1 {
+                self.panel_states.dash_ratios[1] =
+                    (self.panel_states.dash_ratios[1] as i16 + delta).clamp(10, 80) as u16;
+                self.panel_states.dash_ratios[2] =
+                    (100 - self.panel_states.dash_ratios[0] - self.panel_states.dash_ratios[1])
+                        .clamp(10, 80) as u16;
+            } else if col == 2 {
+                self.panel_states.dash_ratios[2] =
+                    (self.panel_states.dash_ratios[2] as i16 - delta).clamp(10, 80) as u16;
+                self.panel_states.dash_ratios[1] =
+                    (100 - self.panel_states.dash_ratios[0] - self.panel_states.dash_ratios[2])
+                        .clamp(10, 80) as u16;
+            }
+        } else if self.mode == DashboardMode::Workspace {
+            let id = if let Some(i) = self.focused_panel {
+                i
+            } else {
+                return;
+            };
+            let left = matches!(id, PanelId::Agenda | PanelId::Tasks | PanelId::News);
+            if left {
+                self.panel_states.work_ratio =
+                    (self.panel_states.work_ratio as i16 + delta).clamp(10, 90) as u16;
+            } else {
+                self.panel_states.work_ratio =
+                    (self.panel_states.work_ratio as i16 - delta).clamp(10, 90) as u16;
+            }
         }
     }
 
@@ -791,10 +880,7 @@ impl App {
             DashboardMode::Workspace,
         ] {
             let style = if m == self.mode {
-                Style::default()
-                    .fg(t.bg)
-                    .bg(t.accent)
-                    
+                Style::default().fg(t.bg).bg(t.accent)
             } else {
                 dim
             };
@@ -837,10 +923,7 @@ impl App {
         };
 
         if let Some((msg, _)) = &self.toast {
-            spans.push(Span::styled(
-                format!("{}   ", msg),
-                base.fg(t.text),
-            ));
+            spans.push(Span::styled(format!("{}   ", msg), base.fg(t.text)));
         } else if self.panel_states.process_search_active {
             hint("type", "to filter");
             hint("enter", "keep filter");
