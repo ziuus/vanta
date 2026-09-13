@@ -5,7 +5,7 @@ use dbus::arg::{PropMap, RefArg, Variant};
 use dbus::blocking::{BlockingSender, Connection};
 use dbus::Message;
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
@@ -348,7 +348,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
         Span::styled(format!("{} ", icon), Style::default().fg(theme.accent)),
         Span::styled(
             meter::ellipsize(&track.title, w.saturating_sub(2)),
-            Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+            Style::default().fg(theme.text),
         ),
     ])];
     let mut sub = track.artist.clone();

@@ -6,7 +6,7 @@ pub mod workspace;
 pub mod monitor;
 
 use ratatui::layout::{Alignment, Rect};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Paragraph};
 use ratatui::Frame;
@@ -30,7 +30,7 @@ pub fn panel_full(
         (theme.surface, theme.dim)
     };
     
-    let title_style = Style::default().fg(text).add_modifier(Modifier::BOLD);
+    let title_style = Style::default().fg(text);
     let mut block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)

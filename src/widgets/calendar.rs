@@ -80,7 +80,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, month_offset: i32) {
             title,
             Style::default()
                 .fg(title_col)
-                .add_modifier(ratatui::style::Modifier::BOLD),
+                ,
         ),
         Span::styled(nav, Style::default().fg(theme.dim)),
     ]));
@@ -114,7 +114,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, month_offset: i32) {
                     Style::default()
                         .fg(theme.bg)
                         .bg(theme.accent)
-                        .add_modifier(ratatui::style::Modifier::BOLD),
+                        ,
                 ));
                 spans.push(Span::styled("\u{25c6}", Style::default().fg(theme.accent)));
             } else {

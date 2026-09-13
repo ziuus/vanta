@@ -435,7 +435,7 @@ fn state_style(ch: char, theme: &Theme) -> Style {
     match ch {
         'R' => Style::default()
             .fg(theme.green)
-            .add_modifier(Modifier::BOLD),
+            ,
         'D' | 'Z' => Style::default().fg(theme.red),
         'T' | 't' => Style::default().fg(theme.yellow),
         _ => Style::default().fg(theme.dim),
@@ -507,7 +507,7 @@ pub fn render(
     let hs_on = Style::default()
         .fg(theme.accent)
         .bg(theme.surface)
-        .add_modifier(Modifier::BOLD);
+        ;
     let arrow = if sort_asc { "▴" } else { "▾" };
     let h = |label: &str, width: usize, field: Option<SortField>, right: bool| -> Span<'static> {
         let on = field == Some(sort_field);
@@ -695,7 +695,7 @@ pub fn render(
         l1.push(Span::styled(" / ", ds.fg(theme.accent)));
         l1.push(Span::styled(
             search.to_string(),
-            ds.fg(theme.text).add_modifier(Modifier::BOLD),
+            ds.fg(theme.text),
         ));
         if search_active {
             l1.push(Span::styled("▏", ds.fg(theme.accent)));
@@ -709,7 +709,7 @@ pub fn render(
         let mem_pct = p.mem_kb as f64 / total_mem_kb * 100.0;
         l1.push(Span::styled(
             format!(" {} ", p.name),
-            ds.fg(theme.text).add_modifier(Modifier::BOLD),
+            ds.fg(theme.text),
         ));
         l1.push(Span::styled(
             format!(

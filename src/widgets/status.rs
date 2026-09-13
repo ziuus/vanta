@@ -3,7 +3,7 @@ use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
@@ -167,10 +167,10 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
 
     let key = |k: &str| Span::styled(format!("{:<8}", k), Style::default().fg(theme.dim));
     let val = |v: String, c: ratatui::style::Color| {
-        Span::styled(format!("{:<14}", crate::widgets::meter::ellipsize(&v, 14)), Style::default().fg(c).add_modifier(Modifier::BOLD))
+        Span::styled(format!("{:<14}", crate::widgets::meter::ellipsize(&v, 14)), Style::default().fg(c))
     };
     let val_unbounded = |v: String, c: ratatui::style::Color| {
-        Span::styled(v, Style::default().fg(c).add_modifier(Modifier::BOLD))
+        Span::styled(v, Style::default().fg(c))
     };
 
     let mut lines: Vec<Line> = Vec::new();

@@ -8,7 +8,7 @@ use std::collections::VecDeque;
 
 use ratatui::layout::Alignment;
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
@@ -133,7 +133,7 @@ fn render_value(f: &mut Frame, area: Rect, raw: &str, cfg: &CustomWidgetConfig, 
             display,
             Style::default()
                 .fg(theme.accent)
-                .add_modifier(Modifier::BOLD),
+                ,
         )))
         .alignment(Alignment::Center),
         Rect::new(area.x, y, area.width, 1),

@@ -1,5 +1,5 @@
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Block, Borders};
 use ratatui::Frame;
@@ -67,7 +67,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
             };
 
             lines.push(Line::from(vec![
-                Span::styled(format!("  {}", time_str), Style::default().fg(time_color).add_modifier(Modifier::BOLD)),
+                Span::styled(format!("  {}", time_str), Style::default().fg(time_color)),
                 Span::raw(" ".repeat(pad)),
                 Span::styled(format!("{} ", event.summary), Style::default().fg(title_color)),
             ]));

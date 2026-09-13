@@ -2,7 +2,7 @@ use std::sync::{LazyLock, Mutex};
 use std::time::Instant;
 
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
@@ -142,7 +142,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
             Span::styled(format!("{} ", arrow), Style::default().fg(color)),
             Span::styled(
                 format!("{:>10}", meter::fmt_kbps(rate)),
-                Style::default().fg(color).add_modifier(Modifier::BOLD),
+                Style::default().fg(color),
             ),
             Span::styled(
                 format!("  peak {}", meter::fmt_kbps(peak)),

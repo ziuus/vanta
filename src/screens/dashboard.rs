@@ -1,5 +1,5 @@
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
@@ -262,7 +262,7 @@ fn render_top_procs(f: &mut Frame, area: Rect, theme: &crate::theme::Theme) {
             Span::styled(format!("{:>6} ", p.pid), Style::default().fg(theme.dim)),
             Span::styled(
                 format!("{:<w$} ", meter::ellipsize(&p.name, name_w), w = name_w),
-                Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+                Style::default().fg(theme.text),
             ),
             Span::styled(
                 format!("{:>5.1}% ", p.cpu_pct),

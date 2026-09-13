@@ -1,7 +1,7 @@
 use chrono::{Local, Utc, Timelike};
 use chrono_tz::Tz;
 use ratatui::layout::{Alignment, Rect};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
@@ -79,7 +79,7 @@ fn big_lines(
 ) -> Vec<Line<'static>> {
     let digit = Style::default()
         .fg(theme.accent)
-        .add_modifier(Modifier::BOLD);
+        ;
     let colon = Style::default().fg(if colon_on {
         theme.accent
     } else {
@@ -165,7 +165,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, h24: bool, font: &str, s
                 full,
                 Style::default()
                     .fg(theme.accent)
-                    .add_modifier(Modifier::BOLD),
+                    ,
             )))
             .alignment(Alignment::Center),
             Rect::new(area.x, top, area.width, 1),

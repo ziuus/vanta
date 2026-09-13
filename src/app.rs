@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
@@ -743,8 +743,8 @@ impl App {
             "net",
             format!(
                 "↓{} ↑{}",
-                crate::widgets::meter::fmt_kbps(s.rx_kbps),
-                crate::widgets::meter::fmt_kbps(s.tx_kbps)
+                crate::widgets::meter::fmt_kbps_fixed(s.rx_kbps),
+                crate::widgets::meter::fmt_kbps_fixed(s.tx_kbps)
             ),
             t.secondary,
         ));
@@ -772,7 +772,7 @@ impl App {
             _ => t.green,
         };
         let mut left: Vec<Span> = vec![
-            Span::styled(" vanta", base.fg(t.accent).add_modifier(Modifier::BOLD)),
+            Span::styled(" vanta", base.fg(t.accent)),
             Span::styled(" ● ", base.fg(dot)),
         ];
         for (i, (k, v, c)) in metrics.iter().enumerate() {
@@ -780,7 +780,7 @@ impl App {
                 left.push(sep.clone());
             }
             left.push(Span::styled(format!("{} ", k), dim));
-            left.push(Span::styled(v.clone(), base.fg(*c).add_modifier(Modifier::BOLD)));
+            left.push(Span::styled(v.clone(), base.fg(*c)));
         }
 
         let mut right: Vec<Span> = Vec::new();
@@ -794,7 +794,7 @@ impl App {
                 Style::default()
                     .fg(t.bg)
                     .bg(t.accent)
-                    .add_modifier(Modifier::BOLD)
+                    
             } else {
                 dim
             };
@@ -827,7 +827,7 @@ impl App {
     fn render_status(&self, f: &mut Frame, area: Rect) {
         let t = &self.theme;
         let base = Style::default().bg(t.surface);
-        let key = base.fg(t.accent).add_modifier(Modifier::BOLD);
+        let key = base.fg(t.accent);
         let txt = base.fg(t.dim);
 
         let mut spans: Vec<Span> = vec![Span::styled(" ", base)];
@@ -839,7 +839,7 @@ impl App {
         if let Some((msg, _)) = &self.toast {
             spans.push(Span::styled(
                 format!("{}   ", msg),
-                base.fg(t.text).add_modifier(Modifier::BOLD),
+                base.fg(t.text),
             ));
         } else if self.panel_states.process_search_active {
             hint("type", "to filter");

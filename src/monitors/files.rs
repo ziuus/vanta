@@ -1,7 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::time::Instant;
 
 #[derive(Clone, Debug)]
 pub struct FileItem {
@@ -67,10 +66,11 @@ pub fn update_preview(selected_path: &Path) {
         // Preview directory contents
         if let Ok(entries) = fs::read_dir(selected_path) {
             let mut list = String::new();
-            for (i, entry) in entries.flatten().enumerate().take(20) {
+            for (_i, entry) in entries.flatten().enumerate().take(20) {
                 let name = entry.file_name().to_string_lossy().into_owned();
                 let is_dir = entry.metadata().map(|m| m.is_dir()).unwrap_or(false);
-                list.push_str(&format!("{} {}\n", if is_dir { "📁" } else { "📄" }, name));
+                list.push_str(&format!("{} {}
+", if is_dir { "📁" } else { "📄" }, name));
             }
             Some(list)
         } else {
@@ -78,7 +78,41 @@ pub fn update_preview(selected_path: &Path) {
         }
     } else {
         // Preview file contents (first few KB)
-        fs::read_to_string(selected_path).ok().map(|s| s.chars().take(2000).collect())
+        match fs::read_to_string(selected_path) {
+            Ok(s) => Some(s.chars().take(2000).collect()),
+            Err(_) => {
+                if let Ok(metadata) = fs::metadata(selected_path) {
+                    let size = metadata.len();
+                    let size_str = if size >= 1024 * 1024 {
+                        format!("{:.1} MB", size as f64 / 1024.0 / 1024.0)
+                    } else if size >= 1024 {
+                        format!("{:.1} KB", size as f64 / 1024.0)
+                    } else {
+                        format!("{} bytes", size)
+                    };
+                    let ext = selected_path.extension().unwrap_or_default().to_string_lossy();
+                    let file_type = if ext == "png" || ext == "jpg" || ext == "jpeg" || ext == "gif" {
+                        "Image File"
+                    } else if ext == "pdf" {
+                        "PDF Document"
+                    } else if ext == "mp4" || ext == "mkv" {
+                        "Video File"
+                    } else if ext == "zip" || ext == "tar" || ext == "gz" {
+                        "Archive"
+                    } else {
+                        "Binary File"
+                    };
+                    Some(format!("
+  [ {} ]
+
+  Size: {}
+
+  (Preview not available for this file type)", file_type, size_str))
+                } else {
+                    Some("Unable to read file".to_string())
+                }
+            }
+        }
     };
 
     let mut state = STATE.lock().unwrap();

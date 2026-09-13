@@ -1,5 +1,5 @@
 use ratatui::layout::{Alignment, Rect};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
@@ -54,12 +54,12 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
         if i == 1 {
             spans.push(Span::styled(
                 snap.location.clone(),
-                Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+                Style::default().fg(theme.text),
             ));
         } else if i == 2 {
             spans.push(Span::styled(
                 temp_str.clone(),
-                Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+                Style::default().fg(theme.accent),
             ));
         } else if i == 3 {
             spans.push(Span::styled(

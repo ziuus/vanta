@@ -1,7 +1,7 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
@@ -117,7 +117,7 @@ fn render_bars(f: &mut Frame, area: Rect, theme: &Theme, metrics: &[(&str, f64, 
             spans.extend(bar_spans(pct / 100.0, bar_w, theme));
             spans.push(Span::styled(
                 format!(" {:>w$}", value, w = value_w),
-                Style::default().fg(*col).add_modifier(Modifier::BOLD),
+                Style::default().fg(*col),
             ));
             Line::from(spans)
         })
@@ -280,7 +280,7 @@ fn ring(pct: f64, label: &str, value: &str, col: Color, theme: &Theme) -> Vec<Li
     put(
         &mut rows[H - 1],
         value,
-        Style::default().fg(col).add_modifier(Modifier::BOLD),
+        Style::default().fg(col),
     );
     rows
 }

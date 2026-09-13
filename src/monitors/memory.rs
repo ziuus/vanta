@@ -1,7 +1,7 @@
 use std::sync::{LazyLock, Mutex};
 
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
@@ -77,7 +77,7 @@ fn row<'a>(label: &'a str, used: u64, total: u64, pct: f64, width: u16, theme: &
         Span::styled(off, Style::default().fg(theme.surface)),
         Span::styled(
             format!(" {}", pct_str),
-            Style::default().fg(c).add_modifier(Modifier::BOLD),
+            Style::default().fg(c),
         ),
     ])
 }

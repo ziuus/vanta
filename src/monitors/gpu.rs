@@ -4,7 +4,7 @@ use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
@@ -244,7 +244,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
             format!("{:>3.0}%", util),
             Style::default()
                 .fg(theme.usage(util))
-                .add_modifier(Modifier::BOLD),
+                ,
         ),
         Span::styled(format!("  {}", gpu.name), Style::default().fg(theme.text)),
     ];

@@ -36,6 +36,16 @@ pub fn fmt_bytes(b: u64) -> String {
 }
 
 /// Human rate for a value in KiB/s.
+pub fn fmt_kbps_fixed(kbps: f64) -> String {
+    if kbps >= 1024.0 {
+        format!("{:>5.1} MB/s", kbps / 1024.0)
+    } else if kbps >= 1.0 {
+        format!("{:>5.0} KB/s", kbps)
+    } else {
+        format!("{:>5.0}  B/s", kbps * 1024.0)
+    }
+}
+
 pub fn fmt_kbps(kbps: f64) -> String {
     if kbps >= 1024.0 {
         format!("{:.1} MB/s", kbps / 1024.0)

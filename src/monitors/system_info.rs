@@ -2,7 +2,7 @@ use std::fs;
 use std::sync::LazyLock;
 
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
@@ -493,7 +493,7 @@ pub fn render_neofetch(f: &mut Frame, area: Rect, theme: &Theme, sum: &Summary, 
             let col = crate::theme::blend(theme.accent, theme.secondary, i as f32 / n);
             Line::from(Span::styled(
                 l.clone(),
-                Style::default().fg(col).add_modifier(Modifier::BOLD),
+                Style::default().fg(col),
             ))
         }));
         f.render_widget(
@@ -546,7 +546,7 @@ pub fn render_neofetch(f: &mut Frame, area: Rect, theme: &Theme, sum: &Summary, 
             Span::styled(format!("{:<9} ", k), Style::default().fg(theme.dim)),
             Span::styled(
                 meter::ellipsize(&v, max_v),
-                Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+                Style::default().fg(theme.text),
             ),
         ]));
     }
@@ -560,7 +560,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, sum: &Summary) {
     }
     let facts = &*FACTS;
     let k = Style::default().fg(theme.dim);
-    let v = Style::default().fg(theme.text).add_modifier(Modifier::BOLD);
+    let v = Style::default().fg(theme.text);
     let row = |key: &str, val: String| {
         Line::from(vec![
             Span::styled(format!("{:>7} ", key), k),

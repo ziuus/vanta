@@ -1,12 +1,10 @@
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use ratatui::Frame;
 
-use crate::app::{App, PanelId};
 use crate::monitors::files;
-use crate::theme::Theme;
 
 pub fn render(f: &mut Frame, area: Rect, theme: &crate::theme::Theme, is_focused: bool, selected_idx: &mut usize) {
     let snap = files::snapshot();
@@ -33,7 +31,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &crate::theme::Theme, is_focused
     // Header: Current directory path
     let cur_dir = snap.current_dir.to_string_lossy();
     list_lines.push(Line::from(vec![
-        Span::styled(format!(" 📁 {}", cur_dir), Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)),
+        Span::styled(format!(" 📁 {}", cur_dir), Style::default().fg(theme.accent)),
     ]));
     list_lines.push(Line::from(""));
 
@@ -42,9 +40,9 @@ pub fn render(f: &mut Frame, area: Rect, theme: &crate::theme::Theme, is_focused
         let prefix = if i == selected { " > " } else { "   " };
         let icon = if item.is_dir { "📁" } else { "📄" };
         let style = if i == selected {
-            Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)
+            Style::default().fg(theme.accent)
         } else if item.is_dir {
-            Style::default().fg(theme.text).add_modifier(Modifier::BOLD)
+            Style::default().fg(theme.text)
         } else {
             Style::default().fg(theme.dim)
         };

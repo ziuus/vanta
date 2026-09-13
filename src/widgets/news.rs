@@ -1,5 +1,5 @@
 use ratatui::layout::{Rect, Alignment};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Block, Borders};
 use ratatui::Frame;
@@ -70,7 +70,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
 
             let mut spans = vec![
                 Span::styled(marker, Style::default().fg(theme.accent)),
-                Span::styled(title, Style::default().fg(theme.text).add_modifier(Modifier::BOLD)),
+                Span::styled(title, Style::default().fg(theme.text)),
             ];
 
             if !time_str.is_empty() {

@@ -1,4 +1,4 @@
-use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Block, Borders};
@@ -35,7 +35,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
             let (icon, color, text_style) = if task.completed {
                 (" ✓ ", theme.dim, Style::default().fg(theme.dim).add_modifier(Modifier::CROSSED_OUT))
             } else if task.urgent {
-                (" ! ", theme.red, Style::default().fg(theme.text).add_modifier(Modifier::BOLD))
+                (" ! ", theme.red, Style::default().fg(theme.text))
             } else {
                 (" ◯ ", theme.accent, Style::default().fg(theme.text))
             };

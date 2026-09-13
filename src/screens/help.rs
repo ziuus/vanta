@@ -1,5 +1,5 @@
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
 use ratatui::Frame;
@@ -26,7 +26,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, config: &Config) {
         Line::from(vec![
             Span::styled(
                 format!("   {:<9}", k),
-                base.fg(theme.accent).add_modifier(Modifier::BOLD),
+                base.fg(theme.accent),
             ),
             Span::styled(d.to_string(), base.fg(theme.text)),
         ])
@@ -34,7 +34,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, config: &Config) {
     let head = |s: &str| {
         Line::from(Span::styled(
             format!(" {}", s),
-            base.fg(theme.secondary).add_modifier(Modifier::BOLD),
+            base.fg(theme.secondary),
         ))
     };
     let blank = Line::from(Span::styled("", base));
@@ -118,7 +118,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, config: &Config) {
                     " vanta · help ",
                     Style::default()
                         .fg(theme.accent)
-                        .add_modifier(Modifier::BOLD),
+                        ,
                 ))
                 .style(base),
         ),

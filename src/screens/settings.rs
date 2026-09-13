@@ -1,5 +1,5 @@
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
 use ratatui::Frame;
@@ -128,10 +128,10 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
         let pad_str = " ".repeat(padding);
         
         lines.push(Line::from(vec![
-            Span::styled(if is_selected { " > " } else { "   " }, line_style.add_modifier(Modifier::BOLD)),
+            Span::styled(if is_selected { " > " } else { "   " }, line_style),
             Span::styled(format!("{} ", label), line_style),
             Span::styled(pad_str, line_style),
-            Span::styled(format!(" {}   ", val_str), line_style.add_modifier(Modifier::BOLD)),
+            Span::styled(format!(" {}   ", val_str), line_style),
         ]));
     }
 
@@ -147,7 +147,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
                     " settings ",
                     Style::default()
                         .fg(theme.accent)
-                        .add_modifier(Modifier::BOLD),
+                        ,
                 ))
                 .style(base),
         ),

@@ -1,5 +1,5 @@
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use ratatui::Frame;
@@ -89,8 +89,8 @@ pub fn render(f: &mut Frame, area: Rect, app: &mut App) {
         for (i, note) in snap.notes.iter().enumerate() {
             if i == selected {
                 list_lines.push(Line::from(vec![
-                    Span::styled(" > ", Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)),
-                    Span::styled(&note.title, Style::default().fg(theme.text).add_modifier(Modifier::BOLD)),
+                    Span::styled(" > ", Style::default().fg(theme.accent)),
+                    Span::styled(&note.title, Style::default().fg(theme.text)),
                 ]));
             } else {
                 list_lines.push(Line::from(vec![
@@ -114,7 +114,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &mut App) {
         let selected = app.panel_states.writer_selected;
         let note = &snap.notes[selected];
         content_lines.push(Line::from(vec![
-            Span::styled(&note.title, Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)),
+            Span::styled(&note.title, Style::default().fg(theme.accent)),
         ]));
         content_lines.push(Line::from(""));
         for line in note.content.lines() {

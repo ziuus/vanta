@@ -3,7 +3,7 @@ use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
@@ -258,7 +258,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
             Paragraph::new(Line::from(vec![
                 Span::styled(
                     format!("{:<8}", meter::ellipsize(&m.path, 8)),
-                    Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+                    Style::default().fg(theme.text),
                 ),
                 Span::styled(stats, Style::default().fg(theme.dim)),
             ])),
@@ -296,7 +296,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
             Paragraph::new(Line::from(vec![
                 Span::styled(on, Style::default().fg(c)),
                 Span::styled(off, Style::default().fg(theme.surface)),
-                Span::styled(tail, Style::default().fg(c).add_modifier(Modifier::BOLD)),
+                Span::styled(tail, Style::default().fg(c)),
             ])),
             rows[2],
         );
@@ -338,7 +338,7 @@ pub fn render_storage(f: &mut Frame, area: Rect, theme: &Theme) {
                 Span::styled(label, Style::default().fg(theme.dim)),
                 Span::styled(on, Style::default().fg(c)),
                 Span::styled(off, Style::default().fg(theme.surface)),
-                Span::styled(pct_s, Style::default().fg(c).add_modifier(Modifier::BOLD)),
+                Span::styled(pct_s, Style::default().fg(c)),
                 Span::styled(size, Style::default().fg(theme.dim)),
             ])
         })

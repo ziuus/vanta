@@ -3,7 +3,7 @@ use std::time::Instant;
 
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Color, Style};
 use ratatui::widgets::Widget;
 use ratatui::Frame;
 
@@ -155,7 +155,7 @@ impl Widget for Rain<'_> {
                 let style = if k == 0 {
                     Style::default()
                         .fg(self.theme.text)
-                        .add_modifier(Modifier::BOLD)
+                        
                 } else {
                     let mix = |a: f32, b: f32| (b + (a - b) * t) as u8;
                     Style::default().fg(Color::Rgb(mix(ar, br), mix(ag, bg), mix(ab, bb)))

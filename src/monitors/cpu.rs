@@ -2,7 +2,7 @@ use std::fs;
 use std::sync::{LazyLock, Mutex};
 
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
@@ -111,7 +111,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
     let mut header = vec![
         Span::styled(
             format!("{:>3.0}%", snap.usage),
-            Style::default().fg(color).add_modifier(Modifier::BOLD),
+            Style::default().fg(color),
         ),
         Span::styled(
             format!(
@@ -175,7 +175,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
                     meter::bar(usage as f64 / 100.0, bar_w),
                     Style::default().fg(c),
                 ),
-                Span::styled(pct, Style::default().fg(c).add_modifier(Modifier::BOLD)),
+                Span::styled(pct, Style::default().fg(c)),
             ])),
             cell,
         );
