@@ -130,6 +130,7 @@ pub fn render_panel(f: &mut Frame, area: Rect, app: &crate::app::App, id: crate:
         P::Matrix => matrix::render(f, inner, theme),
         P::Video => video::render(f, inner, theme, app.frame),
         P::Weather => crate::widgets::weather::render(f, inner, theme),
+        P::Tasks => crate::widgets::tasks::render(f, inner, theme),
         P::Processes => {
             let ps = &app.panel_states;
             crate::monitors::processes::render(

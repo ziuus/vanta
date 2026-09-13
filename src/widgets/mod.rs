@@ -10,3 +10,4 @@ pub mod music_viz;
 pub mod status;
 pub mod video;
 pub mod weather;
+pub mod tasks;

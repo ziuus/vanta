@@ -5,6 +5,7 @@ pub mod history;
 pub mod memory;
 pub mod network;
 pub mod weather;
+pub mod tasks;
 pub mod processes;
 pub mod system_info;
 
@@ -86,6 +87,7 @@ pub fn start(interval: Duration) -> Arc<AtomicU64> {
         .expect("spawn sampler thread");
     facts_thread();
     weather::start();
+    tasks::start();
     handle
 }
 
