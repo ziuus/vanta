@@ -1,6 +1,6 @@
 /// Smooth horizontal bar: eighth-block resolution so a 20-cell meter has 160
 /// distinct fill levels instead of 20.
-const EIGHTHS: [&str; 9] = [" ", "▏", "▎", "▍", "▌", "▋", "▊", "▉", "█"];
+const EIGHTHS: [&str; 9] = [" ", "⠁", "⠃", "⠇", "⡇", "⡏", "⡟", "⡿", "⣿"];
 
 /// Filled portion of a `width`-cell bar for `frac` in 0..=1.
 pub fn bar(frac: f64, width: usize) -> String {
@@ -67,11 +67,11 @@ mod tests {
     #[test]
     fn bar_fills_with_eighth_resolution() {
         assert_eq!(bar(0.0, 4), "    ");
-        assert_eq!(bar(1.0, 4), "████");
-        assert_eq!(bar(0.5, 4), "██  ");
-        assert_eq!(bar(0.5625, 4), "██▎ "); // 18/32 levels
-        assert_eq!(bar(0.625, 4), "██▌ ");
-        assert_eq!(bar(2.0, 2), "██"); // clamped
+        assert_eq!(bar(1.0, 4), "⣿⣿⣿⣿");
+        assert_eq!(bar(0.5, 4), "⣿⣿  ");
+        assert_eq!(bar(0.5625, 4), "⣿⣿⠃ "); // 18/32 levels
+        assert_eq!(bar(0.625, 4), "⣿⣿⡇ ");
+        assert_eq!(bar(2.0, 2), "⣿⣿"); // clamped
         assert_eq!(bar(0.5, 0), "");
     }
 

@@ -40,12 +40,18 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
 
     match (cfg.matrix, cfg.video) {
         (true, true) => {
-            let mid = Layout::horizontal([Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)])
-                .split(rows[1]);
+            let mid = Layout::horizontal([
+                Constraint::Ratio(1, 4),
+                Constraint::Ratio(1, 2),
+                Constraint::Ratio(1, 4),
+            ])
+            .split(rows[1]);
             let inner = panel(f, mid[0], "matrix", theme, focus(PanelId::Matrix));
             matrix::render(f, inner, theme);
             let inner = panel(f, mid[1], "donut", theme, focus(PanelId::Video));
             video::render(f, inner, theme, app.frame);
+            let inner = panel(f, mid[2], "matrix", theme, false);
+            matrix::render(f, inner, theme);
         }
         (true, false) => {
             let inner = panel(f, rows[1], "matrix", theme, focus(PanelId::Matrix));

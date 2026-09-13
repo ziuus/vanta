@@ -17,10 +17,9 @@ pub const H: usize = 4;
 const INNER: f64 = 0.58;
 
 /// Eighth-block ramps for the bar / vertical styles.
-const H_EIGHTHS: [char; 9] = [' ', '▏', '▎', '▍', '▌', '▋', '▊', '▉', '█'];
-const V_EIGHTHS: [char; 9] = [' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
-/// Light-shade track behind an unfilled bar, so its full length still reads.
-const TRACK: char = '░';
+const H_EIGHTHS: [char; 9] = [' ', '⠁', '⠃', '⠇', '⡇', '⡏', '⡟', '⡿', '⣿'];
+const V_EIGHTHS: [char; 9] = [' ', '⡀', '⣀', '⣄', '⣤', '⣦', '⣶', '⣷', '⣿'];
+const TRACK: char = '·';
 
 // ── Style selection ──
 // 0 = arc (semicircle dial), 1 = bars (horizontal), 2 = vertical (columns).
@@ -251,14 +250,14 @@ fn ring(pct: f64, label: &str, value: &str, col: Color, theme: &Theme) -> Vec<Li
             let spans = (0..W)
                 .map(|x| match (px[y * 2][x], px[y * 2 + 1][x]) {
                     (Px::Empty, Px::Empty) => Span::raw(" "),
-                    (Px::Fill(c), Px::Fill(_)) => Span::styled("█", fg(c)),
-                    (Px::Track, Px::Track) => Span::styled("█", track),
-                    (Px::Fill(c), Px::Empty) => Span::styled("▀", fg(c)),
-                    (Px::Empty, Px::Fill(c)) => Span::styled("▄", fg(c)),
-                    (Px::Track, Px::Empty) => Span::styled("▀", track),
-                    (Px::Empty, Px::Track) => Span::styled("▄", track),
-                    (Px::Fill(c), Px::Track) => Span::styled("▀", fg(c).bg(theme.surface)),
-                    (Px::Track, Px::Fill(c)) => Span::styled("▄", fg(c).bg(theme.surface)),
+                    (Px::Fill(c), Px::Fill(_)) => Span::styled("⣿", fg(c)),
+                    (Px::Track, Px::Track) => Span::styled("⣿", track),
+                    (Px::Fill(c), Px::Empty) => Span::styled("⠉", fg(c)),
+                    (Px::Empty, Px::Fill(c)) => Span::styled("⣀", fg(c)),
+                    (Px::Track, Px::Empty) => Span::styled("⠉", track),
+                    (Px::Empty, Px::Track) => Span::styled("⣀", track),
+                    (Px::Fill(c), Px::Track) => Span::styled("⠉", fg(c).bg(theme.surface)),
+                    (Px::Track, Px::Fill(c)) => Span::styled("⣀", fg(c).bg(theme.surface)),
                 })
                 .collect::<Vec<_>>();
             Line::from(spans)
@@ -338,7 +337,7 @@ mod tests {
     fn bar_fills_and_tracks() {
         let t = Theme::dark();
         let full = bar_spans(1.0, 6, &t);
-        assert!(full.iter().all(|s| s.content == "█"));
+        assert!(full.iter().all(|s| s.content == "⣿"));
         let empty = bar_spans(0.0, 6, &t);
         assert!(empty.iter().all(|s| s.content == TRACK.to_string()));
     }

@@ -297,7 +297,7 @@ fn smooth_temporal(target: &[f32]) -> Vec<f32> {
 // ── Narrow bar rendering ──
 // Each column = 1 character using 8 block levels.
 // Bars rendered bottom-up with a teal→white gradient.
-const BLOCKS: [char; 9] = [' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+const BLOCKS: [char; 9] = [' ', '⡀', '⣀', '⣄', '⣤', '⣦', '⣶', '⣷', '⣿'];
 
 // Playerctl removed – audio detection uses cava data directly
 // (Audacious, mpv, etc. all work now)
@@ -426,7 +426,7 @@ fn draw_bars(
             let (ch, filled) = if bar_float <= row_low {
                 (' ', false)
             } else if bar_float >= row_low + 1.0 {
-                ('█', true)
+                ('⣿', true)
             } else {
                 let frac = bar_float - row_low;
                 (BLOCKS[(frac * 8.0).round().clamp(1.0, 8.0) as usize], true)
@@ -465,7 +465,7 @@ fn draw_mirror(
         for &h in heights {
             let amp = (h / norm_peak).min(1.0) * half;
             let filled = amp > dist;
-            let ch = if filled { '█' } else { ' ' };
+            let ch = if filled { '⣿' } else { ' ' };
             let height_frac = dist / half;
             spans.push(Span::styled(
                 ch.to_string(),
@@ -551,7 +551,7 @@ fn draw_peaks(
             let (ch, filled) = if bar_float <= row_low {
                 (' ', false)
             } else if bar_float >= row_low + 1.0 {
-                ('█', true)
+                ('⣿', true)
             } else {
                 let frac = bar_float - row_low;
                 (BLOCKS[(frac * 8.0).round().clamp(1.0, 8.0) as usize], true)
