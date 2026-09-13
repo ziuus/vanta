@@ -64,6 +64,7 @@ pub enum PanelId {
     Calendar,
     Matrix,
     Video,
+    Weather,
     /// A user-defined custom widget at the given index in `CustomWidgetManager`.
     Custom(usize),
 }
@@ -101,6 +102,7 @@ impl PanelId {
                 (PanelId::Calendar, true),
                 (PanelId::Matrix, w.matrix),
                 (PanelId::Video, w.video),
+                (PanelId::Weather, w.weather),
                 (PanelId::Visualizer, w.music_viz),
             ],
         };
@@ -136,6 +138,7 @@ impl PanelId {
             PanelId::Calendar => "calendar",
             PanelId::Matrix => "matrix",
             PanelId::Video => "donut",
+            PanelId::Weather => "weather",
             PanelId::Custom(_) => "custom",
         }
     }

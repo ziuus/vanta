@@ -103,6 +103,7 @@ pub fn render_panel(f: &mut Frame, area: Rect, app: &crate::app::App, id: crate:
         P::Calendar => calendar::render(f, inner, theme, app.panel_states.calendar_month_offset),
         P::Matrix => matrix::render(f, inner, theme),
         P::Video => video::render(f, inner, theme, app.frame),
+        P::Weather => crate::widgets::weather::render(f, inner, theme),
         P::Processes => {
             let ps = &app.panel_states;
             crate::monitors::processes::render(

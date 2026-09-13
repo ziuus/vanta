@@ -162,6 +162,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
         };
         let rows = Layout::vertical([
             Constraint::Length(9),                                 // STATUS
+            Constraint::Length(if cfg.weather { 9 } else { 0 }),   // WEATHER
             Constraint::Length(mem_h),                             // MEMORY (tall terminals)
             Constraint::Min(8),                                    // NETWORK
             Constraint::Length(if cfg.calendar { 11 } else { 0 }), // CALENDAR
@@ -171,21 +172,26 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
         let inner = panel(f, rows[0], "status", theme, focus(PanelId::Status));
         status::render(f, inner, theme);
 
+        if cfg.weather {
+            let inner = panel(f, rows[1], "weather", theme, focus(PanelId::Weather));
+            crate::widgets::weather::render(f, inner, theme);
+        }
+
         if mem_h > 0 {
-            let inner = panel(f, rows[1], "memory", theme, focus(PanelId::Memory));
+            let inner = panel(f, rows[2], "memory", theme, focus(PanelId::Memory));
             memory::render(f, inner, theme);
         }
 
         if cfg.network {
-            let inner = panel(f, rows[2], "network", theme, focus(PanelId::Network));
+            let inner = panel(f, rows[3], "network", theme, focus(PanelId::Network));
             network::render(f, inner, theme);
         } else {
-            let inner = panel(f, rows[2], "matrix", theme, false);
+            let inner = panel(f, rows[3], "matrix", theme, false);
             matrix::render(f, inner, theme);
         }
 
         if cfg.calendar {
-            let inner = panel(f, rows[3], "calendar", theme, focus(PanelId::Calendar));
+            let inner = panel(f, rows[4], "calendar", theme, focus(PanelId::Calendar));
             calendar::render(f, inner, theme, app.panel_states.calendar_month_offset);
         }
     }
