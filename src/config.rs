@@ -72,6 +72,7 @@ pub struct WidgetConfig {
     pub video: bool,
     pub weather: bool,
     pub tasks: bool,
+    pub agenda: bool,
 }
 
 impl Default for WidgetConfig {
@@ -91,6 +92,7 @@ impl Default for WidgetConfig {
             video: true,
             weather: true,
             tasks: true,
+            agenda: true,
         }
     }
 }

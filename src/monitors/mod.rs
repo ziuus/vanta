@@ -6,6 +6,7 @@ pub mod memory;
 pub mod network;
 pub mod weather;
 pub mod tasks;
+pub mod agenda;
 pub mod processes;
 pub mod system_info;
 
@@ -88,6 +89,7 @@ pub fn start(interval: Duration) -> Arc<AtomicU64> {
     facts_thread();
     weather::start();
     tasks::start();
+    agenda::start();
     handle
 }
 

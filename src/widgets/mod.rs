@@ -11,3 +11,4 @@ pub mod status;
 pub mod video;
 pub mod weather;
 pub mod tasks;
+pub mod agenda;
