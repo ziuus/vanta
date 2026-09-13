@@ -61,13 +61,14 @@ fn glyph(c: char, font: &str) -> [&'static str; GLYPH_H] {
 /// `sx`-wide gap between glyphs.
 fn text_width(text: &str, sx: usize, font: &str) -> usize {
     let glyphs = text.chars().count();
-    let cells: usize = text.chars().map(|c| glyph(c, "standard")[0].len()).sum();
+    let cells: usize = text.chars().map(|c| glyph(c, font)[0].len()).sum();
     (cells + glyphs.saturating_sub(1)) * sx
 }
 
 /// Render `text` as block glyphs. `sx`/`sy` stretch each glyph pixel.
 /// `colon_on` toggles the colons so they can blink with the seconds.
 fn big_lines(
+    clock_style: &str,
     text: &str,
     sx: usize,
     sy: usize,
@@ -92,7 +93,13 @@ fn big_lines(
             }
             let style = if c == ':' { colon } else { digit };
             for px in glyph(c, font)[row].chars() {
-                let cell = if px == '#' { "█" } else { " " };
+                let cell = if px == '#' {
+                    match clock_style {
+                        "dotted" => "⣿",
+                        "hollow" => "▒",
+                        _ => "█",
+                    }
+                } else { " " };
                 spans.push(Span::styled(cell.repeat(sx), style));
             }
         }
@@ -117,7 +124,7 @@ fn pick_scale(text: &str, w: usize, h: usize, font: &str) -> Option<(usize, usiz
 
 /// Big clock. Layout: block-digit time, then a date line beneath. Falls back
 /// to plain text when the area is too small for glyphs.
-pub fn render(f: &mut Frame, area: Rect, theme: &Theme, h24: bool, font: &str) {
+pub fn render(f: &mut Frame, area: Rect, theme: &Theme, h24: bool, font: &str, style: &str) {
     if area.height == 0 || area.width < 8 {
         return;
     }
@@ -174,7 +181,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, h24: bool, font: &str) {
         return;
     };
 
-    let mut lines = big_lines(&text, sx, sy, colon_on, font, theme);
+    let mut lines = big_lines(style, &text, sx, sy, colon_on, font, theme);
     // Small seconds (when dropped) and am/pm tag sit at the bottom-right of the glyphs.
     let mut tag = seconds.unwrap_or_default();
     if let Some(s) = &suffix {
@@ -227,7 +234,7 @@ mod tests {
         assert_eq!(pick_scale("12:34:56", 30, 5, "standard"), Some((1, 1)));
         assert_eq!(pick_scale("12:34:56", 20, 5, "standard"), None);
         for c in "0123456789:".chars() {
-            assert!(glyph(c, "standard").iter().all(|row| row.len() == glyph(c, "standard")[0].len()));
+            assert!(glyph(c, font).iter().all(|row| row.len() == glyph(c, font)[0].len()));
         }
     }
 }
