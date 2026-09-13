@@ -102,7 +102,7 @@ impl PanelId {
                 (PanelId::System, true),
                 (PanelId::Processes, true),
             ],
-            DashboardMode::Writer => vec![
+            DashboardMode::Workspace => vec![
                 (PanelId::News, w.news),
                 (PanelId::Tasks, w.tasks),
                 (PanelId::Agenda, w.agenda),
@@ -369,7 +369,7 @@ impl App {
             KeyCode::Char('1') => self.set_mode(DashboardMode::Dashboard),
             KeyCode::Char('2') => self.set_mode(DashboardMode::Monitor),
             KeyCode::Char('3') => self.set_mode(DashboardMode::Aesthetic),
-            KeyCode::Char('4') => self.set_mode(DashboardMode::Writer),
+            KeyCode::Char('4') => self.set_mode(DashboardMode::Workspace),
             KeyCode::Char('T') => self.cycle_theme(),
             KeyCode::Char('v') | KeyCode::Char('V') => {
                 music_viz::cycle_style();
@@ -450,7 +450,7 @@ impl App {
                 | KeyCode::Char('k')
                 | KeyCode::Char('K')
         );
-        if self.mode == DashboardMode::Writer {
+        if self.mode == DashboardMode::Workspace {
             match self.focused_panel {
                 Some(PanelId::WriterNotes) => match key {
                     KeyCode::Up | KeyCode::Char('k') => {
@@ -685,7 +685,7 @@ impl App {
             (None, DashboardMode::Dashboard) => screens::dashboard::render(f, main, self),
             (None, DashboardMode::Monitor) => screens::monitor::render(f, main, self),
             (None, DashboardMode::Aesthetic) => screens::aesthetic::render(f, main, self),
-            (None, DashboardMode::Writer) => screens::writer::render(f, main, self),
+            (None, DashboardMode::Workspace) => screens::workspace::render(f, main, self),
         }
 
         self.render_status(f, status_bar);
@@ -788,7 +788,7 @@ impl App {
             DashboardMode::Dashboard,
             DashboardMode::Monitor,
             DashboardMode::Aesthetic,
-            DashboardMode::Writer,
+            DashboardMode::Workspace,
         ] {
             let style = if m == self.mode {
                 Style::default()
