@@ -62,7 +62,6 @@ pub enum PanelId {
     Processes,
     Status,
     Calendar,
-    Matrix,
     Video,
     /// A user-defined custom widget at the given index in `CustomWidgetManager`.
     Custom(usize),
@@ -99,7 +98,6 @@ impl PanelId {
             DashboardMode::Aesthetic => vec![
                 (PanelId::Clock, true),
                 (PanelId::Calendar, true),
-                (PanelId::Matrix, w.matrix),
                 (PanelId::Video, w.video),
                 (PanelId::Visualizer, w.music_viz),
             ],
@@ -134,7 +132,6 @@ impl PanelId {
             PanelId::Processes => "processes",
             PanelId::Status => "status",
             PanelId::Calendar => "calendar",
-            PanelId::Matrix => "matrix",
             PanelId::Video => "donut",
             PanelId::Custom(_) => "custom",
         }

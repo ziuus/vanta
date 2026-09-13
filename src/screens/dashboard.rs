@@ -7,7 +7,7 @@ use ratatui::Frame;
 use crate::app::{App, PanelId};
 use crate::monitors::{cpu, disk, memory, network, processes, system_info};
 use crate::screens::{panel, too_small};
-use crate::widgets::{calendar, clock, gauge, matrix, media, meter, music_viz, status};
+use crate::widgets::{calendar, clock, gauge, media, meter, music_viz, status};
 
 const MIN: (u16, u16) = (96, 30);
 
@@ -106,9 +106,6 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
         if cfg.cpu {
             let inner = panel(f, rows[2], "cpu", theme, focus(PanelId::Cpu));
             cpu::render(f, inner, theme);
-        } else {
-            let inner = panel(f, rows[2], "matrix", theme, false);
-            matrix::render(f, inner, theme);
         }
 
         if cfg.disk {
@@ -148,8 +145,6 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
         );
         if cfg.processes {
             render_top_procs(f, inner, theme);
-        } else {
-            matrix::render(f, inner, theme);
         }
     }
 
@@ -179,9 +174,6 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
         if cfg.network {
             let inner = panel(f, rows[2], "network", theme, focus(PanelId::Network));
             network::render(f, inner, theme);
-        } else {
-            let inner = panel(f, rows[2], "matrix", theme, false);
-            matrix::render(f, inner, theme);
         }
 
         if cfg.calendar {

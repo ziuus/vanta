@@ -57,7 +57,7 @@ pub fn too_small(f: &mut Frame, area: Rect, theme: &Theme, need: (u16, u16)) {
 pub fn render_panel(f: &mut Frame, area: Rect, app: &crate::app::App, id: crate::app::PanelId) {
     use crate::app::PanelId as P;
     use crate::monitors::{cpu, disk, gpu, memory, network, system_info};
-    use crate::widgets::{calendar, clock, gauge, matrix, media, music_viz, status, video};
+    use crate::widgets::{calendar, clock, gauge, media, music_viz, status, video};
 
     let theme = &app.theme;
     let title = format!("{} · zoomed · esc to return", id.label());
@@ -101,7 +101,6 @@ pub fn render_panel(f: &mut Frame, area: Rect, app: &crate::app::App, id: crate:
         P::Visualizer => music_viz::render(f, inner, theme, app.frame),
         P::Status => status::render(f, inner, theme),
         P::Calendar => calendar::render(f, inner, theme, app.panel_states.calendar_month_offset),
-        P::Matrix => matrix::render(f, inner, theme),
         P::Video => video::render(f, inner, theme, app.frame),
         P::Processes => {
             let ps = &app.panel_states;

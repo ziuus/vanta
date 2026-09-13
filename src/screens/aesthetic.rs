@@ -3,7 +3,7 @@ use ratatui::Frame;
 
 use crate::app::{App, PanelId};
 use crate::screens::{panel, too_small};
-use crate::widgets::{calendar, clock, matrix, music_viz, video};
+use crate::widgets::{calendar, clock, music_viz, video};
 
 const MIN: (u16, u16) = (70, 24);
 
@@ -38,23 +38,9 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
     let inner = panel(f, top[1], "calendar", theme, focus(PanelId::Calendar));
     calendar::render(f, inner, theme, app.panel_states.calendar_month_offset);
 
-    match (cfg.matrix, cfg.video) {
-        (true, true) => {
-            let mid = Layout::horizontal([Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)])
-                .split(rows[1]);
-            let inner = panel(f, mid[0], "matrix", theme, focus(PanelId::Matrix));
-            matrix::render(f, inner, theme);
-            let inner = panel(f, mid[1], "donut", theme, focus(PanelId::Video));
-            video::render(f, inner, theme, app.frame);
-        }
-        (true, false) => {
-            let inner = panel(f, rows[1], "matrix", theme, focus(PanelId::Matrix));
-            matrix::render(f, inner, theme);
-        }
-        (false, _) => {
-            let inner = panel(f, rows[1], "donut", theme, focus(PanelId::Video));
-            video::render(f, inner, theme, app.frame);
-        }
+    if cfg.video {
+        let inner = panel(f, rows[1], "donut", theme, focus(PanelId::Video));
+        video::render(f, inner, theme, app.frame);
     }
 
     if cfg.music_viz {
