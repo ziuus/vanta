@@ -154,6 +154,9 @@ impl PanelId {
             "calendar" | "cal" => w.calendar.then_some(PanelId::Calendar),
             "matrix" => w.matrix.then_some(PanelId::Matrix),
             "gpu" => w.gpu.then_some(PanelId::Gpu),
+            "tasks" | "todo" => w.tasks.then_some(PanelId::Tasks),
+            "agenda" => w.agenda.then_some(PanelId::Agenda),
+            "news" => w.news.then_some(PanelId::News),
             custom_id => cfg
                 .custom_widgets
                 .iter()
@@ -571,77 +574,79 @@ impl App {
                 | KeyCode::Char('k')
                 | KeyCode::Char('K')
         );
+        match self.focused_panel {
+            Some(PanelId::Tasks) => match key {
+                KeyCode::Up | KeyCode::Char('k') => {
+                    self.panel_states.tasks_selected =
+                        self.panel_states.tasks_selected.saturating_sub(1);
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    let count = crate::monitors::tasks::snapshot().tasks.len();
+                    if count > 0 {
+                        self.panel_states.tasks_selected =
+                            (self.panel_states.tasks_selected + 1).min(count - 1);
+                    }
+                }
+                KeyCode::Char(' ') | KeyCode::Char('x') => {
+                    crate::monitors::tasks::toggle_task(self.panel_states.tasks_selected);
+                }
+                KeyCode::Char('a') | KeyCode::Char('n') => {
+                    self.panel_states.task_input_active = true;
+                    self.panel_states.task_input.clear();
+                }
+                KeyCode::Char('d') | KeyCode::Delete => {
+                    let count = crate::monitors::tasks::snapshot().tasks.len();
+                    if count > 0 {
+                        crate::monitors::tasks::delete_task(self.panel_states.tasks_selected);
+                        if self.panel_states.tasks_selected >= count - 1
+                            && self.panel_states.tasks_selected > 0
+                        {
+                            self.panel_states.tasks_selected -= 1;
+                        }
+                    }
+                }
+                KeyCode::Enter | KeyCode::Char('e') | KeyCode::Char('E') => {
+                    self.trigger_focused_action();
+                }
+                _ => {}
+            },
+            Some(PanelId::Agenda) => match key {
+                KeyCode::Up | KeyCode::Char('k') => {
+                    self.panel_states.agenda_selected =
+                        self.panel_states.agenda_selected.saturating_sub(1);
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    let count = crate::monitors::agenda::snapshot().events.len();
+                    if count > 0 {
+                        self.panel_states.agenda_selected =
+                            (self.panel_states.agenda_selected + 1).min(count - 1);
+                    }
+                }
+                KeyCode::Char('a') | KeyCode::Char('n') => {
+                    self.panel_states.agenda_input_active = true;
+                    self.panel_states.agenda_input.clear();
+                }
+                KeyCode::Char('d') | KeyCode::Delete => {
+                    let count = crate::monitors::agenda::snapshot().events.len();
+                    if count > 0 {
+                        crate::monitors::agenda::delete_event(self.panel_states.agenda_selected);
+                        if self.panel_states.agenda_selected >= count - 1
+                            && self.panel_states.agenda_selected > 0
+                        {
+                            self.panel_states.agenda_selected -= 1;
+                        }
+                    }
+                }
+                KeyCode::Enter | KeyCode::Char('e') | KeyCode::Char('E') => {
+                    self.trigger_focused_action();
+                }
+                _ => {}
+            },
+            _ => {}
+        }
+
         if self.mode == DashboardMode::Workspace {
             match self.focused_panel {
-                Some(PanelId::Tasks) => match key {
-                    KeyCode::Up | KeyCode::Char('k') => {
-                        self.panel_states.tasks_selected =
-                            self.panel_states.tasks_selected.saturating_sub(1);
-                    }
-                    KeyCode::Down | KeyCode::Char('j') => {
-                        let count = crate::monitors::tasks::snapshot().tasks.len();
-                        if count > 0 {
-                            self.panel_states.tasks_selected =
-                                (self.panel_states.tasks_selected + 1).min(count - 1);
-                        }
-                    }
-                    KeyCode::Char(' ') | KeyCode::Char('x') => {
-                        crate::monitors::tasks::toggle_task(self.panel_states.tasks_selected);
-                    }
-                    KeyCode::Char('a') | KeyCode::Char('n') => {
-                        self.panel_states.task_input_active = true;
-                        self.panel_states.task_input.clear();
-                    }
-                    KeyCode::Char('d') | KeyCode::Delete => {
-                        let count = crate::monitors::tasks::snapshot().tasks.len();
-                        if count > 0 {
-                            crate::monitors::tasks::delete_task(self.panel_states.tasks_selected);
-                            if self.panel_states.tasks_selected >= count - 1
-                                && self.panel_states.tasks_selected > 0
-                            {
-                                self.panel_states.tasks_selected -= 1;
-                            }
-                        }
-                    }
-                    KeyCode::Enter | KeyCode::Char('e') | KeyCode::Char('E') => {
-                        self.trigger_focused_action();
-                    }
-                    _ => {}
-                },
-                Some(PanelId::Agenda) => match key {
-                    KeyCode::Up | KeyCode::Char('k') => {
-                        self.panel_states.agenda_selected =
-                            self.panel_states.agenda_selected.saturating_sub(1);
-                    }
-                    KeyCode::Down | KeyCode::Char('j') => {
-                        let count = crate::monitors::agenda::snapshot().events.len();
-                        if count > 0 {
-                            self.panel_states.agenda_selected =
-                                (self.panel_states.agenda_selected + 1).min(count - 1);
-                        }
-                    }
-                    KeyCode::Char('a') | KeyCode::Char('n') => {
-                        self.panel_states.agenda_input_active = true;
-                        self.panel_states.agenda_input.clear();
-                    }
-                    KeyCode::Char('d') | KeyCode::Delete => {
-                        let count = crate::monitors::agenda::snapshot().events.len();
-                        if count > 0 {
-                            crate::monitors::agenda::delete_event(
-                                self.panel_states.agenda_selected,
-                            );
-                            if self.panel_states.agenda_selected >= count - 1
-                                && self.panel_states.agenda_selected > 0
-                            {
-                                self.panel_states.agenda_selected -= 1;
-                            }
-                        }
-                    }
-                    KeyCode::Enter | KeyCode::Char('e') | KeyCode::Char('E') => {
-                        self.trigger_focused_action();
-                    }
-                    _ => {}
-                },
                 Some(PanelId::WriterNotes) => match key {
                     KeyCode::Up | KeyCode::Char('k') => {
                         self.panel_states.writer_selected =

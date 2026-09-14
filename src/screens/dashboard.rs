@@ -114,6 +114,8 @@ fn is_flex_panel(name: &str) -> bool {
             | "network"
             | "net"
             | "matrix"
+            | "tasks"
+            | "agenda"
     )
 }
 
@@ -363,12 +365,17 @@ fn render_dashboard_panel(
             } else {
                 format!(" {} upcoming ", count)
             };
+            let hint = if app.panel_states.agenda_input_active {
+                "Enter submit · Esc cancel"
+            } else {
+                "a add · d del · e edit · ↑↓ select"
+            };
             let inner = panel_full(
                 f,
                 area,
                 "agenda",
                 Some(&agenda_rt),
-                None,
+                Some(hint),
                 theme,
                 focus(PanelId::Agenda),
             );
@@ -386,12 +393,17 @@ fn render_dashboard_panel(
             let snap = crate::monitors::tasks::snapshot();
             let open = snap.tasks.iter().filter(|t| !t.completed).count();
             let tasks_rt = format!(" {} open ", open);
+            let hint = if app.panel_states.task_input_active {
+                "Enter submit · Esc cancel"
+            } else {
+                "a add · Space toggle · d del · e edit"
+            };
             let inner = panel_full(
                 f,
                 area,
                 "tasks",
                 Some(&tasks_rt),
-                None,
+                Some(hint),
                 theme,
                 focus(PanelId::Tasks),
             );
