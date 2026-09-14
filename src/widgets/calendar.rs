@@ -38,40 +38,32 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, month_offset: i32) {
         weeks.push((iso, week));
     }
 
-    const CAL_W: u16 = 30; // 3 for wk, 2 for sep, 7*3 for days = 26 + padding
+    const CAL_W: u16 = 20; // 3 for wk, 2 for sep, 7*3 for days = 26 + padding
     let mut lines: Vec<Line> = Vec::new();
 
     let title = format!("{} {}", month_name(month), year);
-    let title_pad = 26_usize.saturating_sub(title.len()) / 2;
-    let title_line = format!("{} {} {}", " ".repeat(title_pad), title, " ".repeat(title_pad));
     
     // Top border box for title
-    lines.push(Line::from(Span::styled("┌──────────────────────────┐", Style::default().fg(theme.dim))));
+    lines.push(Line::from(Span::styled("┌───────────────────┐", Style::default().fg(theme.dim))));
     lines.push(Line::from(vec![
         Span::styled("│", Style::default().fg(theme.dim)),
-        Span::styled(format!("{:^26}", title), Style::default().fg(theme.text)),
+        Span::styled(format!("{:^19}", title), Style::default().fg(theme.text)),
         Span::styled("│", Style::default().fg(theme.dim)),
     ]));
-    lines.push(Line::from(Span::styled("└──────────────────────────┘", Style::default().fg(theme.dim))));
+    lines.push(Line::from(Span::styled("└───────────────────┘", Style::default().fg(theme.dim))));
     lines.push(Line::from(""));
 
     // Header
-    let mut hdr = vec![
-        Span::styled("wk", Style::default().fg(theme.dim)),
-        Span::styled(" ┊ ", Style::default().fg(theme.dim)),
-    ];
+    let mut hdr = vec![];
     for d in ["mo", "tu", "we", "th", "fr", "sa", "su"] {
         hdr.push(Span::styled(format!("{:>2} ", d), Style::default().fg(theme.secondary)));
     }
     lines.push(Line::from(hdr));
-    lines.push(Line::from(Span::styled("───┼────────────────────────", Style::default().fg(theme.dim))));
+    lines.push(Line::from(Span::styled("─────────────────────", Style::default().fg(theme.dim))));
 
     // Days
-    for (iso, w) in &weeks {
-        let mut spans = vec![
-            Span::styled(format!("{:>2}", iso), Style::default().fg(theme.dim)),
-            Span::styled(" ┊ ", Style::default().fg(theme.dim)),
-        ];
+    for (_iso, w) in &weeks {
+        let mut spans = vec![];
         for day in w {
             if *day == 0 {
                 spans.push(Span::styled(" . ", Style::default().fg(theme.dim)));

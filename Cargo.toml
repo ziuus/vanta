@@ -1,6 +1,6 @@
 [package]
 name = "vanta"
-version = "0.6.4"
+version = "0.6.5"
 edition = "2021"
 description = "Aesthetic Rust TUI system dashboard — monitoring meets flex widgets"
 authors = ["zius"]
@@ -30,3 +30,6 @@ opt-level = 3
 lto = "thin"
 codegen-units = 1
 strip = true
+
+[dev-dependencies]
+ratatui = "0.29"
