@@ -75,24 +75,30 @@ pub enum PanelId {
 }
 
 impl PanelId {
-    /// Tab order for a page, honouring widget toggles.
+    /// Tab order for a page, honouring widget toggles and custom dashboard layout.
     pub fn for_mode(mode: DashboardMode, cfg: &Config) -> Vec<PanelId> {
+        if mode == DashboardMode::Dashboard {
+            let mut list = Vec::new();
+            for col in &cfg.dashboard.layout {
+                for name in col {
+                    if let Some(p) = Self::from_name(name, cfg) {
+                        if !list.contains(&p) {
+                            list.push(p);
+                        }
+                    }
+                }
+            }
+            for (i, cw) in cfg.custom_widgets.iter().enumerate() {
+                if cw.enabled && !list.contains(&PanelId::Custom(i)) {
+                    list.push(PanelId::Custom(i));
+                }
+            }
+            return list;
+        }
+
         let w = &cfg.widgets;
-        let mut list: Vec<(PanelId, bool)> = match mode {
-            DashboardMode::Dashboard => vec![
-                (PanelId::System, true),
-                (PanelId::Gauges, true),
-                (PanelId::Cpu, w.cpu),
-                (PanelId::Storage, w.disk),
-                (PanelId::Clock, w.clock),
-                (PanelId::Media, w.media),
-                (PanelId::Visualizer, w.music_viz),
-                (PanelId::Processes, w.processes),
-                (PanelId::Status, true),
-                (PanelId::Memory, w.memory),
-                (PanelId::Network, w.network),
-                (PanelId::Calendar, w.calendar),
-            ],
+        let list: Vec<(PanelId, bool)> = match mode {
+            DashboardMode::Dashboard => unreachable!(),
             DashboardMode::Monitor => vec![
                 (PanelId::Cpu, true),
                 (PanelId::Memory, true),
@@ -121,18 +127,39 @@ impl PanelId {
                 (PanelId::Visualizer, w.music_viz),
             ],
         };
-        // Append enabled custom widgets (they only appear on the Dashboard page).
-        if mode == DashboardMode::Dashboard {
-            for (i, cw) in cfg.custom_widgets.iter().enumerate() {
-                if cw.enabled {
-                    list.push((PanelId::Custom(i), true));
-                }
-            }
-        }
         list.into_iter()
             .filter(|(_, on)| *on)
             .map(|(p, _)| p)
             .collect()
+    }
+
+    pub fn from_name(name: &str, cfg: &Config) -> Option<PanelId> {
+        let w = &cfg.widgets;
+        match name.to_lowercase().as_str() {
+            "system" => Some(PanelId::System),
+            "gauges" | "gauge" => Some(PanelId::Gauges),
+            "cpu" => w.cpu.then_some(PanelId::Cpu),
+            "storage" => w.disk.then_some(PanelId::Storage),
+            "disk" => w.disk.then_some(PanelId::Disk),
+            "clock" => w.clock.then_some(PanelId::Clock),
+            "media" | "now_playing" | "now-playing" => w.media.then_some(PanelId::Media),
+            "visualizer" | "viz" => w.music_viz.then_some(PanelId::Visualizer),
+            "processes" | "procs" | "top_processes" | "top-processes" => {
+                w.processes.then_some(PanelId::Processes)
+            }
+            "status" => Some(PanelId::Status),
+            "weather" => w.weather.then_some(PanelId::Weather),
+            "memory" | "mem" => w.memory.then_some(PanelId::Memory),
+            "network" | "net" => w.network.then_some(PanelId::Network),
+            "calendar" | "cal" => w.calendar.then_some(PanelId::Calendar),
+            "matrix" => w.matrix.then_some(PanelId::Matrix),
+            "gpu" => w.gpu.then_some(PanelId::Gpu),
+            custom_id => cfg
+                .custom_widgets
+                .iter()
+                .position(|cw| cw.enabled && cw.id.eq_ignore_ascii_case(custom_id))
+                .map(PanelId::Custom),
+        }
     }
 
     pub fn label(&self) -> &'static str {

@@ -5,35 +5,43 @@ use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
 use crate::app::{App, PanelId};
-use crate::monitors::{cpu, disk, memory, network, processes, system_info};
+use crate::monitors::{cpu, disk, gpu, memory, network, processes, system_info};
 use crate::screens::{panel, panel_full, too_small};
 use crate::widgets::{calendar, clock, gauge, matrix, media, meter, music_viz, status};
 
 const MIN: (u16, u16) = (96, 30);
 
-/// Three columns: hardware · ambient · environment. Every panel is sized to
-/// its content so nothing is left as dead space.
+/// Data-driven dashboard layout: reads `dashboard.layout` from config,
+/// supporting user-defined column assignments, panel reordering, and custom widgets.
 pub fn render(f: &mut Frame, area: Rect, app: &App) {
     if area.width < MIN.0 || area.height < MIN.1 {
         too_small(f, area, &app.theme, MIN);
         return;
     }
-    let theme = &app.theme;
-    let cfg = &app.config.widgets;
     let sum = &app.summary;
-    let focus = |p: PanelId| app.focused_panel == Some(p);
     let term = (f.area().width, f.area().height);
 
-    // Determine whether we need a custom-widgets row at the bottom.
-    // Only allocate space when there's enough room to show both the main
-    // dashboard and the custom row legibly. 37 rows = 30 main + 7 custom.
-    let n_custom = app
+    let assigned_custom_ids: Vec<String> = app
+        .config
+        .dashboard
+        .layout
+        .iter()
+        .flat_map(|col| col.iter().cloned())
+        .collect();
+
+    let unassigned_custom_count = app
         .config
         .custom_widgets
         .iter()
-        .filter(|c| c.enabled)
+        .filter(|c| {
+            c.enabled
+                && !assigned_custom_ids
+                    .iter()
+                    .any(|id| id.eq_ignore_ascii_case(&c.id))
+        })
         .count();
-    let custom_row_h: u16 = if n_custom > 0 && area.height >= 37 {
+
+    let custom_row_h: u16 = if unassigned_custom_count > 0 && area.height >= 37 {
         7
     } else {
         0
@@ -42,72 +50,177 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
     let [main_area, custom_area] =
         Layout::vertical([Constraint::Min(0), Constraint::Length(custom_row_h)]).areas(area);
 
-    let cols = Layout::horizontal([
-        Constraint::Percentage(app.panel_states.dash_ratios[0]),
-        Constraint::Percentage(app.panel_states.dash_ratios[1]),
-        Constraint::Percentage(app.panel_states.dash_ratios[2]),
-    ])
-    .split(main_area);
-
-    // ── LEFT: hardware ─────────────────────────────────────────
+    let n_cols = app.config.dashboard.layout.len().clamp(1, 4);
+    let col_constraints: Vec<Constraint> = if n_cols == 3 && app.panel_states.dash_ratios.len() == 3
     {
-        let mounts = disk::mounts().len().clamp(1, 4) as u16;
-        let rows = Layout::vertical([
-            Constraint::Length(12),                                    // SYSTEM
-            Constraint::Length(gauge::H as u16 + 2),                   // GAUGES
-            Constraint::Min(8),                                        // CPU
-            Constraint::Length(if cfg.disk { mounts + 2 } else { 0 }), // STORAGE
-        ])
-        .split(cols[0]);
+        vec![
+            Constraint::Percentage(app.panel_states.dash_ratios[0]),
+            Constraint::Percentage(app.panel_states.dash_ratios[1]),
+            Constraint::Percentage(app.panel_states.dash_ratios[2]),
+        ]
+    } else {
+        (0..n_cols)
+            .map(|_| Constraint::Ratio(1, n_cols as u32))
+            .collect()
+    };
+    let cols = Layout::horizontal(col_constraints).split(main_area);
 
-        let inner = panel(f, rows[0], "system", theme, focus(PanelId::System));
-        system_info::render_neofetch(f, inner, theme, sum, term);
+    let mounts = disk::mounts().len().clamp(1, 4) as u16;
 
-        let inner = panel(f, rows[1], "gauges", theme, focus(PanelId::Gauges));
-        let mut metrics = vec![
-            (
-                "cpu",
-                sum.cpu_pct as f64,
-                format!("{:.0}%", sum.cpu_pct),
-                theme.usage(sum.cpu_pct as f64),
-            ),
-            (
-                "mem",
-                sum.mem_pct,
-                format!("{:.0}%", sum.mem_pct),
-                theme.usage(sum.mem_pct),
-            ),
-        ];
-        match (sum.gpu_pct, sum.battery) {
-            (Some(g), _) => metrics.push(("gpu", g, format!("{:.0}%", g), theme.usage(g))),
-            (None, Some((b, charging))) => {
-                let col = if charging || b > 40 {
-                    theme.green
-                } else if b > 20 {
-                    theme.yellow
+    for (c, &col_area) in cols.iter().enumerate() {
+        if c >= app.config.dashboard.layout.len() {
+            break;
+        }
+        let col_names = &app.config.dashboard.layout[c];
+        let active_panels: Vec<&str> = col_names
+            .iter()
+            .map(|s| s.as_str())
+            .filter(|name| PanelId::from_name(name, &app.config).is_some())
+            .collect();
+
+        if active_panels.is_empty() {
+            continue;
+        }
+
+        let has_flex = active_panels.iter().any(|p| is_flex_panel(p));
+        let num_panels = active_panels.len();
+        let constraints: Vec<Constraint> = active_panels
+            .iter()
+            .enumerate()
+            .map(|(i, &p)| {
+                panel_constraint(p, i == num_panels - 1, has_flex, mounts, main_area.height)
+            })
+            .collect();
+
+        let rows = Layout::vertical(constraints).split(col_area);
+        for (&p, &row_area) in active_panels.iter().zip(rows.iter()) {
+            render_dashboard_panel(f, row_area, p, app, sum, term);
+        }
+    }
+
+    if unassigned_custom_count > 0 && custom_area.height > 0 {
+        render_custom_row(f, custom_area, app, unassigned_custom_count);
+    }
+}
+
+fn is_flex_panel(name: &str) -> bool {
+    matches!(
+        name.to_lowercase().as_str(),
+        "cpu"
+            | "processes"
+            | "procs"
+            | "top_processes"
+            | "top-processes"
+            | "network"
+            | "net"
+            | "matrix"
+    )
+}
+
+fn panel_constraint(
+    name: &str,
+    is_last: bool,
+    has_flex_in_col: bool,
+    mounts: u16,
+    total_height: u16,
+) -> Constraint {
+    if is_flex_panel(name) {
+        if name.eq_ignore_ascii_case("cpu") {
+            Constraint::Min(8)
+        } else {
+            Constraint::Min(6)
+        }
+    } else {
+        let h = match name.to_lowercase().as_str() {
+            "system" => 12,
+            "gauges" | "gauge" => gauge::H as u16 + 2,
+            "storage" | "disk" => mounts + 2,
+            "clock" => 9,
+            "media" | "now_playing" | "now-playing" => 6,
+            "visualizer" | "viz" => 9,
+            "status" => 9,
+            "weather" => 9,
+            "calendar" | "cal" => 12,
+            "memory" | "mem" => {
+                if total_height >= 38 {
+                    7
                 } else {
-                    theme.red
-                };
-                metrics.push((
-                    "bat",
-                    b as f64,
-                    format!("{}%{}", b, if charging { "⚡" } else { "" }),
-                    col,
-                ));
-            }
-            (None, None) => {
-                if let Some(d) = sum.disk_pct {
-                    metrics.push(("disk", d, format!("{:.0}%", d), theme.usage(d)));
+                    6
                 }
             }
+            "gpu" => 7,
+            _ => 7,
+        };
+        if is_last && !has_flex_in_col {
+            Constraint::Min(h)
+        } else {
+            Constraint::Length(h)
         }
-        gauge::render(f, inner, theme, &metrics);
+    }
+}
 
-        if cfg.cpu {
+fn render_dashboard_panel(
+    f: &mut Frame,
+    area: Rect,
+    name: &str,
+    app: &App,
+    sum: &crate::monitors::Summary,
+    term: (u16, u16),
+) {
+    let theme = &app.theme;
+    let focus = |p: PanelId| app.focused_panel == Some(p);
+
+    match name.to_lowercase().as_str() {
+        "system" => {
+            let inner = panel(f, area, "system", theme, focus(PanelId::System));
+            system_info::render_neofetch(f, inner, theme, sum, term);
+        }
+        "gauges" | "gauge" => {
+            let inner = panel(f, area, "gauges", theme, focus(PanelId::Gauges));
+            let mut metrics = vec![
+                (
+                    "cpu",
+                    sum.cpu_pct as f64,
+                    format!("{:.0}%", sum.cpu_pct),
+                    theme.usage(sum.cpu_pct as f64),
+                ),
+                (
+                    "mem",
+                    sum.mem_pct,
+                    format!("{:.0}%", sum.mem_pct),
+                    theme.usage(sum.mem_pct),
+                ),
+            ];
+            match (sum.gpu_pct, sum.battery) {
+                (Some(g), _) => metrics.push(("gpu", g, format!("{:.0}%", g), theme.usage(g))),
+                (None, Some((b, charging))) => {
+                    let col = if charging || b > 40 {
+                        theme.green
+                    } else if b > 20 {
+                        theme.yellow
+                    } else {
+                        theme.red
+                    };
+                    metrics.push((
+                        "bat",
+                        b as f64,
+                        format!("{}%{}", b, if charging { "⚡" } else { "" }),
+                        col,
+                    ));
+                }
+                (None, None) => {
+                    if let Some(d) = sum.disk_pct {
+                        metrics.push(("disk", d, format!("{:.0}%", d), theme.usage(d)));
+                    }
+                }
+            }
+            gauge::render(f, inner, theme, &metrics);
+        }
+        "cpu" => {
             let cpu_rt = format!(" {:.1}% ", sum.cpu_pct);
             let inner = panel_full(
                 f,
-                rows[2],
+                area,
                 "cpu",
                 Some(&cpu_rt),
                 None,
@@ -115,29 +228,17 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
                 focus(PanelId::Cpu),
             );
             cpu::render(f, inner, theme);
-        } else {
-            let inner = panel(f, rows[2], "matrix", theme, false);
-            matrix::render(f, inner, theme);
         }
-
-        if cfg.disk {
-            let inner = panel(f, rows[3], "storage", theme, focus(PanelId::Storage));
+        "storage" => {
+            let inner = panel(f, area, "storage", theme, focus(PanelId::Storage));
             disk::render_storage(f, inner, theme);
         }
-    }
-
-    // ── CENTER: ambient ────────────────────────────────────────
-    {
-        let rows = Layout::vertical([
-            Constraint::Length(if cfg.clock { 9 } else { 0 }), // CLOCK: 5 glyph + gap + date
-            Constraint::Length(if cfg.media { 6 } else { 0 }), // MEDIA
-            Constraint::Length(if cfg.music_viz { 9 } else { 0 }), // VISUALIZER
-            Constraint::Min(6),                                // TOP PROCESSES
-        ])
-        .split(cols[1]);
-
-        if cfg.clock {
-            let inner = panel(f, rows[0], "clock", theme, focus(PanelId::Clock));
+        "disk" => {
+            let inner = panel(f, area, "disk", theme, focus(PanelId::Disk));
+            disk::render(f, inner, theme);
+        }
+        "clock" => {
+            let inner = panel(f, area, "clock", theme, focus(PanelId::Clock));
             clock::render(
                 f,
                 inner,
@@ -148,64 +249,45 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
                 &[],
             );
         }
-        if cfg.media {
-            let inner = panel(f, rows[1], "now playing", theme, focus(PanelId::Media));
+        "media" | "now_playing" | "now-playing" => {
+            let inner = panel(f, area, "now playing", theme, focus(PanelId::Media));
             media::render(f, inner, theme);
         }
-        if cfg.music_viz {
-            let inner = panel(f, rows[2], "visualizer", theme, focus(PanelId::Visualizer));
+        "visualizer" | "viz" => {
+            let inner = panel(f, area, "visualizer", theme, focus(PanelId::Visualizer));
             music_viz::render(f, inner, theme, app.frame);
         }
-        let inner = panel_full(
-            f,
-            rows[3],
-            "top processes",
-            None,
-            Some("↑ ↓ scroll • k kill"),
-            theme,
-            focus(PanelId::Processes),
-        );
-        if cfg.processes {
+        "processes" | "procs" | "top_processes" | "top-processes" => {
+            let inner = panel_full(
+                f,
+                area,
+                "top processes",
+                None,
+                Some("↑ ↓ scroll • k kill"),
+                theme,
+                focus(PanelId::Processes),
+            );
             render_top_procs(f, inner, theme);
-        } else {
-            matrix::render(f, inner, theme);
         }
-    }
-
-    // ── RIGHT: environment ─────────────────────────────────────
-    {
-        let mem_h = if cfg.memory && main_area.height >= 42 {
-            7
-        } else {
-            0
-        };
-        let rows = Layout::vertical([
-            Constraint::Length(9),                                 // STATUS
-            Constraint::Length(if cfg.weather { 9 } else { 0 }),   // WEATHER
-            Constraint::Length(mem_h),                             // MEMORY (tall terminals)
-            Constraint::Min(6),                                    // NETWORK
-            Constraint::Length(if cfg.calendar { 12 } else { 0 }), // CALENDAR
-        ])
-        .split(cols[2]);
-
-        let inner = panel_full(
-            f,
-            rows[0],
-            "status",
-            None,
-            Some("e to manage"),
-            theme,
-            focus(PanelId::Status),
-        );
-        status::render(
-            f,
-            inner,
-            theme,
-            focus(PanelId::Status),
-            app.panel_states.status_selected,
-        );
-
-        if cfg.weather {
+        "status" => {
+            let inner = panel_full(
+                f,
+                area,
+                "status",
+                None,
+                Some("e to manage"),
+                theme,
+                focus(PanelId::Status),
+            );
+            status::render(
+                f,
+                inner,
+                theme,
+                focus(PanelId::Status),
+                app.panel_states.status_selected,
+            );
+        }
+        "weather" => {
             let weather_rt = if crate::monitors::weather::snapshot().ready {
                 format!(" {} ", crate::monitors::weather::snapshot().location)
             } else {
@@ -213,7 +295,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
             };
             let inner = panel_full(
                 f,
-                rows[1],
+                area,
                 "weather",
                 Some(&weather_rt),
                 None,
@@ -222,12 +304,11 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
             );
             crate::widgets::weather::render(f, inner, theme);
         }
-
-        if mem_h > 0 {
+        "memory" | "mem" => {
             let mem_rt = format!(" {:.1}% ", sum.mem_pct);
             let inner = panel_full(
                 f,
-                rows[2],
+                area,
                 "memory",
                 Some(&mem_rt),
                 None,
@@ -236,12 +317,11 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
             );
             memory::render(f, inner, theme);
         }
-
-        if cfg.network {
+        "network" | "net" => {
             let net_rt = format!(" ↓{:.0} ↑{:.0} kb/s ", sum.rx_kbps, sum.tx_kbps);
             let inner = panel_full(
                 f,
-                rows[3],
+                area,
                 "network",
                 Some(&net_rt),
                 None,
@@ -249,12 +329,8 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
                 focus(PanelId::Network),
             );
             network::render(f, inner, theme);
-        } else {
-            let inner = panel(f, rows[3], "matrix", theme, false);
-            matrix::render(f, inner, theme);
         }
-
-        if cfg.calendar {
+        "calendar" | "cal" => {
             let cal_hint = if app.panel_states.calendar_month_offset == 0 {
                 "← → month"
             } else {
@@ -262,7 +338,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
             };
             let inner = panel_full(
                 f,
-                rows[4],
+                area,
                 "calendar",
                 None,
                 Some(cal_hint),
@@ -271,33 +347,56 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
             );
             calendar::render(f, inner, theme, app.panel_states.calendar_month_offset);
         }
-    }
-
-    // ── BOTTOM: custom widgets ─────────────────────────────────
-    if n_custom > 0 && custom_area.height > 0 {
-        render_custom_row(f, custom_area, app, n_custom);
+        "matrix" => {
+            let inner = panel(f, area, "matrix", theme, false);
+            matrix::render(f, inner, theme);
+        }
+        "gpu" => {
+            let inner = panel(f, area, "gpu", theme, focus(PanelId::Gpu));
+            gpu::render(f, inner, theme);
+        }
+        custom_id => {
+            if let Some((cfg_idx, _)) = app
+                .config
+                .custom_widgets
+                .iter()
+                .enumerate()
+                .find(|(_, cw)| cw.id.eq_ignore_ascii_case(custom_id))
+            {
+                let focused = app.focused_panel == Some(PanelId::Custom(cfg_idx));
+                app.custom_widgets
+                    .render_widget(f, area, cfg_idx, focused, theme);
+            }
+        }
     }
 }
 
-/// Lay out all enabled custom widgets in a single horizontal row.
-/// Each widget gets an equal share of the width; they're always at least
-/// `MIN_W` columns wide — if there isn't room we render as many as fit.
-fn render_custom_row(f: &mut Frame, area: Rect, app: &App, n_custom: usize) {
+fn render_custom_row(f: &mut Frame, area: Rect, app: &App, unassigned_count: usize) {
     const MIN_W: u16 = 20;
     let max_fit = ((area.width / MIN_W) as usize).max(1);
-    let n = n_custom.min(max_fit);
+    let n = unassigned_count.min(max_fit);
     if n == 0 {
         return;
     }
 
-    // Equal-width columns.
     let constraints: Vec<Constraint> = (0..n).map(|_| Constraint::Ratio(1, n as u32)).collect();
     let cols = Layout::horizontal(constraints).split(area);
 
-    // Iterate over enabled widgets (same order as in for_mode()).
+    let assigned_custom_ids: Vec<String> = app
+        .config
+        .dashboard
+        .layout
+        .iter()
+        .flat_map(|col| col.iter().cloned())
+        .collect();
+
     let mut slot = 0usize;
     for (cfg_idx, cfg) in app.config.custom_widgets.iter().enumerate() {
-        if !cfg.enabled {
+        if !cfg.enabled
+            || assigned_custom_ids
+                .iter()
+                .any(|id| id.eq_ignore_ascii_case(&cfg.id))
+        {
             continue;
         }
         if slot >= n {

@@ -7,10 +7,47 @@ use crate::custom::config::CustomWidgetConfig;
 pub struct Config {
     pub ui: UiConfig,
     pub widgets: WidgetConfig,
+    pub dashboard: DashboardConfig,
     /// User-defined custom widgets declared via `[[custom_widgets]]` entries.
     /// Existing configs that omit this field load fine — serde defaults to an
     /// empty `Vec`.
     pub custom_widgets: Vec<CustomWidgetConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct DashboardConfig {
+    /// Multi-column layout specifying the panel names in order for each column.
+    /// Default: 3-column cockpit.
+    pub layout: Vec<Vec<String>>,
+}
+
+impl Default for DashboardConfig {
+    fn default() -> Self {
+        Self {
+            layout: vec![
+                vec![
+                    "system".into(),
+                    "gauges".into(),
+                    "cpu".into(),
+                    "storage".into(),
+                ],
+                vec![
+                    "clock".into(),
+                    "media".into(),
+                    "visualizer".into(),
+                    "processes".into(),
+                ],
+                vec![
+                    "status".into(),
+                    "weather".into(),
+                    "memory".into(),
+                    "network".into(),
+                    "calendar".into(),
+                ],
+            ],
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -117,6 +154,9 @@ impl Config {
         let mut cfg: Config = toml::from_str(&content).unwrap_or_default();
         cfg.ui.refresh_rate = cfg.ui.refresh_rate.clamp(0.1, 10.0);
         cfg.ui.fps = cfg.ui.fps.clamp(5, 120);
+        if cfg.dashboard.layout.is_empty() {
+            cfg.dashboard = DashboardConfig::default();
+        }
         cfg
     }
 
@@ -168,5 +208,47 @@ pub fn config_path() -> String {
         format!("{}/.config/vanta/config.toml", home)
     } else {
         "config.toml".to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_dashboard_config_defaults() {
+        let toml_str = r#"
+            [ui]
+            fps = 60
+        "#;
+        let cfg: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(cfg.dashboard.layout.len(), 3);
+        assert_eq!(
+            cfg.dashboard.layout[0],
+            vec!["system", "gauges", "cpu", "storage"]
+        );
+        assert_eq!(
+            cfg.dashboard.layout[1],
+            vec!["clock", "media", "visualizer", "processes"]
+        );
+        assert_eq!(
+            cfg.dashboard.layout[2],
+            vec!["status", "weather", "memory", "network", "calendar"]
+        );
+    }
+
+    #[test]
+    fn test_dashboard_config_custom_layout() {
+        let toml_str = r#"
+            [dashboard]
+            layout = [
+                ["clock", "system"],
+                ["processes", "weather"]
+            ]
+        "#;
+        let cfg: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(cfg.dashboard.layout.len(), 2);
+        assert_eq!(cfg.dashboard.layout[0], vec!["clock", "system"]);
+        assert_eq!(cfg.dashboard.layout[1], vec!["processes", "weather"]);
     }
 }
