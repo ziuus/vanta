@@ -16,3 +16,9 @@ npm/*.tgz
 # staged by the release workflow, not source
 npm/README.md
 npm/LICENSE
+PROJECT-STATE.md
+STATUS.md
+AGENTS.md
+patch*.py
+fix*.py
+test_*
