@@ -4,7 +4,7 @@
 
 **Your machine, one pane.**
 
-A fast, aesthetic terminal system dashboard in Rust. The most complete keyboard-driven terminal dashboard — one pane, six modes, zero mouse.
+A fast, aesthetic terminal system dashboard in Rust. The most complete keyboard-driven terminal dashboard — one pane, four modes, zero mouse.
 
 [![npm](https://img.shields.io/npm/v/@ziuus/vanta?style=for-the-badge&logo=npm&logoColor=white&color=CB3837)](https://www.npmjs.com/package/@ziuus/vanta)
 [![CI](https://img.shields.io/github/actions/workflow/status/ziuus/vanta/ci.yml?style=for-the-badge&label=CI)](https://github.com/ziuus/vanta/actions/workflows/ci.yml)
@@ -109,9 +109,10 @@ Vanta respects `XDG_CONFIG_HOME` if you set it.
 
 | Key | Page | What's on it |
 |-----|------|--------------|
-| `1` | **Dashboard** | System facts + distro logo, semicircle gauges, CPU graph & cores, storage, big clock, now playing, visualizer, top processes, status, memory, network, calendar |
+| `1` | **Dashboard** | System facts + distro logo, semicircle gauges, CPU graph & cores, storage, big clock, now playing, visualizer, top processes, interactive status, memory, network, calendar |
 | `2` | **Monitor** | btop-style: CPU / memory / disk I/O / network / GPU graphs on top, full process table below (sort, filter, tree, kill) |
-| `3` | **Aesthetic** | Huge clock, calendar, matrix rain, spinning donut, full-width visualizer |
+| `3` | **Aesthetic** | Huge clock, calendar, matrix rain, spinning donut, pinned media (photos), full-width visualizer |
+| `4` | **Workspace** | Built-in File Manager (with image previews), Agenda, Tasks, RSS feeds, and Obsidian vault viewer |
 | `?` | **Help** | Keybind reference overlay |
 
 ### `2` — Monitor
@@ -122,9 +123,14 @@ Every graph on top, every process below. Sort it, filter it, tree it, kill it.
 
 ### `3` — Aesthetic
 
-For when the build is running and you want something to look at.
+For when the build is running and you want something to look at. Includes support for displaying a custom pinned image.
 
 <img src="docs/aesthetic.png" alt="vanta aesthetic page" width="900" />
+
+### `4` — Workspace
+
+Turn your terminal into a productivity hub with a built-in file manager, RSS news reader, tasks, agenda, and Obsidian vault viewer.
+
 
 ### `?` — Help
 
@@ -136,7 +142,7 @@ Every key, on screen, on any page.
 
 | Key | Action |
 |-----|--------|
-| `1` `2` `3` | Switch page (persisted as startup page) |
+| `1` `2` `3` `4` | Switch page (persisted as startup page) |
 | `Tab` / `Shift-Tab` | Cycle panel focus · `Esc` clears |
 | `Enter` | Zoom the focused panel to the full page · `Esc` back |
 | `T` | Next theme (persisted) |
