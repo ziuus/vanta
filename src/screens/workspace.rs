@@ -115,6 +115,25 @@ pub fn render(f: &mut Frame, area: Rect, app: &mut App) {
     let list_area = note_chunks[0];
     let content_area = note_chunks[1];
 
+    let is_notes_focused = focus(PanelId::WriterNotes);
+    let border_color = if is_notes_focused {
+        theme.accent
+    } else {
+        theme.surface
+    };
+    
+    let list_inner_area = Block::default()
+        .borders(Borders::RIGHT)
+        .border_style(Style::default().fg(border_color))
+        .inner(list_area);
+        
+    f.render_widget(
+        Block::default()
+            .borders(Borders::RIGHT)
+            .border_style(Style::default().fg(border_color)),
+        list_area,
+    );
+
     let mut list_lines = Vec::new();
     let num_notes = snap.notes.len();
     if num_notes == 0 {
@@ -126,8 +145,17 @@ pub fn render(f: &mut Frame, area: Rect, app: &mut App) {
         let max_idx = num_notes.saturating_sub(1);
         app.panel_states.writer_selected = app.panel_states.writer_selected.min(max_idx);
         let selected = app.panel_states.writer_selected;
+        
+        let visible_items = list_inner_area.height as usize;
+        let mut scroll = app.panel_states.writer_scroll;
+        if selected < scroll {
+            scroll = selected;
+        } else if selected >= scroll + visible_items && visible_items > 0 {
+            scroll = selected.saturating_sub(visible_items - 1);
+        }
+        app.panel_states.writer_scroll = scroll;
 
-        for (i, note) in snap.notes.iter().enumerate() {
+        for (i, note) in snap.notes.iter().enumerate().skip(scroll).take(visible_items) {
             if i == selected {
                 list_lines.push(Line::from(vec![
                     Span::styled(" > ", Style::default().fg(theme.accent)),
@@ -142,19 +170,9 @@ pub fn render(f: &mut Frame, area: Rect, app: &mut App) {
         }
     }
 
-    let is_notes_focused = focus(PanelId::WriterNotes);
-    let border_color = if is_notes_focused {
-        theme.accent
-    } else {
-        theme.surface
-    };
     f.render_widget(
-        Paragraph::new(list_lines).block(
-            Block::default()
-                .borders(Borders::RIGHT)
-                .border_style(Style::default().fg(border_color)),
-        ),
-        list_area,
+        Paragraph::new(list_lines),
+        list_inner_area,
     );
 
     let mut content_lines = Vec::new();
@@ -194,5 +212,6 @@ pub fn render(f: &mut Frame, area: Rect, app: &mut App) {
         theme,
         files_focused,
         &mut app.panel_states.files_selected,
+        &mut app.panel_states.files_scroll,
     );
 }

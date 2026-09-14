@@ -13,6 +13,7 @@ pub fn render(
     theme: &crate::theme::Theme,
     is_focused: bool,
     selected_idx: &mut usize,
+    scroll: &mut usize,
 ) {
     let snap = files::snapshot();
 
@@ -26,7 +27,7 @@ pub fn render(
     let list_area = chunks[0];
     let preview_area = chunks[1];
 
-    let mut list_lines = Vec::new();
+    
     let num_items = snap.items.len();
 
     // Adjust selected index
@@ -34,16 +35,51 @@ pub fn render(
     *selected_idx = (*selected_idx).min(max_idx);
     let selected = *selected_idx;
 
-    // Header: Current directory path
+    let list_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(2), Constraint::Min(0)])
+        .split(list_area);
+        
     let cur_dir = snap.current_dir.to_string_lossy();
-    list_lines.push(Line::from(vec![Span::styled(
-        format!(" 📁 {}", cur_dir),
-        Style::default().fg(theme.accent),
-    )]));
-    list_lines.push(Line::from(""));
+    let header = Paragraph::new(vec![
+        Line::from(vec![Span::styled(
+            format!(" 📁 {}", cur_dir),
+            Style::default().fg(theme.accent),
+        )]),
+        Line::from(""),
+    ]);
+    
+    let border_color = if is_focused {
+        theme.accent
+    } else {
+        theme.surface
+    };
 
-    // Items
-    for (i, item) in snap.items.iter().enumerate() {
+    let list_block = Block::default()
+        .borders(Borders::RIGHT)
+        .border_style(Style::default().fg(border_color));
+        
+    // Apply the block to the whole list_area, but we have to render it first and then render inner chunks
+    let inner_list_area = list_block.inner(list_area);
+    f.render_widget(list_block, list_area);
+    
+    let list_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(2), Constraint::Min(0)])
+        .split(inner_list_area);
+
+    f.render_widget(header, list_chunks[0]);
+
+    let visible_items = list_chunks[1].height as usize;
+    if selected < *scroll {
+        *scroll = selected;
+    } else if selected >= *scroll + visible_items && visible_items > 0 {
+        *scroll = selected.saturating_sub(visible_items - 1);
+    }
+    
+    
+    let mut list_lines = Vec::new();
+    for (i, item) in snap.items.iter().enumerate().skip(*scroll).take(visible_items) {
         let prefix = if i == selected { " > " } else { "   " };
         let icon = if item.is_dir { "📁" } else { "📄" };
         let style = if i == selected {
@@ -59,20 +95,9 @@ pub fn render(
             Span::styled(&item.name, style),
         ]));
     }
+    
+    f.render_widget(Paragraph::new(list_lines), list_chunks[1]);
 
-    let border_color = if is_focused {
-        theme.accent
-    } else {
-        theme.surface
-    };
-    f.render_widget(
-        Paragraph::new(list_lines).block(
-            Block::default()
-                .borders(Borders::RIGHT)
-                .border_style(Style::default().fg(border_color)),
-        ),
-        list_area,
-    );
 
     // Preview
     let mut preview_lines = Vec::new();
