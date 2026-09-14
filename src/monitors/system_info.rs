@@ -166,34 +166,55 @@ pub fn fmt_uptime(secs: u64) -> String {
 /// trick the graphs use, which renders as a solid shape on a capable font
 /// rather than the stair-stepped block art it replaces. Any non-space cell in
 /// a row is a lit dot; short rows are padded, so the input can be ragged.
-fn logo_lines(id: &str) -> Vec<String> {
-    block_logo(id).into_iter().map(String::from).collect()
+fn logo_lines(id: &str, height: u16, width: u16) -> Vec<String> {
+    block_logo(id, height, width)
+        .into_iter()
+        .map(String::from)
+        .collect()
 }
 
-/// Block/half-block art, one entry per row, all `LOGO_W` wide.
-fn block_logo(id: &str) -> Vec<&'static str> {
+/// Distro art. Arch uses fastfetch-style ASCII art (compact in dashboard, full
+/// in zoom). Other distros use clean block art.
+fn block_logo(id: &str, height: u16, width: u16) -> Vec<&'static str> {
     match id {
-        "arch" | "archarm" | "endeavouros" | "manjaro" | "cachyos" => vec![
-            "                   -`                   ",
-            "                  .o+`                  ",
-            "                 `ooo/                  ",
-            "                `+oooo:                 ",
-            "               `+oooooo:                ",
-            "               -+oooooo+:               ",
-            "             `/:-:++oooo+:              ",
-            "            `/++++/+++++++:             ",
-            "           `/++++++++++++++:            ",
-            "          `/+++ooooooooooooo/`          ",
-            "         ./ooosssso++osssssso+`         ",
-            "        .oossssso-````/ossssss+`        ",
-            "       -osssssso.      :ssssssso.       ",
-            "      :osssssss/        osssso+++.      ",
-            "     /ossssssss/        +sssssooo/-     ",
-            "   `/ossssso+/:-        -:/+osssso+-   ",
-            "  `+sso+:-`                 `.-/+oso:  ",
-            " `++:.                           `-/+/ ",
-            " .`                                 `/ ",
-        ],
+        "arch" | "archarm" | "endeavouros" | "manjaro" | "cachyos" => {
+            if height >= 19 && width >= 65 {
+                vec![
+                    "                  -`                 ",
+                    "                 .o+`                ",
+                    "                `ooo/                ",
+                    "               `+oooo:               ",
+                    "              `+oooooo:              ",
+                    "              -+oooooo+:             ",
+                    "            `/:-:++oooo+:            ",
+                    "           `/++++/+++++++:           ",
+                    "          `/++++++++++++++:          ",
+                    "         `/+++ooooooooooooo/`        ",
+                    "        ./ooosssso++osssssso+`       ",
+                    "       .oossssso-````/ossssss+`      ",
+                    "      -osssssso.      :ssssssso.     ",
+                    "     :osssssss/        osssso+++.    ",
+                    "    /ossssssss/        +ssssooo/-    ",
+                    "  `/ossssso+/:-        -:/+osssso+-  ",
+                    " `+sso+:-`                 `.-/+oso: ",
+                    "`++:.                           `-/+/",
+                    ".`                                 `/",
+                ]
+            } else {
+                vec![
+                    "          .o+`         ",
+                    "         `ooo/         ",
+                    "        `+oooo:        ",
+                    "       -+oooooo+:      ",
+                    "     `/:-:++oooo+:     ",
+                    "    `/++++++++++++:    ",
+                    "   ./ooosss++osssso+`  ",
+                    "  .oossss-````/sssss+` ",
+                    " -ossss/        /ssssso",
+                    "`+sso+:-`     `.-/+oso:",
+                ]
+            }
+        }
         "ubuntu" | "pop" | "linuxmint" => vec![
             "   ▄▄▄▄▄   ",
             " ◢█▀   ▀█◣ ",
@@ -261,17 +282,22 @@ pub fn render_neofetch(f: &mut Frame, area: Rect, theme: &Theme, sum: &Summary, 
     let facts = &*FACTS;
     // VANTA_LOGO forces a distro logo, for previewing art on any machine.
     let os_id = std::env::var("VANTA_LOGO").unwrap_or_else(|_| facts.os_id.clone());
-    let logo = logo_lines(&os_id);
+    let logo = logo_lines(&os_id, area.height, area.width);
     let max_len = logo.iter().map(|l| l.chars().count()).max().unwrap_or(0);
     // +2 for the leading indent and a column of air before the facts.
-    let logo_w: u16 = if area.width >= (max_len + 25) as u16 {
+    let logo_w: u16 = if area.width >= (max_len + 20) as u16 {
         max_len as u16 + 2
     } else {
         0
     };
 
+    let pad = if area.height > logo.len() as u16 + 4 {
+        2
+    } else {
+        area.height.saturating_sub(logo.len() as u16) / 2
+    };
+
     if logo_w > 0 {
-        let pad = area.height.saturating_sub(logo.len() as u16) / 2;
         let mut lines: Vec<Line> = (0..pad).map(|_| Line::from("")).collect();
         let n = logo.len().max(1) as f32;
         lines.extend(logo.iter().enumerate().map(|(i, l)| {
@@ -282,7 +308,7 @@ pub fn render_neofetch(f: &mut Frame, area: Rect, theme: &Theme, sum: &Summary, 
         }));
         f.render_widget(
             Paragraph::new(lines),
-            Rect::new(area.x + 1, area.y, logo_w, area.height),
+            Rect::new(area.x + 1, area.y, max_len as u16, area.height),
         );
     }
 
@@ -321,10 +347,10 @@ pub fn render_neofetch(f: &mut Frame, area: Rect, theme: &Theme, sum: &Summary, 
     ));
     kv.push(("battery", bat));
 
-    let max_rows = kv_area.height as usize;
+    let max_rows = kv_area.height.saturating_sub(pad) as usize;
     let kv: Vec<_> = kv.into_iter().take(max_rows).collect();
     let max_v = (kv_area.width as usize).saturating_sub(10);
-    let mut rows: Vec<Line> = Vec::new();
+    let mut rows: Vec<Line> = (0..pad).map(|_| Line::from("")).collect();
     for (k, v) in kv {
         rows.push(Line::from(vec![
             Span::styled(format!("{:<9} ", k), Style::default().fg(theme.dim)),
@@ -369,4 +395,24 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, sum: &Summary) {
     let cols = Layout::horizontal([Constraint::Ratio(3, 5), Constraint::Ratio(2, 5)]).split(area);
     f.render_widget(Paragraph::new(left), cols[0]);
     f.render_widget(Paragraph::new(right), cols[1]);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_arch_logos_uniform_lengths() {
+        let compact = logo_lines("arch", 10, 60);
+        assert_eq!(compact.len(), 10);
+        for line in &compact {
+            assert_eq!(line.chars().count(), 23);
+        }
+
+        let full = logo_lines("arch", 25, 80);
+        assert_eq!(full.len(), 19);
+        for line in &full {
+            assert_eq!(line.chars().count(), 37);
+        }
+    }
 }
