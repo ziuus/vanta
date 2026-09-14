@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
 use std::time::SystemTime;
 
@@ -23,6 +23,8 @@ impl Default for Note {
 
 #[derive(Clone, Default)]
 pub struct ObsidianSnapshot {
+    pub vault_name: String,
+    pub vault_path: PathBuf,
     pub notes: Vec<Note>,
 }
 
@@ -33,65 +35,146 @@ pub fn snapshot() -> ObsidianSnapshot {
     SNAP.lock().unwrap().clone()
 }
 
-pub fn start(vault_path_str: String) {
-    std::thread::spawn(move || loop {
-        let mut vault_path = PathBuf::from(&vault_path_str);
-        if vault_path_str.starts_with("~/") || vault_path_str == "~" {
-            if let Ok(home) = std::env::var("HOME") {
-                if vault_path_str == "~" {
-                    vault_path = PathBuf::from(home);
-                } else {
-                    vault_path = PathBuf::from(home).join(&vault_path_str[2..]);
-                }
-            }
+pub fn detect_vault_path(configured: &str) -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_default();
+
+    // 1. Explicit user path configured
+    if !configured.is_empty() && configured != "~" {
+        if configured.starts_with("~/") {
+            return PathBuf::from(&home).join(&configured[2..]);
         }
+        return PathBuf::from(configured);
+    }
 
-        let mut notes = Vec::new();
+    // 2. Auto-detect from Obsidian's official config
+    let config_candidates = [
+        PathBuf::from(&home).join(".config/obsidian/obsidian.json"),
+        PathBuf::from(&home).join("Library/Application Support/obsidian/obsidian.json"),
+    ];
 
-        let mut dirs = vec![vault_path];
-        let mut depth = 0;
-
-        while !dirs.is_empty() && depth < 4 {
-            let mut next_dirs = Vec::new();
-            for dir in dirs {
-                if let Ok(entries) = std::fs::read_dir(&dir) {
-                    for entry in entries.flatten() {
-                        if let Ok(meta) = entry.metadata() {
-                            if meta.is_dir() {
-                                let name = entry.file_name();
-                                let name_str = name.to_string_lossy();
-                                if !name_str.starts_with('.') && name_str != "node_modules" {
-                                    next_dirs.push(entry.path());
+    for cfg_path in &config_candidates {
+        if let Ok(data) = std::fs::read_to_string(cfg_path) {
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&data) {
+                if let Some(vaults) = val.get("vaults").and_then(|v| v.as_object()) {
+                    // Try to find open vault first
+                    for (_, v_info) in vaults {
+                        if v_info.get("open").and_then(|o| o.as_bool()).unwrap_or(false) {
+                            if let Some(p) = v_info.get("path").and_then(|p| p.as_str()) {
+                                let pb = PathBuf::from(p);
+                                if pb.exists() {
+                                    return pb;
                                 }
-                            } else if entry.path().extension().is_some_and(|e| e == "md") {
-                                let path = entry.path();
-                                let title = path
-                                    .file_stem()
-                                    .unwrap_or_default()
-                                    .to_string_lossy()
-                                    .into_owned();
-                                let modified = meta.modified().unwrap_or(SystemTime::UNIX_EPOCH);
-                                let content = std::fs::read_to_string(&path).unwrap_or_default();
-                                notes.push(Note {
-                                    path,
-                                    title,
-                                    modified,
-                                    content,
-                                });
+                            }
+                        }
+                    }
+                    // Fall back to any listed vault
+                    for (_, v_info) in vaults {
+                        if let Some(p) = v_info.get("path").and_then(|p| p.as_str()) {
+                            let pb = PathBuf::from(p);
+                            if pb.exists() {
+                                return pb;
                             }
                         }
                     }
                 }
             }
-            dirs = next_dirs;
-            depth += 1;
         }
+    }
 
-        notes.sort_by(|a, b| b.modified.cmp(&a.modified));
-        notes.truncate(50);
+    // 3. Common directory locations
+    let common_fallbacks = [
+        PathBuf::from(&home).join("Documents/Obsidian Vault"),
+        PathBuf::from(&home).join("Documents/Obsidian"),
+        PathBuf::from(&home).join("Documents/Notes"),
+        PathBuf::from(&home).join("Obsidian Vault"),
+        PathBuf::from(&home).join("Obsidian"),
+        PathBuf::from(&home).join("vault"),
+    ];
+    for fb in common_fallbacks {
+        if fb.exists() {
+            return fb;
+        }
+    }
 
-        *SNAP.lock().unwrap() = ObsidianSnapshot { notes };
+    if configured == "~" {
+        PathBuf::from(home)
+    } else {
+        PathBuf::from(configured)
+    }
+}
 
-        std::thread::sleep(std::time::Duration::from_secs(5));
+fn scan_vault(vault_path: &Path) -> ObsidianSnapshot {
+    let mut notes = Vec::new();
+    let mut dirs = vec![vault_path.to_path_buf()];
+    let mut depth = 0;
+
+    while !dirs.is_empty() && depth < 5 {
+        let mut next_dirs = Vec::new();
+        for dir in dirs {
+            if let Ok(entries) = std::fs::read_dir(&dir) {
+                for entry in entries.flatten() {
+                    if let Ok(meta) = entry.metadata() {
+                        if meta.is_dir() {
+                            let name = entry.file_name();
+                            let name_str = name.to_string_lossy();
+                            if !name_str.starts_with('.') && name_str != "node_modules" {
+                                next_dirs.push(entry.path());
+                            }
+                        } else if entry.path().extension().is_some_and(|e| e == "md") {
+                            let path = entry.path();
+                            let title = path
+                                .file_stem()
+                                .unwrap_or_default()
+                                .to_string_lossy()
+                                .into_owned();
+                            let modified = meta.modified().unwrap_or(SystemTime::UNIX_EPOCH);
+                            let content = std::fs::read_to_string(&path).unwrap_or_default();
+                            notes.push(Note {
+                                path,
+                                title,
+                                modified,
+                                content,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        dirs = next_dirs;
+        depth += 1;
+    }
+
+    notes.sort_by(|a, b| b.modified.cmp(&a.modified));
+    notes.truncate(100);
+
+    let vault_name = vault_path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "Vault".to_string());
+
+    ObsidianSnapshot {
+        vault_name,
+        vault_path: vault_path.to_path_buf(),
+        notes,
+    }
+}
+
+pub fn rescan() {
+    let cfg = crate::config::Config::load();
+    let vault_path = detect_vault_path(&cfg.ui.obsidian_vault);
+    let fresh = scan_vault(&vault_path);
+    *SNAP.lock().unwrap() = fresh;
+}
+
+pub fn start(configured_vault: String) {
+    let vault_path = detect_vault_path(&configured_vault);
+    // Initial scan
+    *SNAP.lock().unwrap() = scan_vault(&vault_path);
+
+    std::thread::spawn(move || loop {
+        std::thread::sleep(std::time::Duration::from_secs(4));
+        let vault_path = detect_vault_path(&configured_vault);
+        let fresh = scan_vault(&vault_path);
+        *SNAP.lock().unwrap() = fresh;
     });
 }

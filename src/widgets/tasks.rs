@@ -7,7 +7,7 @@ use ratatui::Frame;
 use crate::monitors::tasks;
 use crate::theme::Theme;
 
-pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
+pub fn render(f: &mut Frame, area: Rect, theme: &Theme, is_focused: bool, selected: usize) {
     if area.height < 3 || area.width < 15 {
         return;
     }
@@ -21,36 +21,53 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
             Style::default().fg(theme.dim),
         )]));
         lines.push(Line::from(vec![Span::styled(
-            " Press 'e' to edit tasks",
+            " Press 'e' or Enter to edit ~/.config/vanta/todo.md",
             Style::default().fg(theme.dim),
         )]));
     } else {
-        // Table header
-        lines.push(Line::from(vec![Span::styled(
-            "   STATUS  TASK",
-            Style::default().fg(theme.dim),
-        )]));
-        lines.push(Line::from(vec![])); // empty line for spacing
+        let display_count = (area.height.saturating_sub(1)) as usize;
+        let start_idx = if selected >= display_count {
+            selected.saturating_sub(display_count - 1)
+        } else {
+            0
+        };
 
-        let display_count = (area.height.saturating_sub(2)) as usize;
+        for (i, task) in snap.tasks.iter().enumerate().skip(start_idx).take(display_count) {
+            let is_sel = is_focused && i == selected;
 
-        for task in snap.tasks.iter().take(display_count) {
+            let prefix = if is_sel {
+                Span::styled(" > ", Style::default().fg(theme.accent).add_modifier(Modifier::BOLD))
+            } else {
+                Span::raw("   ")
+            };
+
             let (icon, color, text_style) = if task.completed {
                 (
-                    " ✓ ",
+                    "[✓]",
                     theme.dim,
                     Style::default()
                         .fg(theme.dim)
                         .add_modifier(Modifier::CROSSED_OUT),
                 )
             } else if task.urgent {
-                (" ! ", theme.red, Style::default().fg(theme.text))
+                (
+                    "[!]",
+                    theme.red,
+                    Style::default()
+                        .fg(if is_sel { theme.accent } else { theme.text })
+                        .add_modifier(Modifier::BOLD),
+                )
             } else {
-                (" ◯ ", theme.accent, Style::default().fg(theme.text))
+                (
+                    "[ ]",
+                    if is_sel { theme.accent } else { theme.dim },
+                    Style::default().fg(if is_sel { theme.accent } else { theme.text }),
+                )
             };
 
             lines.push(Line::from(vec![
-                Span::styled(icon, Style::default().fg(color)),
+                prefix,
+                Span::styled(icon, Style::default().fg(color).add_modifier(Modifier::BOLD)),
                 Span::styled(format!(" {}", task.text), text_style),
             ]));
         }

@@ -56,7 +56,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &mut App) {
             rows[0],
             "agenda",
             Some(&agenda_rt),
-            None,
+            Some("Enter/e edit"),
             theme,
             focus(PanelId::Agenda),
         );
@@ -72,11 +72,17 @@ pub fn render(f: &mut Frame, area: Rect, app: &mut App) {
             rows[1],
             "tasks",
             Some(&tasks_rt),
-            None,
+            Some("Space toggle · e edit"),
             theme,
             focus(PanelId::Tasks),
         );
-        crate::widgets::tasks::render(f, inner, theme);
+        crate::widgets::tasks::render(
+            f,
+            inner,
+            theme,
+            focus(PanelId::Tasks),
+            app.panel_states.tasks_selected,
+        );
     }
 
     if cfg.news {
@@ -99,10 +105,17 @@ pub fn render(f: &mut Frame, area: Rect, app: &mut App) {
     }
 
     // Top Right: Notes
-    let notes_inner = panel(
+    let notes_title = if snap.vault_name.is_empty() {
+        "obsidian (notes)".to_string()
+    } else {
+        format!("obsidian ({})", snap.vault_name)
+    };
+    let notes_inner = panel_full(
         f,
         notes_area,
-        "obsidian (meraldian)",
+        &notes_title,
+        None,
+        Some("Enter/e edit · ↑↓ select"),
         theme,
         focus(PanelId::WriterNotes),
     );

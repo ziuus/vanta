@@ -179,6 +179,7 @@ pub struct PanelStates {
     pub writer_selected: usize,
     pub files_selected: usize,
     pub files_scroll: usize,
+    pub tasks_selected: usize,
     pub status_selected: usize,
     pub dash_ratios: [u16; 3],
     pub work_ratio: u16,
@@ -201,6 +202,7 @@ impl Default for PanelStates {
             writer_selected: 0,
             files_selected: 0,
             files_scroll: 0,
+            tasks_selected: 0,
             status_selected: 0,
             dash_ratios: [33, 34, 33],
             work_ratio: 25,
@@ -412,11 +414,22 @@ impl App {
             KeyCode::Char('-') | KeyCode::Char('_') => self.adjust_refresh(false),
             KeyCode::Tab => self.cycle_focus(true),
             KeyCode::BackTab => self.cycle_focus(false),
-            KeyCode::Enter => match (self.zoomed, self.focused_panel) {
-                (Some(_), _) => self.zoomed = None,
-                (None, Some(p)) => self.zoomed = Some(p),
-                (None, None) => {}
-            },
+            KeyCode::Enter => {
+                if self.mode == DashboardMode::Workspace {
+                    match self.focused_panel {
+                        Some(PanelId::WriterNotes) | Some(PanelId::Tasks) | Some(PanelId::Agenda) => {
+                            self.trigger_focused_action();
+                            return;
+                        }
+                        _ => {}
+                    }
+                }
+                match (self.zoomed, self.focused_panel) {
+                    (Some(_), _) => self.zoomed = None,
+                    (None, Some(p)) => self.zoomed = Some(p),
+                    (None, None) => {}
+                }
+            }
             KeyCode::Esc => {
                 if self.zoomed.is_some() {
                     self.zoomed = None;
@@ -426,7 +439,9 @@ impl App {
             }
 
             // Media transport is global: it's the whole point of a dashboard.
-            KeyCode::Char(' ') => media::control(Action::PlayPause),
+            KeyCode::Char(' ') if self.focused_panel != Some(PanelId::Tasks) => {
+                media::control(Action::PlayPause);
+            }
             KeyCode::Char('n') | KeyCode::Char('N') => media::control(Action::Next),
             KeyCode::Char('p') | KeyCode::Char('P') => media::control(Action::Previous),
             KeyCode::Char('>') | KeyCode::Char('.') => media::control(Action::VolumeUp),
@@ -471,14 +486,46 @@ impl App {
         );
         if self.mode == DashboardMode::Workspace {
             match self.focused_panel {
+                Some(PanelId::Tasks) => match key {
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        self.panel_states.tasks_selected =
+                            self.panel_states.tasks_selected.saturating_sub(1);
+                    }
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        let count = crate::monitors::tasks::snapshot().tasks.len();
+                        if count > 0 {
+                            self.panel_states.tasks_selected =
+                                (self.panel_states.tasks_selected + 1).min(count - 1);
+                        }
+                    }
+                    KeyCode::Char(' ') | KeyCode::Char('x') => {
+                        crate::monitors::tasks::toggle_task(self.panel_states.tasks_selected);
+                    }
+                    KeyCode::Enter | KeyCode::Char('e') | KeyCode::Char('E') => {
+                        self.trigger_focused_action();
+                    }
+                    _ => {}
+                },
+                Some(PanelId::Agenda) => match key {
+                    KeyCode::Enter | KeyCode::Char('e') | KeyCode::Char('E') => {
+                        self.trigger_focused_action();
+                    }
+                    _ => {}
+                },
                 Some(PanelId::WriterNotes) => match key {
                     KeyCode::Up | KeyCode::Char('k') => {
                         self.panel_states.writer_selected =
                             self.panel_states.writer_selected.saturating_sub(1);
                     }
                     KeyCode::Down | KeyCode::Char('j') => {
-                        self.panel_states.writer_selected =
-                            self.panel_states.writer_selected.saturating_add(1);
+                        let count = crate::monitors::obsidian::snapshot().notes.len();
+                        if count > 0 {
+                            self.panel_states.writer_selected =
+                                (self.panel_states.writer_selected + 1).min(count - 1);
+                        }
+                    }
+                    KeyCode::Enter | KeyCode::Char('e') | KeyCode::Char('E') => {
+                        self.trigger_focused_action();
                     }
                     _ => {}
                 },
@@ -564,18 +611,20 @@ impl App {
         }
         
         let path = match self.focused_panel {
-            Some(PanelId::Tasks) => Some(crate::monitors::tasks::get_todo_file()),
-            Some(PanelId::Agenda) => Some(crate::monitors::agenda::get_agenda_file()),
+            Some(PanelId::Tasks) => {
+                crate::monitors::tasks::ensure_todo_file();
+                Some(crate::monitors::tasks::get_todo_file())
+            }
+            Some(PanelId::Agenda) => {
+                crate::monitors::agenda::ensure_agenda_file();
+                Some(crate::monitors::agenda::get_agenda_file())
+            }
             Some(PanelId::WriterNotes) => {
                 let snap = crate::monitors::obsidian::snapshot();
                 if snap.notes.is_empty() {
-                    let mut path = std::path::PathBuf::from(crate::config::Config::load().ui.obsidian_vault);
-                    if path.to_string_lossy() == "~" {
-                        path = std::path::PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "".to_string()));
-                    } else if path.to_string_lossy().starts_with("~/") {
-                        path = std::path::PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "".to_string())).join(&path.to_string_lossy()[2..]);
-                    }
-                    Some(path.join("vanta_note.md"))
+                    let vault_path = crate::monitors::obsidian::detect_vault_path(&crate::config::Config::load().ui.obsidian_vault);
+                    let _ = std::fs::create_dir_all(&vault_path);
+                    Some(vault_path.join("Note.md"))
                 } else {
                     let max_idx = snap.notes.len().saturating_sub(1);
                     let sel = self.panel_states.writer_selected.min(max_idx);
@@ -589,20 +638,29 @@ impl App {
                 } else {
                     let max_idx = snap.items.len().saturating_sub(1);
                     let sel = self.panel_states.files_selected.min(max_idx);
-                    Some(snap.items[sel].path.clone())
+                    if !snap.items[sel].is_dir {
+                        Some(snap.items[sel].path.clone())
+                    } else {
+                        None
+                    }
                 }
             }
             _ => None,
         };
 
         if let Some(p) = path {
-            let editor = std::env::var("EDITOR").unwrap_or_else(|_| "nano".to_string());
+            let editor = get_preferred_editor();
             let _ = crossterm::terminal::disable_raw_mode();
             let _ = std::process::Command::new(editor).arg(p).status();
             let _ = crossterm::terminal::enable_raw_mode();
             let _ = std::process::Command::new("clear").status();
             
-            // Trigger an immediate rescan of the workspace panels to reflect edits.
+            // Immediate rescan of all workspace monitors
+            crate::monitors::obsidian::rescan();
+            crate::monitors::tasks::rescan();
+            crate::monitors::agenda::rescan();
+            let snap_files = crate::monitors::files::snapshot();
+            crate::monitors::files::chdir(&snap_files.current_dir);
         }
     }
 
@@ -1058,3 +1116,25 @@ impl App {
         f.render_widget(Paragraph::new(Line::from(spans)).style(base), area);
     }
 }
+
+fn get_preferred_editor() -> String {
+    if let Ok(ed) = std::env::var("EDITOR") {
+        if !ed.trim().is_empty() {
+            return ed;
+        }
+    }
+    if let Ok(vis) = std::env::var("VISUAL") {
+        if !vis.trim().is_empty() {
+            return vis;
+        }
+    }
+    for candidate in &["nvim", "vim", "micro", "nano"] {
+        if let Ok(output) = std::process::Command::new("which").arg(candidate).output() {
+            if output.status.success() {
+                return candidate.to_string();
+            }
+        }
+    }
+    "nano".to_string()
+}
+

@@ -28,6 +28,7 @@ pub fn get_todo_file() -> PathBuf {
         let mut path = PathBuf::from(home);
         path.push(".config");
         path.push("vanta");
+        let _ = fs::create_dir_all(&path);
         path.push("todo.md");
         path
     } else {
@@ -35,7 +36,90 @@ pub fn get_todo_file() -> PathBuf {
     }
 }
 
+pub fn ensure_todo_file() {
+    let file_path = get_todo_file();
+    if !file_path.exists() {
+        let default_content = "# Vanta Tasks\n\n- [ ] Welcome to Vanta Workspace!\n- [ ] Press Space to toggle completion\n- [ ] Press Enter or 'e' to edit in your terminal editor\n- [ ] Tasks marked with ! are urgent\n";
+        let _ = fs::write(&file_path, default_content);
+    }
+}
+
+pub fn rescan() {
+    let file_path = get_todo_file();
+    if let Ok(content) = fs::read_to_string(&file_path) {
+        let mut tasks = Vec::new();
+        for line in content.lines() {
+            let line = line.trim();
+            if line.starts_with("- [ ]")
+                || line.starts_with("- [x]")
+                || line.starts_with("- [X]")
+            {
+                let completed = line.contains("[x]") || line.contains("[X]");
+                let text = line[5..].trim().to_string();
+                let urgent =
+                    text.contains("!") || text.contains("urgent") || text.contains("ASAP");
+                tasks.push(Task {
+                    completed,
+                    text,
+                    urgent,
+                });
+            }
+        }
+        let modified = fs::metadata(&file_path)
+            .and_then(|m| m.modified())
+            .unwrap_or(SystemTime::now())
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        *SNAP.lock().unwrap() = TasksSnapshot {
+            tasks,
+            last_modified: modified,
+        };
+    }
+}
+
+pub fn toggle_task(index: usize) {
+    let file_path = get_todo_file();
+    let Ok(content) = fs::read_to_string(&file_path) else {
+        return;
+    };
+
+    let mut task_idx = 0;
+    let mut new_lines = Vec::new();
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("- [ ]")
+            || trimmed.starts_with("- [x]")
+            || trimmed.starts_with("- [X]")
+        {
+            if task_idx == index {
+                if trimmed.starts_with("- [ ]") {
+                    new_lines.push(line.replacen("- [ ]", "- [x]", 1));
+                } else if trimmed.starts_with("- [x]") {
+                    new_lines.push(line.replacen("- [x]", "- [ ]", 1));
+                } else if trimmed.starts_with("- [X]") {
+                    new_lines.push(line.replacen("- [X]", "- [ ]", 1));
+                }
+            } else {
+                new_lines.push(line.to_string());
+            }
+            task_idx += 1;
+        } else {
+            new_lines.push(line.to_string());
+        }
+    }
+
+    let updated_content = new_lines.join("\n") + "\n";
+    let _ = fs::write(&file_path, updated_content);
+    rescan();
+}
+
 pub fn start() {
+    ensure_todo_file();
+    rescan();
+
     std::thread::spawn(|| loop {
         let file_path = get_todo_file();
 
@@ -55,30 +139,7 @@ pub fn start() {
         }
 
         if needs_update {
-            if let Ok(content) = fs::read_to_string(&file_path) {
-                let mut tasks = Vec::new();
-                for line in content.lines() {
-                    let line = line.trim();
-                    if line.starts_with("- [ ]")
-                        || line.starts_with("- [x]")
-                        || line.starts_with("- [X]")
-                    {
-                        let completed = line.contains("[x]") || line.contains("[X]");
-                        let text = line[5..].trim().to_string();
-                        let urgent =
-                            text.contains("!") || text.contains("urgent") || text.contains("ASAP");
-                        tasks.push(Task {
-                            completed,
-                            text,
-                            urgent,
-                        });
-                    }
-                }
-                *SNAP.lock().unwrap() = TasksSnapshot {
-                    tasks,
-                    last_modified: modified,
-                };
-            }
+            rescan();
         }
         std::thread::sleep(std::time::Duration::from_secs(2));
     });
