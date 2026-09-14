@@ -142,7 +142,7 @@ pub fn render_panel(f: &mut Frame, area: Rect, app: &crate::app::App, id: crate:
         ),
         P::Media => media::render(f, inner, theme),
         P::Visualizer => music_viz::render(f, inner, theme, app.frame),
-        P::Status => status::render(f, inner, theme),
+        P::Status => status::render(f, inner, theme, false, 0),
         P::Calendar => calendar::render(f, inner, theme, app.panel_states.calendar_month_offset),
         P::Matrix => matrix::render(f, inner, theme),
         P::Video => video::render(f, inner, theme, app.frame),

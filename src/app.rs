@@ -179,6 +179,7 @@ pub struct PanelStates {
     pub writer_selected: usize,
     pub files_selected: usize,
     pub files_scroll: usize,
+    pub status_selected: usize,
     pub dash_ratios: [u16; 3],
     pub work_ratio: u16,
     pub process_selected_pid: Option<u32>,
@@ -200,6 +201,7 @@ impl Default for PanelStates {
             writer_selected: 0,
             files_selected: 0,
             files_scroll: 0,
+            status_selected: 0,
             dash_ratios: [33, 34, 33],
             work_ratio: 25,
             process_selected_pid: None,
@@ -358,7 +360,7 @@ impl App {
 
         if self.show_help {
             match key.code {
-                KeyCode::Char('e') | KeyCode::Char('E') => self.edit_focused_file(),
+                KeyCode::Char('e') | KeyCode::Char('E') => self.trigger_focused_action(),
                 KeyCode::Char('q') | KeyCode::Char('Q') => self.running = false,
                 KeyCode::Char('T') => self.cycle_theme(),
                 _ => self.show_help = false,
@@ -373,7 +375,7 @@ impl App {
             KeyCode::Right if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.resize_focused(2)
             }
-            KeyCode::Char('e') | KeyCode::Char('E') => self.edit_focused_file(),
+            KeyCode::Char('e') | KeyCode::Char('E') => self.trigger_focused_action(),
             KeyCode::Char('q') | KeyCode::Char('Q') => self.running = false,
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.running = false
@@ -540,7 +542,27 @@ impl App {
         }
     }
 
-    fn edit_focused_file(&mut self) {
+    fn trigger_focused_action(&mut self) {
+        if self.focused_panel == Some(PanelId::Status) {
+            let row_ids = crate::widgets::status::active_row_ids();
+            let max_idx = row_ids.len().saturating_sub(1);
+            let sel = self.panel_states.status_selected.min(max_idx);
+            if let Some(row_id) = row_ids.get(sel) {
+                let cmd = match *row_id {
+                    "wifi" => "nmtui",
+                    "procs" | "load" | "memory" => "htop",
+                    "docker" => "lazydocker",
+                    _ => return, // No action
+                };
+                
+                let _ = crossterm::terminal::disable_raw_mode();
+                let _ = std::process::Command::new(cmd).status();
+                let _ = crossterm::terminal::enable_raw_mode();
+                let _ = std::process::Command::new("clear").status();
+                return;
+            }
+        }
+        
         let path = match self.focused_panel {
             Some(PanelId::Tasks) => Some(crate::monitors::tasks::get_todo_file()),
             Some(PanelId::Agenda) => Some(crate::monitors::agenda::get_agenda_file()),

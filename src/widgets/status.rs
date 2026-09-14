@@ -159,43 +159,48 @@ fn signal_bars(pct: u8) -> &'static str {
 
 /// System/user status: network, packages, containers, load, session.
 /// Everything expensive is TTL-cached; the rest is a /proc read.
-pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
+pub fn render(f: &mut Frame, area: Rect, theme: &Theme, is_focused: bool, selected: usize) {
     if area.height < 3 || area.width < 20 {
         return;
     }
     let fx = facts();
 
-    let key = |k: &str| Span::styled(format!("{:<8}", k), Style::default().fg(theme.dim));
-    let val = |v: String, c: ratatui::style::Color| {
-        Span::styled(
-            format!("{:<14}", crate::widgets::meter::ellipsize(&v, 14)),
-            Style::default().fg(c),
-        )
+    let mut build_line = |idx: usize, k: &str, v_spans: Vec<Span<'static>>| {
+        let prefix = if is_focused && idx == selected {
+            Span::styled("> ", Style::default().fg(theme.accent))
+        } else {
+            Span::raw("  ")
+        };
+        let mut spans = vec![
+            prefix,
+            Span::styled(format!("{:<6}", k), if is_focused && idx == selected { Style::default().fg(theme.text) } else { Style::default().fg(theme.dim) })
+        ];
+        spans.extend(v_spans);
+        Line::from(spans)
     };
-    let val_unbounded =
-        |v: String, c: ratatui::style::Color| Span::styled(v, Style::default().fg(c));
 
     let mut lines: Vec<Line> = Vec::new();
+    let mut i = 0;
 
     if let Some((ssid, sig)) = &fx.wifi {
-        lines.push(Line::from(vec![
-            key("wifi"),
-            val(ssid.clone(), theme.accent),
+        lines.push(build_line(i, "wifi", vec![
+            Span::styled(format!("{:<14}", crate::widgets::meter::ellipsize(ssid, 14)), Style::default().fg(theme.accent)),
             Span::styled(
                 format!("{} {}%", signal_bars(*sig), sig),
                 Style::default().fg(if *sig < 40 { theme.yellow } else { theme.dim }),
             ),
         ]));
+        i += 1;
     }
     if let Some(ip) = &fx.ip {
-        lines.push(Line::from(vec![
-            key("ip"),
-            val_unbounded(ip.clone(), theme.text),
+        lines.push(build_line(i, "ip", vec![
+            Span::styled(ip.clone(), Style::default().fg(theme.text)),
         ]));
+        i += 1;
     }
     if let Some(n) = fx.packages {
         let upd = fx.updates.unwrap_or(0);
-        let mut spans = vec![key("pkgs"), val(n.to_string(), theme.text)];
+        let mut spans = vec![Span::styled(format!("{:<14}", n), Style::default().fg(theme.text))];
         if upd > 0 {
             spans.push(Span::styled(
                 format!("{} updates", upd),
@@ -204,14 +209,15 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
         } else if fx.updates.is_some() {
             spans.push(Span::styled("up to date", Style::default().fg(theme.dim)));
         }
-        lines.push(Line::from(spans));
+        lines.push(build_line(i, "pkgs", spans));
+        i += 1;
     }
     if let Some((run_n, all_n)) = fx.docker {
-        lines.push(Line::from(vec![
-            key("docker"),
-            val(format!("{}/{}", run_n, all_n), theme.text),
+        lines.push(build_line(i, "docker", vec![
+            Span::styled(format!("{:<14}", format!("{}/{}", run_n, all_n)), Style::default().fg(theme.text)),
             Span::styled("running", Style::default().fg(theme.dim)),
         ]));
+        i += 1;
     }
     let cpu = cpu::snapshot();
     {
@@ -224,18 +230,15 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
         } else {
             theme.accent
         };
-        lines.push(Line::from(vec![
-            key("load"),
-            val(format!("{:.2} {:.2} {:.2}", one, five, fifteen), col),
-            Span::styled(
-                format!("/{}", cores as usize),
-                Style::default().fg(theme.dim),
-            ),
+        lines.push(build_line(i, "load", vec![
+            Span::styled(format!("{:<14}", format!("{:.2} {:.2} {:.2}", one, five, fifteen)), Style::default().fg(col)),
+            Span::styled(format!("/{}", cores as usize), Style::default().fg(theme.dim)),
         ]));
-        lines.push(Line::from(vec![
-            key("procs"),
-            val_unbounded(crate::monitors::processes::count().to_string(), theme.text),
+        i += 1;
+        lines.push(build_line(i, "procs", vec![
+            Span::styled(crate::monitors::processes::count().to_string(), Style::default().fg(theme.text)),
         ]));
+        i += 1;
     }
 
     if let Some(b) = crate::monitors::system_info::read_battery_detail() {
@@ -247,50 +250,33 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
             theme.red
         };
         let mut spans = vec![
-            key("bat"),
-            val(
-                format!("{}%{}", b.pct, if b.charging { " ⚡" } else { "" }),
-                col,
-            ),
+            Span::styled(format!("{:<14}", format!("{}%{}", b.pct, if b.charging { " ⚡" } else { "" })), Style::default().fg(col)),
         ];
         if let Some(w) = b.watts {
-            spans.push(Span::styled(
-                format!("{:<8.1}", w),
-                Style::default().fg(theme.dim),
-            ));
+            spans.push(Span::styled(format!("{:<8.1}", w), Style::default().fg(theme.dim)));
         } else {
             spans.push(Span::styled(format!("{:<8}", ""), Style::default()));
         }
         if let Some(s) = b.eta_secs.filter(|s| *s > 0 && *s < 48 * 3600) {
             spans.push(Span::styled(
-                format!(
-                    "{}h{:02}m {}",
-                    s / 3600,
-                    (s % 3600) / 60,
-                    if b.charging { "to full" } else { "left" }
-                ),
+                format!("{}h{:02}m {}", s / 3600, (s % 3600) / 60, if b.charging { "to full" } else { "left" }),
                 Style::default().fg(theme.dim),
             ));
         }
-        lines.push(Line::from(spans));
+        lines.push(build_line(i, "bat", spans));
+        i += 1;
     }
 
     if let Some(max) = cpu.max_temp() {
         let limit = if area.width > 35 { 8 } else { 4 };
-        let mut t_str = cpu
-            .temps
-            .iter()
-            .take(limit)
-            .map(|t| format!("{:.0}°", t))
-            .collect::<Vec<_>>()
-            .join(" ");
+        let mut t_str = cpu.temps.iter().take(limit).map(|t| format!("{:.0}°", t)).collect::<Vec<_>>().join(" ");
         if cpu.temps.len() > limit {
             t_str.push_str(" …");
         }
-        lines.push(Line::from(vec![
-            key("temps"),
-            val_unbounded(t_str, theme.temp(max)),
+        lines.push(build_line(i, "temps", vec![
+            Span::styled(t_str, Style::default().fg(theme.temp(max))),
         ]));
+        i += 1;
     }
 
     if lines.is_empty() {
@@ -299,4 +285,18 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
 
     // Top-align: no vertical centering — fills from the top of the box
     f.render_widget(Paragraph::new(lines), area);
+}
+
+pub fn active_row_ids() -> Vec<&'static str> {
+    let fx = facts();
+    let mut ids = Vec::new();
+    if fx.wifi.is_some() { ids.push("wifi"); }
+    if fx.ip.is_some() { ids.push("ip"); }
+    if fx.packages.is_some() { ids.push("pkgs"); }
+    if fx.docker.is_some() { ids.push("docker"); }
+    ids.push("load");
+    ids.push("procs");
+    if crate::monitors::system_info::read_battery_detail().is_some() { ids.push("bat"); }
+    if crate::monitors::cpu::snapshot().max_temp().is_some() { ids.push("temps"); }
+    ids
 }

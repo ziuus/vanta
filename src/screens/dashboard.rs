@@ -188,8 +188,8 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
         ])
         .split(cols[2]);
 
-        let inner = panel(f, rows[0], "status", theme, focus(PanelId::Status));
-        status::render(f, inner, theme);
+        let inner = panel_full(f, rows[0], "status", None, Some("e to manage"), theme, focus(PanelId::Status));
+        status::render(f, inner, theme, focus(PanelId::Status), app.panel_states.status_selected);
 
         if cfg.weather {
             let weather_rt = if crate::monitors::weather::snapshot().ready {

@@ -36,9 +36,13 @@ pub fn snapshot() -> ObsidianSnapshot {
 pub fn start(vault_path_str: String) {
     std::thread::spawn(move || loop {
         let mut vault_path = PathBuf::from(&vault_path_str);
-        if vault_path_str.starts_with("~/") {
+        if vault_path_str.starts_with("~/") || vault_path_str == "~" {
             if let Ok(home) = std::env::var("HOME") {
-                vault_path = PathBuf::from(home).join(&vault_path_str[2..]);
+                if vault_path_str == "~" {
+                    vault_path = PathBuf::from(home);
+                } else {
+                    vault_path = PathBuf::from(home).join(&vault_path_str[2..]);
+                }
             }
         }
 
