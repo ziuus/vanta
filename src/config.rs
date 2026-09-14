@@ -29,16 +29,22 @@ impl Default for DashboardConfig {
                 vec![
                     "system".into(),
                     "gauges".into(),
+                    "cpu".into(),
                     "storage".into(),
-                    "weather".into(),
                 ],
                 vec![
                     "clock".into(),
                     "media".into(),
-                    "status".into(),
-                    "agenda".into(),
+                    "visualizer".into(),
+                    "processes".into(),
                 ],
-                vec!["calendar".into(), "tasks".into(), "network".into()],
+                vec![
+                    "status".into(),
+                    "weather".into(),
+                    "memory".into(),
+                    "network".into(),
+                    "calendar".into(),
+                ],
             ],
         }
     }
@@ -219,15 +225,15 @@ mod tests {
         assert_eq!(cfg.dashboard.layout.len(), 3);
         assert_eq!(
             cfg.dashboard.layout[0],
-            vec!["system", "gauges", "storage", "weather"]
+            vec!["system", "gauges", "cpu", "storage"]
         );
         assert_eq!(
             cfg.dashboard.layout[1],
-            vec!["clock", "media", "status", "agenda"]
+            vec!["clock", "media", "visualizer", "processes"]
         );
         assert_eq!(
             cfg.dashboard.layout[2],
-            vec!["calendar", "tasks", "network"]
+            vec!["status", "weather", "memory", "network", "calendar"]
         );
     }
 

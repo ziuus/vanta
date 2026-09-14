@@ -115,11 +115,12 @@ fn is_flex_panel(name: &str) -> bool {
     matches!(
         name.to_lowercase().as_str(),
         "cpu"
-            | "weather"
             | "processes"
             | "procs"
             | "top_processes"
             | "top-processes"
+            | "network"
+            | "net"
             | "matrix"
             | "tasks"
             | "agenda"
@@ -276,7 +277,15 @@ fn render_dashboard_panel(
             );
         }
         "media" | "now_playing" | "now-playing" => {
-            let inner = panel(f, area, "now playing", theme, focus(PanelId::Media));
+            let inner = panel_full(
+                f,
+                area,
+                "now playing",
+                None,
+                Some("Space play/pause · n/p track · <> vol"),
+                theme,
+                focus(PanelId::Media),
+            );
             media::render(f, inner, theme);
         }
         "visualizer" | "viz" => {
