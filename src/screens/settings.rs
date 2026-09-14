@@ -281,7 +281,7 @@ fn change_setting(app: &mut App, forward: bool) {
     let (stype, _) = SETTINGS_ITEMS[app.settings_row];
     match stype {
         SettingType::DashboardPreset => {
-            let presets = ["cockpit", "minimal", "aesthetic", "workspace"];
+            let presets = ["cockpit", "monitoring", "minimal", "aesthetic", "workspace"];
             let pos = presets
                 .iter()
                 .position(|&x| x == app.config.dashboard.preset)

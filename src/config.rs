@@ -51,13 +51,21 @@ impl DashboardConfig {
 
     pub fn preset_minimal() -> Vec<Vec<String>> {
         vec![
+            vec!["clock".into(), "weather".into()],
+            vec!["system".into(), "cpu".into()],
+        ]
+    }
+
+    pub fn preset_monitoring() -> Vec<Vec<String>> {
+        vec![
+            vec!["system".into(), "gauges".into(), "cpu".into()],
             vec![
-                "system".into(),
-                "cpu".into(),
                 "memory".into(),
                 "network".into(),
+                "gpu".into(),
+                "storage".into(),
             ],
-            vec!["clock".into(), "processes".into()],
+            vec!["processes".into()],
         ]
     }
 
@@ -71,9 +79,9 @@ impl DashboardConfig {
 
     pub fn preset_workspace() -> Vec<Vec<String>> {
         vec![
-            vec!["cpu".into(), "memory".into(), "network".into()],
-            vec!["clock".into(), "media".into(), "processes".into()],
-            vec!["notes".into(), "files".into()],
+            vec!["clock".into(), "agenda".into(), "tasks".into()],
+            vec!["notes".into()],
+            vec!["files".into(), "processes".into()],
         ]
     }
 
@@ -82,6 +90,7 @@ impl DashboardConfig {
         match preset_name {
             "cockpit" => self.layout = Self::preset_cockpit(),
             "minimal" => self.layout = Self::preset_minimal(),
+            "monitoring" => self.layout = Self::preset_monitoring(),
             "aesthetic" => self.layout = Self::preset_aesthetic(),
             "workspace" => self.layout = Self::preset_workspace(),
             _ => {} // For custom, we just leave the layout as-is
