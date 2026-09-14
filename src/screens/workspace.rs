@@ -175,6 +175,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &mut App) {
         }
         app.panel_states.writer_scroll = scroll;
 
+        let title_w = (list_inner_area.width as usize).saturating_sub(3);
         for (i, note) in snap
             .notes
             .iter()
@@ -182,15 +183,16 @@ pub fn render(f: &mut Frame, area: Rect, app: &mut App) {
             .skip(scroll)
             .take(visible_items)
         {
+            let title = crate::widgets::meter::ellipsize(&note.title, title_w);
             if i == selected {
                 list_lines.push(Line::from(vec![
                     Span::styled(" > ", Style::default().fg(theme.accent)),
-                    Span::styled(&note.title, Style::default().fg(theme.text)),
+                    Span::styled(title, Style::default().fg(theme.text)),
                 ]));
             } else {
                 list_lines.push(Line::from(vec![
                     Span::raw("   "),
-                    Span::styled(&note.title, Style::default().fg(theme.dim)),
+                    Span::styled(title, Style::default().fg(theme.dim)),
                 ]));
             }
         }
