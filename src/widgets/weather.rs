@@ -65,11 +65,11 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
 
     let h_pad = " ".repeat((area.width.saturating_sub(25) / 2) as usize);
 
-    for i in 0..5 {
+    for (i, &icon_row) in icon.iter().enumerate() {
         let mut spans = vec![Span::raw(h_pad.clone())];
 
         spans.push(Span::styled(
-            icon[i],
+            icon_row,
             Style::default().fg(if snap.is_day || i == 1 {
                 theme.accent
             } else {

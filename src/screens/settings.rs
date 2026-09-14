@@ -346,7 +346,9 @@ fn change_setting(app: &mut App, forward: bool) {
         SettingType::WidgetMedia => app.config.widgets.media = !app.config.widgets.media,
         SettingType::WidgetMatrix => app.config.widgets.matrix = !app.config.widgets.matrix,
         SettingType::WidgetVideo => app.config.widgets.video = !app.config.widgets.video,
-        SettingType::WidgetPinnedMedia => app.config.widgets.pinned_media = !app.config.widgets.pinned_media,
+        SettingType::WidgetPinnedMedia => {
+            app.config.widgets.pinned_media = !app.config.widgets.pinned_media
+        }
     }
     app.config.save();
 }

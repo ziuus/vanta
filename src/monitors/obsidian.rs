@@ -24,6 +24,7 @@ impl Default for Note {
 #[derive(Clone, Default)]
 pub struct ObsidianSnapshot {
     pub vault_name: String,
+    #[allow(dead_code)]
     pub vault_path: PathBuf,
     pub notes: Vec<Note>,
 }
@@ -40,8 +41,8 @@ pub fn detect_vault_path(configured: &str) -> PathBuf {
 
     // 1. Explicit user path configured
     if !configured.is_empty() && configured != "~" {
-        if configured.starts_with("~/") {
-            return PathBuf::from(&home).join(&configured[2..]);
+        if let Some(stripped) = configured.strip_prefix("~/") {
+            return PathBuf::from(&home).join(stripped);
         }
         return PathBuf::from(configured);
     }
@@ -58,7 +59,11 @@ pub fn detect_vault_path(configured: &str) -> PathBuf {
                 if let Some(vaults) = val.get("vaults").and_then(|v| v.as_object()) {
                     // Try to find open vault first
                     for (_, v_info) in vaults {
-                        if v_info.get("open").and_then(|o| o.as_bool()).unwrap_or(false) {
+                        if v_info
+                            .get("open")
+                            .and_then(|o| o.as_bool())
+                            .unwrap_or(false)
+                        {
                             if let Some(p) = v_info.get("path").and_then(|p| p.as_str()) {
                                 let pb = PathBuf::from(p);
                                 if pb.exists() {
@@ -144,7 +149,7 @@ fn scan_vault(vault_path: &Path) -> ObsidianSnapshot {
         depth += 1;
     }
 
-    notes.sort_by(|a, b| b.modified.cmp(&a.modified));
+    notes.sort_by_key(|a| std::cmp::Reverse(a.modified));
     notes.truncate(100);
 
     let vault_name = vault_path

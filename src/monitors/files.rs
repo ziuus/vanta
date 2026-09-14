@@ -7,6 +7,7 @@ pub struct FileItem {
     pub name: String,
     pub path: PathBuf,
     pub is_dir: bool,
+    #[allow(dead_code)]
     pub size: u64,
 }
 
@@ -31,7 +32,7 @@ static STATE: Mutex<Option<FilesSnapshot>> = Mutex::new(None);
 
 pub fn init(start_dir: &Path) {
     let snap = read_dir(start_dir);
-    let first_path = snap.items.get(0).map(|i| i.path.clone());
+    let first_path = snap.items.first().map(|i| i.path.clone());
     {
         let mut state = STATE.lock().unwrap();
         if state.is_none() {
@@ -161,7 +162,7 @@ pub fn update_preview(selected_path: &Path) {
 
 pub fn chdir(path: &Path) {
     let snap = read_dir(path);
-    let first_path = snap.items.get(0).map(|i| i.path.clone());
+    let first_path = snap.items.first().map(|i| i.path.clone());
     {
         let mut state = STATE.lock().unwrap();
         *state = Some(snap);

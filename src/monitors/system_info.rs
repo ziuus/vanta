@@ -162,10 +162,6 @@ pub fn fmt_uptime(secs: u64) -> String {
 
 // ── Distro logo ────────────────────────────────────────────────
 
-/// Every logo is exactly this wide (in cells). The render column is sized from
-/// it, and `logo_rows_are_uniform` enforces it.
-
-
 /// Pack a bitmap into braille lines at 2×4 dots per cell — the same subpixel
 /// trick the graphs use, which renders as a solid shape on a capable font
 /// rather than the stair-stepped block art it replaces. Any non-space cell in
@@ -374,4 +370,3 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, sum: &Summary) {
     f.render_widget(Paragraph::new(left), cols[0]);
     f.render_widget(Paragraph::new(right), cols[1]);
 }
-

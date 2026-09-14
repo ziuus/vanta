@@ -1,5 +1,3 @@
-
-
 use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};

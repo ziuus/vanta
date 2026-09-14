@@ -44,8 +44,12 @@ pub fn ensure_agenda_file() {
     let file_path = get_agenda_file();
     if !file_path.exists() {
         let now = Local::now();
-        let dtstart = (now + chrono::Duration::hours(2)).format("%Y%m%dT%H%M00").to_string();
-        let dtend = (now + chrono::Duration::hours(3)).format("%Y%m%dT%H%M00").to_string();
+        let dtstart = (now + chrono::Duration::hours(2))
+            .format("%Y%m%dT%H%M00")
+            .to_string();
+        let dtend = (now + chrono::Duration::hours(3))
+            .format("%Y%m%dT%H%M00")
+            .to_string();
         let default_content = format!(
             "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Vanta//EN\nBEGIN:VEVENT\nSUMMARY:Team Standup & Review\nDTSTART:{}\nDTEND:{}\nEND:VEVENT\nEND:VCALENDAR\n",
             dtstart, dtend
@@ -61,11 +65,11 @@ fn parse_ical_date(dt: &str) -> Option<DateTime<Local>> {
         }
     } else {
         if let Ok(ndt) = NaiveDateTime::parse_from_str(dt, "%Y%m%dT%H%M%S") {
-            return Some(Local.from_local_datetime(&ndt).single()?);
+            return Local.from_local_datetime(&ndt).single();
         }
         if let Ok(nd) = chrono::NaiveDate::parse_from_str(dt, "%Y%m%d") {
             if let Some(ndt) = nd.and_hms_opt(0, 0, 0) {
-                return Some(Local.from_local_datetime(&ndt).single()?);
+                return Local.from_local_datetime(&ndt).single();
             }
         }
     }

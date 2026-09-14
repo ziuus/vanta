@@ -50,14 +50,10 @@ pub fn rescan() {
         let mut tasks = Vec::new();
         for line in content.lines() {
             let line = line.trim();
-            if line.starts_with("- [ ]")
-                || line.starts_with("- [x]")
-                || line.starts_with("- [X]")
-            {
+            if line.starts_with("- [ ]") || line.starts_with("- [x]") || line.starts_with("- [X]") {
                 let completed = line.contains("[x]") || line.contains("[X]");
                 let text = line[5..].trim().to_string();
-                let urgent =
-                    text.contains("!") || text.contains("urgent") || text.contains("ASAP");
+                let urgent = text.contains("!") || text.contains("urgent") || text.contains("ASAP");
                 tasks.push(Task {
                     completed,
                     text,
@@ -103,6 +99,48 @@ pub fn toggle_task(index: usize) {
                     new_lines.push(line.replacen("- [X]", "- [ ]", 1));
                 }
             } else {
+                new_lines.push(line.to_string());
+            }
+            task_idx += 1;
+        } else {
+            new_lines.push(line.to_string());
+        }
+    }
+
+    let updated_content = new_lines.join("\n") + "\n";
+    let _ = fs::write(&file_path, updated_content);
+    rescan();
+}
+
+pub fn add_task(text: &str) {
+    let file_path = get_todo_file();
+    ensure_todo_file();
+    if let Ok(mut content) = fs::read_to_string(&file_path) {
+        if !content.ends_with('\n') && !content.is_empty() {
+            content.push('\n');
+        }
+        content.push_str(&format!("- [ ] {}\n", text.trim()));
+        let _ = fs::write(&file_path, content);
+        rescan();
+    }
+}
+
+pub fn delete_task(index: usize) {
+    let file_path = get_todo_file();
+    let Ok(content) = fs::read_to_string(&file_path) else {
+        return;
+    };
+
+    let mut task_idx = 0;
+    let mut new_lines = Vec::new();
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("- [ ]")
+            || trimmed.starts_with("- [x]")
+            || trimmed.starts_with("- [X]")
+        {
+            if task_idx != index {
                 new_lines.push(line.to_string());
             }
             task_idx += 1;

@@ -41,7 +41,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
     } else {
         lines.push(Line::from(vec![])); // empty top line for spaciousness
 
-        let display_count = (area.height.saturating_sub(1) / 2).max(1).min(3) as usize;
+        let display_count = (area.height.saturating_sub(1) / 2).clamp(1, 3) as usize;
 
         let now = Utc::now();
 

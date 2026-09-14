@@ -1,15 +1,15 @@
-use std::cell::RefCell;
+use ratatui::layout::Alignment;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
-use ratatui::layout::Alignment;
+use std::cell::RefCell;
 
 use crate::theme::Theme;
 
 thread_local! {
-    static CACHED_IMAGE: RefCell<Option<CachedMedia>> = RefCell::new(None);
+    static CACHED_IMAGE: RefCell<Option<CachedMedia>> = const { RefCell::new(None) };
 }
 
 struct CachedMedia {
@@ -40,8 +40,6 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, path: &str) {
         return;
     }
 
-    
-
     let needs_update = CACHED_IMAGE.with(|c| {
         let cache = c.borrow();
         cache.is_none()
@@ -51,9 +49,9 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, path: &str) {
     });
 
     if needs_update {
-        let expanded_path = if path.starts_with("~/") {
+        let expanded_path = if let Some(stripped) = path.strip_prefix("~/") {
             let home = std::env::var("HOME").unwrap_or_else(|_| "".to_string());
-            format!("{}/{}", home, &path[2..])
+            format!("{}/{}", home, stripped)
         } else if path == "~" {
             std::env::var("HOME").unwrap_or_else(|_| "".to_string())
         } else {

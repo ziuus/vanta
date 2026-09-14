@@ -104,14 +104,18 @@ window.addEventListener('load', () => {
     .from('.hero-actions', { opacity: 0, y: 20, duration: 0.8 }, "-=0.9")
     .from('.terminal-mockup', { x: 100, opacity: 0, rotateY: 20, duration: 1.5, ease: "power4.out" }, "-=1");
 
-  // Terminal Typing sequence
-  const termTl = gsap.timeline({ delay: 2.5 });
-  termTl
-    .fromTo('.typing-text', { width: 0, display: 'inline-block', overflow: 'hidden', whiteSpace: 'nowrap' }, { width: '160px', duration: 1.5, ease: "steps(18)" })
-    .to('.typing-text', { opacity: 0, duration: 0.1 }, "+=0.5")
-    .to('.sys-loading', { opacity: 1, duration: 0.1 })
-    .to('.sys-loading', { opacity: 0, duration: 0.1 }, "+=1")
-    .to('.sys-dashboard', { opacity: 1, duration: 0.1 });
+  // Terminal Entrance animation
+  if (document.querySelector('.typing-text')) {
+    const termTl = gsap.timeline({ delay: 2.5 });
+    termTl
+      .fromTo('.typing-text', { width: 0, display: 'inline-block', overflow: 'hidden', whiteSpace: 'nowrap' }, { width: '160px', duration: 1.5, ease: "steps(18)" })
+      .to('.typing-text', { opacity: 0, duration: 0.1 }, "+=0.5")
+      .to('.sys-loading', { opacity: 1, duration: 0.1 })
+      .to('.sys-loading', { opacity: 0, duration: 0.1 }, "+=1")
+      .to('.sys-dashboard', { opacity: 1, duration: 0.1 });
+  } else if (document.querySelector('.terminal-img')) {
+    gsap.from('.terminal-img', { opacity: 0, scale: 0.96, duration: 1.2, delay: 0.6, ease: "power3.out" });
+  }
 });
 
 // 5. ScrollTrigger: Horizontal Scroll Section

@@ -52,7 +52,7 @@
     <section class="hero" id="hero">
       <div class="hero-content">
         <div class="badge fade-in">
-           <span class="badge-dot"></span> v0.6.7 — Built in Rust
+           <span class="badge-dot"></span> v0.6.8 — Built in Rust
         </div>
         <h1 class="hero-title" id="hero-title">
           Your machine, <br>
@@ -77,18 +77,11 @@
           <div class="terminal-mockup liquid-glass floating">
              <div class="terminal-bar">
                <div class="dots"><span></span><span></span><span></span></div>
-               <div class="title">vanta --demo</div>
+               <div class="title">vanta --mode dashboard</div>
              </div>
-             <div class="terminal-body">
-               <div class="code-line"><span class="prompt">zius@vanta:~$</span> <span class="typing-text">cargo run --release</span></div>
-               <div class="code-line dim sys-loading" style="opacity: 0">Compiling vanta v0.6.7...</div>
-               <div class="sys-dashboard" style="opacity: 0; margin-top: 10px;">
-                 <div class="code-line"><span class="accent">┌─ SYSTEM OVERVIEW ───────────────────┐</span></div>
-                 <div class="code-line">│ CPU  <span class="highlight">23%</span> <span class="bar-chart">████░░░░░░</span> | MEM  <span class="highlight">6.2GB</span>  │</div>
-                 <div class="code-line">│ DISK <span class="highlight">34%</span> <span class="bar-chart">██████░░░░</span> | NET  <span class="highlight">↑1.2</span>   │</div>
-                 <div class="code-line">│ GPU  <span class="highlight">45%</span> <span class="bar-chart">███████░░░</span> | UPT  <span class="highlight">2d 4h</span>  │</div>
-                 <div class="code-line"><span class="accent">└─────────────────────────────────────┘</span><span class="term-cursor"></span></div>
-               </div>
+             <div class="terminal-screen-wrapper">
+               <img src="assets/dashboard.png" alt="Vanta Dashboard TUI" class="terminal-img" />
+               <div class="screen-scanline"></div>
              </div>
           </div>
         </div>
@@ -98,26 +91,57 @@
     <!-- HORIZONTAL SCROLL SHOWCASE -->
     <section class="section showcase-section" id="showcase">
        <div class="showcase-content">
-          <h2 class="section-title split-words">The Ultimate Dashboard.</h2>
-          <p class="section-subtitle">Real-time telemetry meets keyboard mastery.</p>
+          <h2 class="section-title split-words">The Ultimate Cockpit.</h2>
+          <p class="section-subtitle">Real-time telemetry meets keyboard mastery across four distinct modes.</p>
        </div>
        <div class="horizontal-scroll-container">
           <div class="horizontal-scroll-track">
+             <!-- Card 1: Dashboard -->
              <div class="h-card liquid-glass-refraction">
-                <h3>Real-time Metrics</h3>
-                <p>CPU per-core utilisation, temperature, frequency, memory, swap, disk I/O.</p>
+                <div class="h-card-img-wrap">
+                   <img src="assets/dashboard.png" alt="Vanta Dashboard" loading="lazy" />
+                   <div class="h-card-tag">Mode 1 · Dashboard</div>
+                </div>
+                <div class="h-card-body">
+                   <h3>Real-time Telemetry</h3>
+                   <p>CPU per-core utilisation, temperature, memory, swap, disk I/O, network sparks, and audio spectrum.</p>
+                </div>
              </div>
+
+             <!-- Card 2: Process Monitor -->
              <div class="h-card liquid-glass-refraction">
-                <h3>Process Explorer</h3>
-                <p>Find, sort, kill, and inspect processes natively. Full tree view included.</p>
+                <div class="h-card-img-wrap">
+                   <img src="assets/monitor.png" alt="Vanta Process Monitor" loading="lazy" />
+                   <div class="h-card-tag">Mode 2 · Monitor</div>
+                </div>
+                <div class="h-card-body">
+                   <h3>Process Explorer</h3>
+                   <p>Hierarchical process tree, instant regex search, sort by CPU/MEM, and one-key signals (SIGTERM/SIGKILL).</p>
+                </div>
              </div>
+
+             <!-- Card 3: Aesthetic Mode -->
              <div class="h-card liquid-glass-refraction">
-                <h3>Media & MPRIS</h3>
-                <p>Control your music, view live visualizers, and check playback status.</p>
+                <div class="h-card-img-wrap">
+                   <img src="assets/aesthetic.png" alt="Vanta Aesthetic Mode" loading="lazy" />
+                   <div class="h-card-tag">Mode 3 · Aesthetic</div>
+                </div>
+                <div class="h-card-body">
+                   <h3>Matrix, Donut & Pinned Media</h3>
+                   <p>Matrix digital rain, ASCII spinning 3D donut, full-width visualizers, and pinned photo/video display.</p>
+                </div>
              </div>
+
+             <!-- Card 4: Keyboard Mastery & Help -->
              <div class="h-card liquid-glass-refraction">
-                <h3>Eight Themes</h3>
-                <p>Dark, Catppuccin, Tokyo Night, Nord, Gruvbox, Dracula, Light and Solarized — cycle live with <code>T</code>.</p>
+                <div class="h-card-img-wrap">
+                   <img src="assets/help.png" alt="Vanta Keyboard Overlay" loading="lazy" />
+                   <div class="h-card-tag">Overlay · Keybindings</div>
+                </div>
+                <div class="h-card-body">
+                   <h3>Zero Mouse, Total Control</h3>
+                   <p>Instant HUD overlay with '?', panel zoom with Enter, live theme switcher with 'T', and settings modal with 'S'.</p>
+                </div>
              </div>
           </div>
        </div>

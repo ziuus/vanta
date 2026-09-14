@@ -78,14 +78,12 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, month_offset: i32) {
         format!("{} {}", month_name(month), year)
     };
 
-    lines.push(Line::from(vec![
-        Span::styled(
-            title,
-            Style::default()
-                .fg(theme.accent)
-                .add_modifier(Modifier::BOLD),
-        ),
-    ]));
+    lines.push(Line::from(vec![Span::styled(
+        title,
+        Style::default()
+            .fg(theme.accent)
+            .add_modifier(Modifier::BOLD),
+    )]));
 
     // 2. Optional divider if vertical space allows
     if area.height >= 10 {

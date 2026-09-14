@@ -180,6 +180,8 @@ pub struct PanelStates {
     pub files_selected: usize,
     pub files_scroll: usize,
     pub tasks_selected: usize,
+    pub task_input_active: bool,
+    pub task_input: String,
     pub status_selected: usize,
     pub dash_ratios: [u16; 3],
     pub work_ratio: u16,
@@ -203,6 +205,8 @@ impl Default for PanelStates {
             files_selected: 0,
             files_scroll: 0,
             tasks_selected: 0,
+            task_input_active: false,
+            task_input: String::new(),
             status_selected: 0,
             dash_ratios: [33, 34, 33],
             work_ratio: 25,
@@ -329,6 +333,30 @@ impl App {
         let ps = &mut self.panel_states;
 
         // Text entry captures everything first.
+        if ps.task_input_active {
+            match key.code {
+                KeyCode::Esc => {
+                    ps.task_input_active = false;
+                    ps.task_input.clear();
+                }
+                KeyCode::Enter => {
+                    if !ps.task_input.trim().is_empty() {
+                        crate::monitors::tasks::add_task(&ps.task_input);
+                    }
+                    ps.task_input_active = false;
+                    ps.task_input.clear();
+                }
+                KeyCode::Backspace => {
+                    ps.task_input.pop();
+                }
+                KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    ps.task_input.push(c);
+                }
+                _ => {}
+            }
+            return;
+        }
+
         if ps.process_search_active {
             match key.code {
                 KeyCode::Esc => {
@@ -417,7 +445,9 @@ impl App {
             KeyCode::Enter => {
                 if self.mode == DashboardMode::Workspace {
                     match self.focused_panel {
-                        Some(PanelId::WriterNotes) | Some(PanelId::Tasks) | Some(PanelId::Agenda) => {
+                        Some(PanelId::WriterNotes)
+                        | Some(PanelId::Tasks)
+                        | Some(PanelId::Agenda) => {
                             self.trigger_focused_action();
                             return;
                         }
@@ -500,6 +530,21 @@ impl App {
                     }
                     KeyCode::Char(' ') | KeyCode::Char('x') => {
                         crate::monitors::tasks::toggle_task(self.panel_states.tasks_selected);
+                    }
+                    KeyCode::Char('a') | KeyCode::Char('n') => {
+                        self.panel_states.task_input_active = true;
+                        self.panel_states.task_input.clear();
+                    }
+                    KeyCode::Char('d') | KeyCode::Delete => {
+                        let count = crate::monitors::tasks::snapshot().tasks.len();
+                        if count > 0 {
+                            crate::monitors::tasks::delete_task(self.panel_states.tasks_selected);
+                            if self.panel_states.tasks_selected >= count - 1
+                                && self.panel_states.tasks_selected > 0
+                            {
+                                self.panel_states.tasks_selected -= 1;
+                            }
+                        }
                     }
                     KeyCode::Enter | KeyCode::Char('e') | KeyCode::Char('E') => {
                         self.trigger_focused_action();
@@ -601,7 +646,7 @@ impl App {
                     "docker" => "lazydocker",
                     _ => return, // No action
                 };
-                
+
                 let _ = crossterm::terminal::disable_raw_mode();
                 let _ = std::process::Command::new(cmd).status();
                 let _ = crossterm::terminal::enable_raw_mode();
@@ -609,7 +654,7 @@ impl App {
                 return;
             }
         }
-        
+
         let path = match self.focused_panel {
             Some(PanelId::Tasks) => {
                 crate::monitors::tasks::ensure_todo_file();
@@ -622,7 +667,9 @@ impl App {
             Some(PanelId::WriterNotes) => {
                 let snap = crate::monitors::obsidian::snapshot();
                 if snap.notes.is_empty() {
-                    let vault_path = crate::monitors::obsidian::detect_vault_path(&crate::config::Config::load().ui.obsidian_vault);
+                    let vault_path = crate::monitors::obsidian::detect_vault_path(
+                        &crate::config::Config::load().ui.obsidian_vault,
+                    );
                     let _ = std::fs::create_dir_all(&vault_path);
                     Some(vault_path.join("Note.md"))
                 } else {
@@ -654,7 +701,7 @@ impl App {
             let _ = std::process::Command::new(editor).arg(p).status();
             let _ = crossterm::terminal::enable_raw_mode();
             let _ = std::process::Command::new("clear").status();
-            
+
             // Immediate rescan of all workspace monitors
             crate::monitors::obsidian::rescan();
             crate::monitors::tasks::rescan();
@@ -686,19 +733,19 @@ impl App {
                     (self.panel_states.dash_ratios[0] as i16 + delta).clamp(10, 80) as u16;
                 self.panel_states.dash_ratios[1] =
                     (100 - self.panel_states.dash_ratios[0] - self.panel_states.dash_ratios[2])
-                        .clamp(10, 80) as u16;
+                        .clamp(10, 80);
             } else if col == 1 {
                 self.panel_states.dash_ratios[1] =
                     (self.panel_states.dash_ratios[1] as i16 + delta).clamp(10, 80) as u16;
                 self.panel_states.dash_ratios[2] =
                     (100 - self.panel_states.dash_ratios[0] - self.panel_states.dash_ratios[1])
-                        .clamp(10, 80) as u16;
+                        .clamp(10, 80);
             } else if col == 2 {
                 self.panel_states.dash_ratios[2] =
                     (self.panel_states.dash_ratios[2] as i16 - delta).clamp(10, 80) as u16;
                 self.panel_states.dash_ratios[1] =
                     (100 - self.panel_states.dash_ratios[0] - self.panel_states.dash_ratios[2])
-                        .clamp(10, 80) as u16;
+                        .clamp(10, 80);
             }
         } else if self.mode == DashboardMode::Workspace {
             let id = if let Some(i) = self.focused_panel {
@@ -1137,4 +1184,3 @@ fn get_preferred_editor() -> String {
     }
     "nano".to_string()
 }
-

@@ -67,12 +67,17 @@ pub fn render(f: &mut Frame, area: Rect, app: &mut App) {
         let snap = crate::monitors::tasks::snapshot();
         let open = snap.tasks.iter().filter(|t| !t.completed).count();
         let tasks_rt = format!(" {} open ", open);
+        let hint = if app.panel_states.task_input_active {
+            "Enter submit · Esc cancel"
+        } else {
+            "a add · Space toggle · d del · e edit"
+        };
         let inner = panel_full(
             f,
             rows[1],
             "tasks",
             Some(&tasks_rt),
-            Some("Space toggle · e edit"),
+            Some(hint),
             theme,
             focus(PanelId::Tasks),
         );
@@ -82,6 +87,8 @@ pub fn render(f: &mut Frame, area: Rect, app: &mut App) {
             theme,
             focus(PanelId::Tasks),
             app.panel_states.tasks_selected,
+            app.panel_states.task_input_active,
+            &app.panel_states.task_input,
         );
     }
 
@@ -134,12 +141,12 @@ pub fn render(f: &mut Frame, area: Rect, app: &mut App) {
     } else {
         theme.surface
     };
-    
+
     let list_inner_area = Block::default()
         .borders(Borders::RIGHT)
         .border_style(Style::default().fg(border_color))
         .inner(list_area);
-        
+
     f.render_widget(
         Block::default()
             .borders(Borders::RIGHT)
@@ -158,7 +165,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &mut App) {
         let max_idx = num_notes.saturating_sub(1);
         app.panel_states.writer_selected = app.panel_states.writer_selected.min(max_idx);
         let selected = app.panel_states.writer_selected;
-        
+
         let visible_items = list_inner_area.height as usize;
         let mut scroll = app.panel_states.writer_scroll;
         if selected < scroll {
@@ -168,7 +175,13 @@ pub fn render(f: &mut Frame, area: Rect, app: &mut App) {
         }
         app.panel_states.writer_scroll = scroll;
 
-        for (i, note) in snap.notes.iter().enumerate().skip(scroll).take(visible_items) {
+        for (i, note) in snap
+            .notes
+            .iter()
+            .enumerate()
+            .skip(scroll)
+            .take(visible_items)
+        {
             if i == selected {
                 list_lines.push(Line::from(vec![
                     Span::styled(" > ", Style::default().fg(theme.accent)),
@@ -183,10 +196,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &mut App) {
         }
     }
 
-    f.render_widget(
-        Paragraph::new(list_lines),
-        list_inner_area,
-    );
+    f.render_widget(Paragraph::new(list_lines), list_inner_area);
 
     let mut content_lines = Vec::new();
     if num_notes > 0 {
@@ -199,12 +209,20 @@ pub fn render(f: &mut Frame, area: Rect, app: &mut App) {
         content_lines.push(Line::from(""));
         for line in note.content.lines() {
             let mut style = Style::default().fg(theme.text);
-            if line.starts_with("# ") || line.starts_with("## ") || line.starts_with("### ") || line.starts_with("#### ") {
-                style = style.fg(theme.accent).add_modifier(ratatui::style::Modifier::BOLD);
+            if line.starts_with("# ")
+                || line.starts_with("## ")
+                || line.starts_with("### ")
+                || line.starts_with("#### ")
+            {
+                style = style
+                    .fg(theme.accent)
+                    .add_modifier(ratatui::style::Modifier::BOLD);
             } else if line.starts_with("- ") || line.starts_with("* ") {
                 style = style.fg(theme.yellow);
             } else if line.starts_with("> ") {
-                style = style.fg(theme.dim).add_modifier(ratatui::style::Modifier::ITALIC);
+                style = style
+                    .fg(theme.dim)
+                    .add_modifier(ratatui::style::Modifier::ITALIC);
             } else if line.starts_with("```") {
                 style = style.fg(theme.red);
             }
