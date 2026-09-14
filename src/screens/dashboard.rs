@@ -183,8 +183,8 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
             Constraint::Length(9),                                 // STATUS
             Constraint::Length(if cfg.weather { 9 } else { 0 }),   // WEATHER
             Constraint::Length(mem_h),                             // MEMORY (tall terminals)
-            Constraint::Min(8),                                    // NETWORK
-            Constraint::Length(if cfg.calendar { 11 } else { 0 }), // CALENDAR
+            Constraint::Min(6),                                    // NETWORK
+            Constraint::Length(if cfg.calendar { 12 } else { 0 }), // CALENDAR
         ])
         .split(cols[2]);
 
@@ -241,12 +241,17 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
         }
 
         if cfg.calendar {
+            let cal_hint = if app.panel_states.calendar_month_offset == 0 {
+                "← → month"
+            } else {
+                "Home reset · ← →"
+            };
             let inner = panel_full(
                 f,
                 rows[4],
                 "calendar",
                 None,
-                Some("← → month"),
+                Some(cal_hint),
                 theme,
                 focus(PanelId::Calendar),
             );

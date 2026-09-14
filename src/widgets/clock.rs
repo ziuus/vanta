@@ -288,9 +288,9 @@ mod tests {
 
     #[test]
     fn glyph_widths_and_scale_selection() {
-        // 6 digits × 3 + 2 colons × 1 + 7 gaps = 27 cells at scale 1.
-        assert_eq!(text_width("12:34:56", 1, "standard"), 27);
-        assert_eq!(text_width("12:34:56", 2, "standard"), 54);
+        // '1' has width 2 in standard font: 19 cells + 7 gaps = 26 cells at scale 1.
+        assert_eq!(text_width("12:34:56", 1, "standard"), 26);
+        assert_eq!(text_width("12:34:56", 2, "standard"), 52);
         assert_eq!(pick_scale("12:34:56", 60, 5, "standard"), Some((2, 1)));
         assert_eq!(pick_scale("12:34:56", 120, 10, "standard"), Some((4, 2)));
         assert_eq!(pick_scale("12:34:56", 30, 5, "standard"), Some((1, 1)));
