@@ -92,7 +92,16 @@ pub fn render(
                     icon,
                     Style::default().fg(color).add_modifier(Modifier::BOLD),
                 ),
-                Span::styled(format!(" {}", task.text), text_style),
+                Span::styled(
+                    format!(
+                        " {}",
+                        crate::widgets::meter::ellipsize(
+                            &task.text,
+                            (area.width as usize).saturating_sub(8)
+                        )
+                    ),
+                    text_style,
+                ),
             ]));
         }
     }

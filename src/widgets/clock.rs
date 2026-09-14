@@ -144,10 +144,17 @@ pub fn render(
 
     let w = area.width as usize;
     // Reserve a row for the date when there's room for glyphs + date.
-    let tz_height = if timezones.is_empty() {
+    // The timezone table only gets rows if the glyphs still fit above it;
+    // otherwise the big time wins and the table is simply not drawn.
+    let tz_rows = if timezones.is_empty() {
         0
     } else {
         timezones.len() + 2
+    };
+    let tz_height = if area.height as usize >= GLYPH_H + 2 + tz_rows {
+        tz_rows
+    } else {
+        0
     };
     let glyph_h_avail = (area.height as usize).saturating_sub(2 + tz_height);
 
@@ -233,7 +240,7 @@ pub fn render(
     }
 
     // Render timezones
-    if !timezones.is_empty() && area.height >= date_y - area.y + 2 + timezones.len() as u16 {
+    if tz_height > 0 && area.height >= date_y - area.y + 2 + timezones.len() as u16 {
         let mut tz_lines = Vec::new();
         tz_lines.push(Line::from(vec![])); // Spacer
         tz_lines.push(Line::from(vec![
@@ -250,16 +257,12 @@ pub fn render(
                 } else {
                     time_in_tz.format("%I:%M:%S %p")
                 };
-                let tz_name = if tz_str.len() > 15 {
-                    &tz_str[..15]
-                } else {
-                    tz_str
-                };
+                let tz_name = crate::widgets::meter::ellipsize(tz_str, 15);
 
                 let time_str = time_fmt.to_string();
                 let pad = area
                     .width
-                    .saturating_sub((tz_name.len() + time_str.len()) as u16)
+                    .saturating_sub((tz_name.chars().count() + time_str.len()) as u16)
                     as usize;
 
                 tz_lines.push(Line::from(vec![

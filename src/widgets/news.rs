@@ -68,11 +68,9 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
             }; // " (2h ago)"
             let max_title_width = (area.width as usize).saturating_sub(marker.len() + time_len + 1);
 
-            let mut title = item.title.clone();
-            if title.len() > max_title_width {
-                title.truncate(max_title_width.saturating_sub(3));
-                title.push_str("...");
-            }
+            // Char-safe: String::truncate panics mid-codepoint on titles with
+            // em dashes or curly quotes, which HN headlines have constantly.
+            let title = crate::widgets::meter::ellipsize(&item.title, max_title_width);
 
             let mut spans = vec![
                 Span::styled(marker, Style::default().fg(theme.accent)),

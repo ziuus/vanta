@@ -27,7 +27,10 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, path: &str) {
                 ratatui::style::Style::default().fg(theme.dim),
             )]),
             Line::from(vec![Span::styled(
-                "set pinned_media_path in config.toml",
+                crate::widgets::meter::ellipsize(
+                    "set pinned_media_path in config.toml",
+                    area.width as usize,
+                ),
                 ratatui::style::Style::default().fg(theme.dim),
             )]),
         ])
