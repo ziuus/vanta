@@ -64,7 +64,8 @@ impl DashboardConfig {
     pub fn preset_aesthetic() -> Vec<Vec<String>> {
         vec![
             vec!["clock".into(), "weather".into(), "media".into()],
-            vec!["visualizer".into(), "status".into()],
+            vec!["donut".into(), "matrix".into()],
+            vec!["calendar".into(), "visualizer".into()],
         ]
     }
 
