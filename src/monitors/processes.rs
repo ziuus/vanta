@@ -70,41 +70,65 @@ fn read_total_jiffies() -> f64 {
         .unwrap_or(1.0)
 }
 
-/// Parse /proc/[pid]/status once for the fields we need.
-fn read_status(pid: u32) -> Option<(String, char, u64, u64, u32)> {
-    let content = fs::read_to_string(format!("/proc/{}/status", pid)).ok()?;
-    let (mut name, mut state, mut rss, mut threads, mut uid) =
-        (String::new(), '?', 0u64, 0u64, 0u32);
-    for line in content.lines() {
-        if let Some(v) = line.strip_prefix("Name:") {
-            name = v.trim().to_string();
-        } else if let Some(v) = line.strip_prefix("State:") {
-            state = v.trim().chars().next().unwrap_or('?');
-        } else if let Some(v) = line.strip_prefix("VmRSS:") {
-            rss = v.split_whitespace().next()?.parse().ok()?;
-        } else if let Some(v) = line.strip_prefix("Threads:") {
-            threads = v.trim().parse().unwrap_or(0);
-        } else if let Some(v) = line.strip_prefix("Uid:") {
-            uid = v.split_whitespace().next()?.parse().unwrap_or(0);
-        }
+/// Kernel page size in KiB, derived once from our own statm vs status so we
+/// don't need libc. Falls back to 4 KiB.
+static PAGE_KB: LazyLock<u64> = LazyLock::new(|| {
+    let pages: Option<u64> = fs::read_to_string("/proc/self/statm")
+        .ok()
+        .and_then(|s| s.split_whitespace().nth(1)?.parse().ok());
+    let kb: Option<u64> = fs::read_to_string("/proc/self/status").ok().and_then(|s| {
+        s.lines()
+            .find(|l| l.starts_with("VmRSS:"))?
+            .split_whitespace()
+            .nth(1)?
+            .parse()
+            .ok()
+    });
+    match (pages, kb) {
+        (Some(p), Some(k)) if p > 0 => (k / p).max(1),
+        _ => 4,
     }
-    Some((name, state, rss, threads, uid))
+});
+
+struct Stat {
+    name: String,
+    state: char,
+    ppid: u32,
+    jiffies: u64,
+    threads: u64,
+    rss_kb: u64,
 }
 
-/// (ppid, utime+stime) from /proc/[pid]/stat. The comm field can contain
-/// spaces, so split after the closing paren.
-fn read_stat(pid: u32) -> Option<(u32, u64)> {
+/// Everything from one read of /proc/[pid]/stat. `status` carries the same
+/// facts but is ~1.3 KB and measurably slower to generate, and on this kernel
+/// each /proc read costs ~30 µs — with a few hundred processes that adds up.
+/// The comm field can contain spaces, so split after the closing paren.
+fn read_stat(pid: u32) -> Option<Stat> {
     let content = fs::read_to_string(format!("/proc/{}/stat", pid)).ok()?;
-    let rest = content.rsplit_once(')')?.1;
+    let (head, rest) = content.rsplit_once(')')?;
+    let name = head.split_once('(')?.1.to_string();
     let p: Vec<&str> = rest.split_whitespace().collect();
-    // rest[0]=state rest[1]=ppid ... rest[11]=utime rest[12]=stime
-    if p.len() < 13 {
+    // rest: [0]=state [1]=ppid ... [11]=utime [12]=stime ... [17]=num_threads ... [21]=rss(pages)
+    if p.len() < 22 {
         return None;
     }
-    let ppid = p[1].parse().ok()?;
-    let ut: u64 = p[11].parse().ok()?;
-    let st: u64 = p[12].parse().ok()?;
-    Some((ppid, ut + st))
+    Some(Stat {
+        name,
+        state: p[0].chars().next().unwrap_or('?'),
+        ppid: p[1].parse().ok()?,
+        jiffies: p[11].parse::<u64>().ok()? + p[12].parse::<u64>().ok()?,
+        threads: p[17].parse().unwrap_or(0),
+        rss_kb: p[21].parse::<u64>().unwrap_or(0) * *PAGE_KB,
+    })
+}
+
+/// Owner of the process: a stat() on the /proc dir is one syscall, far cheaper
+/// than parsing the Uid: line out of /proc/[pid]/status.
+fn read_uid(pid: u32) -> u32 {
+    use std::os::unix::fs::MetadataExt;
+    fs::metadata(format!("/proc/{}", pid))
+        .map(|m| m.uid())
+        .unwrap_or(0)
 }
 
 fn read_io(pid: u32) -> (u64, u64) {
@@ -169,16 +193,22 @@ pub fn sample(total_mem_bytes: u64) {
         let Ok(pid) = entry.file_name().to_string_lossy().parse::<u32>() else {
             continue;
         };
-        let Some((name, state, mem_kb, threads, uid)) = read_status(pid) else {
+        let Some(st) = read_stat(pid) else {
             continue;
         };
-        if mem_kb == 0 {
+        if st.rss_kb == 0 {
             continue; // kernel threads
         }
-        let Some((ppid, jiffies)) = read_stat(pid) else {
-            continue;
-        };
+        let Stat {
+            name,
+            state,
+            ppid,
+            jiffies,
+            threads,
+            rss_kb: mem_kb,
+        } = st;
         let (read, write) = read_io(pid);
+        let uid = read_uid(pid);
 
         let (cpu_pct, read_bps, write_bps) = match prev.get(&pid) {
             Some(p) if d_total > 0.0 && dt > 0.0 => (

@@ -79,6 +79,9 @@ fn main() -> io::Result<()> {
 fn run<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<()> {
     let mut frame_time = Duration::from_secs_f64(1.0 / app.config.ui.fps as f64);
     let mut last_frame = Instant::now();
+    // VANTA_PROFILE=1: log frame-time percentiles every 60 frames.
+    let profiling = std::env::var_os("VANTA_PROFILE").is_some();
+    let mut frame_us: Vec<u128> = Vec::with_capacity(60);
 
     terminal.draw(|f| app.render(f))?;
     while app.running {
@@ -97,7 +100,29 @@ fn run<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, app: &mut App) 
             }
         }
         if last_frame.elapsed() >= frame_time || !app.running {
+            let t0 = Instant::now();
             terminal.draw(|f| app.render(f))?;
+            if profiling {
+                frame_us.push(t0.elapsed().as_micros());
+                if frame_us.len() == 60 {
+                    use std::io::Write;
+                    frame_us.sort_unstable();
+                    if let Ok(mut f) = std::fs::OpenOptions::new()
+                        .append(true)
+                        .create(true)
+                        .open("/tmp/vanta-profile.log")
+                    {
+                        let _ = writeln!(
+                            f,
+                            "frame p50={:.1}ms p95={:.1}ms max={:.1}ms",
+                            frame_us[30] as f64 / 1000.0,
+                            frame_us[57] as f64 / 1000.0,
+                            frame_us[59] as f64 / 1000.0
+                        );
+                    }
+                    frame_us.clear();
+                }
+            }
             last_frame = Instant::now();
             frame_time = Duration::from_secs_f64(1.0 / app.config.ui.fps as f64);
         }

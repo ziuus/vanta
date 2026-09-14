@@ -55,17 +55,55 @@ fn collect_summary() -> Summary {
 }
 
 /// Take one full sample of every monitor.
+///
+/// Set `VANTA_PROFILE=1` to append per-step timings to /tmp/vanta-profile.log
+/// — the only way to see where sampler time goes without a profiler.
 fn sample_all(sys: &mut sysinfo::System) {
+    let profiling = std::env::var_os("VANTA_PROFILE").is_some();
+    let mut marks: Vec<(&str, u128)> = Vec::new();
+    let mut t = Instant::now();
+    let mut step = |name: &'static str, marks: &mut Vec<(&str, u128)>| {
+        if profiling {
+            marks.push((name, t.elapsed().as_micros()));
+            t = Instant::now();
+        }
+    };
+
     sys.refresh_cpu_all();
     sys.refresh_memory();
+    step("sysinfo", &mut marks);
     cpu::sample(sys);
+    step("cpu", &mut marks);
     memory::sample(sys);
     gpu::sample();
+    step("gpu", &mut marks);
     network::sample();
+    step("net", &mut marks);
     disk::sample();
+    step("disk", &mut marks);
     processes::sample(sys.total_memory());
+    step("procs", &mut marks);
     crate::widgets::media::sample();
+    step("media", &mut marks);
     *SUMMARY.lock().unwrap() = collect_summary();
+    step("summary", &mut marks);
+
+    if profiling {
+        use std::io::Write;
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open("/tmp/vanta-profile.log")
+        {
+            let total: u128 = marks.iter().map(|m| m.1).sum();
+            let line = marks
+                .iter()
+                .map(|(n, us)| format!("{}={:.1}ms", n, *us as f64 / 1000.0))
+                .collect::<Vec<_>>()
+                .join(" ");
+            let _ = writeln!(f, "total={:.1}ms {}", total as f64 / 1000.0, line);
+        }
+    }
 }
 
 /// Start the background sampler. The returned handle holds the interval in
