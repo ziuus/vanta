@@ -147,7 +147,15 @@ pub fn render_panel(f: &mut Frame, area: Rect, app: &crate::app::App, id: crate:
         P::Matrix => matrix::render(f, inner, theme),
         P::Video => video::render(f, inner, theme, app.frame),
         P::Weather => crate::widgets::weather::render(f, inner, theme),
-        P::Agenda => crate::widgets::agenda::render(f, inner, theme),
+        P::Agenda => crate::widgets::agenda::render(
+            f,
+            inner,
+            theme,
+            true,
+            app.panel_states.agenda_selected,
+            app.panel_states.agenda_input_active,
+            &app.panel_states.agenda_input,
+        ),
         P::Tasks => crate::widgets::tasks::render(
             f,
             inner,

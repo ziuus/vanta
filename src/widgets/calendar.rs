@@ -68,7 +68,8 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, month_offset: i32) {
         weeks.push(current_week);
     }
 
-    let is_wide = area.width >= 30;
+    let show_week_num = area.width >= 34;
+    let is_wide = area.width >= 28 || show_week_num;
     let mut lines: Vec<Line> = Vec::new();
 
     // 1. Month / Year Title
@@ -87,15 +88,24 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, month_offset: i32) {
 
     // 2. Optional divider if vertical space allows
     if area.height >= 10 {
-        let sep_len = if is_wide { 28 } else { 21 };
+        let sep = if show_week_num {
+            "───┼────────────────────────────"
+        } else if is_wide {
+            "────────────────────────────"
+        } else {
+            "─────────────────────"
+        };
         lines.push(Line::from(Span::styled(
-            "─".repeat(sep_len),
+            sep,
             Style::default().fg(theme.surface),
         )));
     }
 
     // 3. Day of week headers
-    let mut hdr_spans: Vec<Span> = Vec::with_capacity(7);
+    let mut hdr_spans: Vec<Span> = Vec::with_capacity(8);
+    if show_week_num {
+        hdr_spans.push(Span::styled("Wk │ ", Style::default().fg(theme.dim)));
+    }
     let day_names = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
     for (i, d) in day_names.iter().enumerate() {
         let is_weekend = i >= 5;
@@ -118,7 +128,29 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, month_offset: i32) {
 
     // 4. Weeks
     for week in &weeks {
-        let mut week_spans: Vec<Span> = Vec::with_capacity(14);
+        let mut week_spans: Vec<Span> = Vec::with_capacity(16);
+        if show_week_num {
+            let thurs_date = match week[3] {
+                DayKind::Current(d) => NaiveDate::from_ymd_opt(year, month, d),
+                DayKind::Prev(d) => {
+                    let prev_year = if month == 1 { year - 1 } else { year };
+                    let prev_month = if month == 1 { 12 } else { month - 1 };
+                    NaiveDate::from_ymd_opt(prev_year, prev_month, d)
+                }
+                DayKind::Next(d) => {
+                    let next_year = if month == 12 { year + 1 } else { year };
+                    let next_month = if month == 12 { 1 } else { month + 1 };
+                    NaiveDate::from_ymd_opt(next_year, next_month, d)
+                }
+            };
+            let wk_str = if let Some(td) = thurs_date {
+                format!("{:>2} │ ", td.iso_week().week())
+            } else {
+                "   │ ".to_string()
+            };
+            week_spans.push(Span::styled(wk_str, Style::default().fg(theme.dim)));
+        }
+
         for (i, day_kind) in week.iter().enumerate() {
             let is_weekend = i >= 5;
             match *day_kind {
@@ -134,22 +166,20 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, month_offset: i32) {
                     let is_today = d == today && month_offset == 0;
                     if is_today {
                         if is_wide {
-                            week_spans.push(Span::raw(" "));
                             week_spans.push(Span::styled(
-                                format!("{:>2}", d),
+                                format!("[{:>2}]", d),
                                 Style::default()
                                     .fg(theme.bg)
                                     .bg(theme.accent)
-                                    .add_modifier(Modifier::BOLD),
+                                    .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
                             ));
-                            week_spans.push(Span::raw(" "));
                         } else {
                             week_spans.push(Span::styled(
                                 format!("{:>2}", d),
                                 Style::default()
                                     .fg(theme.bg)
                                     .bg(theme.accent)
-                                    .add_modifier(Modifier::BOLD),
+                                    .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
                             ));
                             week_spans.push(Span::raw(" "));
                         }

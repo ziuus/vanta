@@ -51,16 +51,29 @@ pub fn render(f: &mut Frame, area: Rect, app: &mut App) {
         } else {
             format!(" {} upcoming ", count)
         };
+        let hint = if app.panel_states.agenda_input_active {
+            "Enter submit · Esc cancel"
+        } else {
+            "a add · d del · e edit · ↑↓ select"
+        };
         let inner = panel_full(
             f,
             rows[0],
             "agenda",
             Some(&agenda_rt),
-            Some("Enter/e edit"),
+            Some(hint),
             theme,
             focus(PanelId::Agenda),
         );
-        crate::widgets::agenda::render(f, inner, theme);
+        crate::widgets::agenda::render(
+            f,
+            inner,
+            theme,
+            focus(PanelId::Agenda),
+            app.panel_states.agenda_selected,
+            app.panel_states.agenda_input_active,
+            &app.panel_states.agenda_input,
+        );
     }
 
     if cfg.tasks {

@@ -209,6 +209,9 @@ pub struct PanelStates {
     pub tasks_selected: usize,
     pub task_input_active: bool,
     pub task_input: String,
+    pub agenda_selected: usize,
+    pub agenda_input_active: bool,
+    pub agenda_input: String,
     pub status_selected: usize,
     pub dash_ratios: [u16; 3],
     pub work_ratio: u16,
@@ -234,6 +237,9 @@ impl Default for PanelStates {
             tasks_selected: 0,
             task_input_active: false,
             task_input: String::new(),
+            agenda_selected: 0,
+            agenda_input_active: false,
+            agenda_input: String::new(),
             status_selected: 0,
             dash_ratios: [33, 34, 33],
             work_ratio: 25,
@@ -360,6 +366,30 @@ impl App {
         let ps = &mut self.panel_states;
 
         // Text entry captures everything first.
+        if ps.agenda_input_active {
+            match key.code {
+                KeyCode::Esc => {
+                    ps.agenda_input_active = false;
+                    ps.agenda_input.clear();
+                }
+                KeyCode::Enter => {
+                    if !ps.agenda_input.trim().is_empty() {
+                        crate::monitors::agenda::add_event(&ps.agenda_input);
+                    }
+                    ps.agenda_input_active = false;
+                    ps.agenda_input.clear();
+                }
+                KeyCode::Backspace => {
+                    ps.agenda_input.pop();
+                }
+                KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    ps.agenda_input.push(c);
+                }
+                _ => {}
+            }
+            return;
+        }
+
         if ps.task_input_active {
             match key.code {
                 KeyCode::Esc => {
@@ -579,6 +609,34 @@ impl App {
                     _ => {}
                 },
                 Some(PanelId::Agenda) => match key {
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        self.panel_states.agenda_selected =
+                            self.panel_states.agenda_selected.saturating_sub(1);
+                    }
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        let count = crate::monitors::agenda::snapshot().events.len();
+                        if count > 0 {
+                            self.panel_states.agenda_selected =
+                                (self.panel_states.agenda_selected + 1).min(count - 1);
+                        }
+                    }
+                    KeyCode::Char('a') | KeyCode::Char('n') => {
+                        self.panel_states.agenda_input_active = true;
+                        self.panel_states.agenda_input.clear();
+                    }
+                    KeyCode::Char('d') | KeyCode::Delete => {
+                        let count = crate::monitors::agenda::snapshot().events.len();
+                        if count > 0 {
+                            crate::monitors::agenda::delete_event(
+                                self.panel_states.agenda_selected,
+                            );
+                            if self.panel_states.agenda_selected >= count - 1
+                                && self.panel_states.agenda_selected > 0
+                            {
+                                self.panel_states.agenda_selected -= 1;
+                            }
+                        }
+                    }
                     KeyCode::Enter | KeyCode::Char('e') | KeyCode::Char('E') => {
                         self.trigger_focused_action();
                     }

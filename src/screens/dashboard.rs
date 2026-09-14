@@ -355,6 +355,56 @@ fn render_dashboard_panel(
             let inner = panel(f, area, "gpu", theme, focus(PanelId::Gpu));
             gpu::render(f, inner, theme);
         }
+        "agenda" => {
+            let snap = crate::monitors::agenda::snapshot();
+            let count = snap.events.len();
+            let agenda_rt = if count == 0 {
+                " no events ".to_string()
+            } else {
+                format!(" {} upcoming ", count)
+            };
+            let inner = panel_full(
+                f,
+                area,
+                "agenda",
+                Some(&agenda_rt),
+                None,
+                theme,
+                focus(PanelId::Agenda),
+            );
+            crate::widgets::agenda::render(
+                f,
+                inner,
+                theme,
+                focus(PanelId::Agenda),
+                app.panel_states.agenda_selected,
+                app.panel_states.agenda_input_active,
+                &app.panel_states.agenda_input,
+            );
+        }
+        "tasks" => {
+            let snap = crate::monitors::tasks::snapshot();
+            let open = snap.tasks.iter().filter(|t| !t.completed).count();
+            let tasks_rt = format!(" {} open ", open);
+            let inner = panel_full(
+                f,
+                area,
+                "tasks",
+                Some(&tasks_rt),
+                None,
+                theme,
+                focus(PanelId::Tasks),
+            );
+            crate::widgets::tasks::render(
+                f,
+                inner,
+                theme,
+                focus(PanelId::Tasks),
+                app.panel_states.tasks_selected,
+                app.panel_states.task_input_active,
+                &app.panel_states.task_input,
+            );
+        }
         custom_id => {
             if let Some((cfg_idx, _)) = app
                 .config
