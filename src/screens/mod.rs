@@ -166,6 +166,9 @@ pub fn render_panel(f: &mut Frame, area: Rect, app: &crate::app::App, id: crate:
             &app.panel_states.task_input,
         ),
         P::News => crate::widgets::news::render(f, inner, theme),
+        P::PinnedMedia => {
+            crate::widgets::pinned_media::render(f, inner, theme, &app.config.ui.pinned_media_path)
+        }
         P::WriterNotes => {}
         P::Files => {}
         P::Processes => {

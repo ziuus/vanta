@@ -70,6 +70,7 @@ pub enum PanelId {
     News,
     WriterNotes,
     Files,
+    PinnedMedia,
     /// A user-defined custom widget at the given index in `CustomWidgetManager`.
     Custom(usize),
 }
@@ -120,6 +121,7 @@ impl PanelId {
                 (PanelId::Calendar, true),
                 (PanelId::Matrix, w.matrix),
                 (PanelId::Video, w.video),
+                (PanelId::PinnedMedia, w.pinned_media),
                 (PanelId::Weather, w.weather),
                 (PanelId::Tasks, w.tasks),
                 (PanelId::Agenda, w.agenda),
@@ -157,6 +159,12 @@ impl PanelId {
             "tasks" | "todo" => w.tasks.then_some(PanelId::Tasks),
             "agenda" => w.agenda.then_some(PanelId::Agenda),
             "news" => w.news.then_some(PanelId::News),
+            "pinned_media" | "media_preview" | "media-preview" | "image" => {
+                w.pinned_media.then_some(PanelId::PinnedMedia)
+            }
+            "video" | "donut" => w.video.then_some(PanelId::Video),
+            "notes" | "writer" | "obsidian" => Some(PanelId::WriterNotes),
+            "files" => Some(PanelId::Files),
             custom_id => cfg
                 .custom_widgets
                 .iter()
@@ -185,6 +193,7 @@ impl PanelId {
             PanelId::Video => "donut",
             PanelId::Weather => "weather",
             PanelId::Custom(_) => "custom",
+            PanelId::PinnedMedia => "media preview",
             &PanelId::Tasks => "tasks",
             &PanelId::Agenda => "agenda",
             &PanelId::News => "news",
@@ -503,16 +512,12 @@ impl App {
             KeyCode::Tab => self.cycle_focus(true),
             KeyCode::BackTab => self.cycle_focus(false),
             KeyCode::Enter => {
-                if self.mode == DashboardMode::Workspace {
-                    match self.focused_panel {
-                        Some(PanelId::WriterNotes)
-                        | Some(PanelId::Tasks)
-                        | Some(PanelId::Agenda) => {
-                            self.trigger_focused_action();
-                            return;
-                        }
-                        _ => {}
+                match self.focused_panel {
+                    Some(PanelId::WriterNotes) | Some(PanelId::Tasks) | Some(PanelId::Agenda) => {
+                        self.trigger_focused_action();
+                        return;
                     }
+                    _ => {}
                 }
                 match (self.zoomed, self.focused_panel) {
                     (Some(_), _) => self.zoomed = None,
@@ -642,65 +647,59 @@ impl App {
                 }
                 _ => {}
             },
-            _ => {}
-        }
-
-        if self.mode == DashboardMode::Workspace {
-            match self.focused_panel {
-                Some(PanelId::WriterNotes) => match key {
-                    KeyCode::Up | KeyCode::Char('k') => {
+            Some(PanelId::WriterNotes) => match key {
+                KeyCode::Up | KeyCode::Char('k') => {
+                    self.panel_states.writer_selected =
+                        self.panel_states.writer_selected.saturating_sub(1);
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    let count = crate::monitors::obsidian::snapshot().notes.len();
+                    if count > 0 {
                         self.panel_states.writer_selected =
-                            self.panel_states.writer_selected.saturating_sub(1);
+                            (self.panel_states.writer_selected + 1).min(count - 1);
                     }
-                    KeyCode::Down | KeyCode::Char('j') => {
-                        let count = crate::monitors::obsidian::snapshot().notes.len();
-                        if count > 0 {
-                            self.panel_states.writer_selected =
-                                (self.panel_states.writer_selected + 1).min(count - 1);
-                        }
+                }
+                KeyCode::Enter | KeyCode::Char('e') | KeyCode::Char('E') => {
+                    self.trigger_focused_action();
+                }
+                _ => {}
+            },
+            Some(PanelId::Files) => match key {
+                KeyCode::Up | KeyCode::Char('k') => {
+                    self.panel_states.files_selected =
+                        self.panel_states.files_selected.saturating_sub(1);
+                    let snap = crate::monitors::files::snapshot();
+                    if let Some(item) = snap.items.get(self.panel_states.files_selected) {
+                        crate::monitors::files::update_preview(&item.path);
                     }
-                    KeyCode::Enter | KeyCode::Char('e') | KeyCode::Char('E') => {
-                        self.trigger_focused_action();
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    self.panel_states.files_selected =
+                        self.panel_states.files_selected.saturating_add(1);
+                    let snap = crate::monitors::files::snapshot();
+                    if let Some(item) = snap.items.get(self.panel_states.files_selected) {
+                        crate::monitors::files::update_preview(&item.path);
                     }
-                    _ => {}
-                },
-                Some(PanelId::Files) => match key {
-                    KeyCode::Up | KeyCode::Char('k') => {
-                        self.panel_states.files_selected =
-                            self.panel_states.files_selected.saturating_sub(1);
-                        let snap = crate::monitors::files::snapshot();
-                        if let Some(item) = snap.items.get(self.panel_states.files_selected) {
-                            crate::monitors::files::update_preview(&item.path);
-                        }
-                    }
-                    KeyCode::Down | KeyCode::Char('j') => {
-                        self.panel_states.files_selected =
-                            self.panel_states.files_selected.saturating_add(1);
-                        let snap = crate::monitors::files::snapshot();
-                        if let Some(item) = snap.items.get(self.panel_states.files_selected) {
-                            crate::monitors::files::update_preview(&item.path);
-                        }
-                    }
-                    KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => {
-                        let snap = crate::monitors::files::snapshot();
-                        if let Some(item) = snap.items.get(self.panel_states.files_selected) {
-                            if item.is_dir {
-                                crate::monitors::files::chdir(&item.path);
-                                self.panel_states.files_selected = 0;
-                            }
-                        }
-                    }
-                    KeyCode::Backspace | KeyCode::Left | KeyCode::Char('h') => {
-                        let snap = crate::monitors::files::snapshot();
-                        if let Some(parent) = snap.current_dir.parent() {
-                            crate::monitors::files::chdir(parent);
+                }
+                KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => {
+                    let snap = crate::monitors::files::snapshot();
+                    if let Some(item) = snap.items.get(self.panel_states.files_selected) {
+                        if item.is_dir {
+                            crate::monitors::files::chdir(&item.path);
                             self.panel_states.files_selected = 0;
                         }
                     }
-                    _ => {}
-                },
+                }
+                KeyCode::Backspace | KeyCode::Left | KeyCode::Char('h') => {
+                    let snap = crate::monitors::files::snapshot();
+                    if let Some(parent) = snap.current_dir.parent() {
+                        crate::monitors::files::chdir(parent);
+                        self.panel_states.files_selected = 0;
+                    }
+                }
                 _ => {}
-            }
+            },
+            _ => {}
         }
 
         if self.mode == DashboardMode::Monitor && process_hotkey {

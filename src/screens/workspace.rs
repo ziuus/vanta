@@ -9,10 +9,11 @@ use crate::monitors::obsidian;
 use crate::screens::{panel, panel_full};
 
 pub fn render(f: &mut Frame, area: Rect, app: &mut App) {
-    let snap = obsidian::snapshot();
-    let theme = &app.theme;
-    let cfg = &app.config.widgets;
-    let focus = |id: PanelId| app.focused_panel == Some(id);
+    let theme_val = app.theme.clone();
+    let theme = &theme_val;
+    let cfg = app.config.widgets.clone();
+    let focused_panel = app.focused_panel;
+    let focus = |id: PanelId| focused_panel == Some(id);
 
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
@@ -125,6 +126,31 @@ pub fn render(f: &mut Frame, area: Rect, app: &mut App) {
     }
 
     // Top Right: Notes
+    render_notes(f, notes_area, app);
+
+    // Bottom Right: Files (Yazi)
+    let files_inner = panel(
+        f,
+        files_area,
+        "yazi (file manager)",
+        theme,
+        focus(PanelId::Files),
+    );
+    let files_focused = focus(PanelId::Files);
+    crate::widgets::files::render(
+        f,
+        files_inner,
+        theme,
+        files_focused,
+        &mut app.panel_states.files_selected,
+        &mut app.panel_states.files_scroll,
+    );
+}
+
+pub fn render_notes(f: &mut Frame, area: Rect, app: &mut App) {
+    let snap = obsidian::snapshot();
+    let theme = &app.theme;
+    let is_notes_focused = app.focused_panel == Some(PanelId::WriterNotes);
     let notes_title = if snap.vault_name.is_empty() {
         "obsidian (notes)".to_string()
     } else {
@@ -132,12 +158,12 @@ pub fn render(f: &mut Frame, area: Rect, app: &mut App) {
     };
     let notes_inner = panel_full(
         f,
-        notes_area,
+        area,
         &notes_title,
         None,
         Some("Enter/e edit · ↑↓ select"),
         theme,
-        focus(PanelId::WriterNotes),
+        is_notes_focused,
     );
     let note_chunks = Layout::default()
         .direction(Direction::Horizontal)
@@ -148,7 +174,6 @@ pub fn render(f: &mut Frame, area: Rect, app: &mut App) {
     let list_area = note_chunks[0];
     let content_area = note_chunks[1];
 
-    let is_notes_focused = focus(PanelId::WriterNotes);
     let border_color = if is_notes_focused {
         theme.accent
     } else {
@@ -248,23 +273,5 @@ pub fn render(f: &mut Frame, area: Rect, app: &mut App) {
     f.render_widget(
         Paragraph::new(content_lines).wrap(Wrap { trim: false }),
         content_area,
-    );
-
-    // Bottom Right: Files (Yazi)
-    let files_inner = panel(
-        f,
-        files_area,
-        "yazi (file manager)",
-        theme,
-        focus(PanelId::Files),
-    );
-    let files_focused = focus(PanelId::Files);
-    crate::widgets::files::render(
-        f,
-        files_inner,
-        theme,
-        files_focused,
-        &mut app.panel_states.files_selected,
-        &mut app.panel_states.files_scroll,
     );
 }

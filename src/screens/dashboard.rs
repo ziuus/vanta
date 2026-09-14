@@ -13,12 +13,12 @@ const MIN: (u16, u16) = (96, 30);
 
 /// Data-driven dashboard layout: reads `dashboard.layout` from config,
 /// supporting user-defined column assignments, panel reordering, and custom widgets.
-pub fn render(f: &mut Frame, area: Rect, app: &App) {
+pub fn render(f: &mut Frame, area: Rect, app: &mut App) {
     if area.width < MIN.0 || area.height < MIN.1 {
         too_small(f, area, &app.theme, MIN);
         return;
     }
-    let sum = &app.summary;
+    let sum = app.summary.clone();
     let term = (f.area().width, f.area().height);
 
     let assigned_custom_ids: Vec<String> = app
@@ -67,17 +67,25 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
 
     let mounts = disk::mounts().len().clamp(1, 4) as u16;
 
+    let columns_active: Vec<Vec<String>> = app
+        .config
+        .dashboard
+        .layout
+        .iter()
+        .map(|col_names| {
+            col_names
+                .iter()
+                .filter(|name| PanelId::from_name(name, &app.config).is_some())
+                .cloned()
+                .collect()
+        })
+        .collect();
+
     for (c, &col_area) in cols.iter().enumerate() {
-        if c >= app.config.dashboard.layout.len() {
+        if c >= columns_active.len() {
             break;
         }
-        let col_names = &app.config.dashboard.layout[c];
-        let active_panels: Vec<&str> = col_names
-            .iter()
-            .map(|s| s.as_str())
-            .filter(|name| PanelId::from_name(name, &app.config).is_some())
-            .collect();
-
+        let active_panels = &columns_active[c];
         if active_panels.is_empty() {
             continue;
         }
@@ -87,14 +95,14 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
         let constraints: Vec<Constraint> = active_panels
             .iter()
             .enumerate()
-            .map(|(i, &p)| {
+            .map(|(i, p)| {
                 panel_constraint(p, i == num_panels - 1, has_flex, mounts, main_area.height)
             })
             .collect();
 
         let rows = Layout::vertical(constraints).split(col_area);
-        for (&p, &row_area) in active_panels.iter().zip(rows.iter()) {
-            render_dashboard_panel(f, row_area, p, app, sum, term);
+        for (p, &row_area) in active_panels.iter().zip(rows.iter()) {
+            render_dashboard_panel(f, row_area, p, app, &sum, term);
         }
     }
 
@@ -107,15 +115,23 @@ fn is_flex_panel(name: &str) -> bool {
     matches!(
         name.to_lowercase().as_str(),
         "cpu"
+            | "weather"
             | "processes"
             | "procs"
             | "top_processes"
             | "top-processes"
-            | "network"
-            | "net"
             | "matrix"
             | "tasks"
             | "agenda"
+            | "notes"
+            | "writer"
+            | "obsidian"
+            | "news"
+            | "pinned_media"
+            | "media_preview"
+            | "media-preview"
+            | "image"
+            | "files"
     )
 }
 
@@ -140,7 +156,7 @@ fn panel_constraint(
             "clock" => 9,
             "media" | "now_playing" | "now-playing" => 6,
             "visualizer" | "viz" => 9,
-            "status" => 9,
+            "status" => 8,
             "weather" => 9,
             "calendar" | "cal" => 12,
             "memory" | "mem" => {
@@ -151,6 +167,12 @@ fn panel_constraint(
                 }
             }
             "gpu" => 7,
+            "network" | "net" => 7,
+            "video" | "donut" => 9,
+            "pinned_media" | "media_preview" | "media-preview" | "image" => 10,
+            "news" => 8,
+            "notes" | "writer" | "obsidian" => 10,
+            "files" => 10,
             _ => 7,
         };
         if is_last && !has_flex_in_col {
@@ -165,12 +187,14 @@ fn render_dashboard_panel(
     f: &mut Frame,
     area: Rect,
     name: &str,
-    app: &App,
+    app: &mut App,
     sum: &crate::monitors::Summary,
     term: (u16, u16),
 ) {
-    let theme = &app.theme;
-    let focus = |p: PanelId| app.focused_panel == Some(p);
+    let theme_val = app.theme.clone();
+    let theme = &theme_val;
+    let focused_panel = app.focused_panel;
+    let focus = |p: PanelId| focused_panel == Some(p);
 
     match name.to_lowercase().as_str() {
         "system" => {
@@ -415,6 +439,47 @@ fn render_dashboard_panel(
                 app.panel_states.tasks_selected,
                 app.panel_states.task_input_active,
                 &app.panel_states.task_input,
+            );
+        }
+        "news" => {
+            let snap = crate::monitors::news::snapshot();
+            let source = if snap.channel_title.is_empty() {
+                "".to_string()
+            } else {
+                format!(" {} ", snap.channel_title)
+            };
+            let inner = panel_full(
+                f,
+                area,
+                "news",
+                (!source.is_empty()).then_some(&source),
+                None,
+                theme,
+                focus(PanelId::News),
+            );
+            crate::widgets::news::render(f, inner, theme);
+        }
+        "pinned_media" | "media_preview" | "media-preview" | "image" => {
+            let inner = panel(f, area, "media preview", theme, focus(PanelId::PinnedMedia));
+            crate::widgets::pinned_media::render(f, inner, theme, &app.config.ui.pinned_media_path);
+        }
+        "video" | "donut" => {
+            let inner = panel(f, area, "video", theme, focus(PanelId::Video));
+            crate::widgets::video::render(f, inner, theme, app.frame);
+        }
+        "notes" | "writer" | "obsidian" => {
+            crate::screens::workspace::render_notes(f, area, app);
+        }
+        "files" => {
+            let inner = panel(f, area, "yazi (file manager)", theme, focus(PanelId::Files));
+            let files_focused = focus(PanelId::Files);
+            crate::widgets::files::render(
+                f,
+                inner,
+                theme,
+                files_focused,
+                &mut app.panel_states.files_selected,
+                &mut app.panel_states.files_scroll,
             );
         }
         custom_id => {
