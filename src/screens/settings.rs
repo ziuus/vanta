@@ -40,6 +40,7 @@ pub enum SettingType {
     WidgetMedia,
     WidgetMatrix,
     WidgetVideo,
+    WidgetPinnedMedia,
 }
 
 pub const SETTINGS_ITEMS: &[(SettingType, &str)] = &[
@@ -64,6 +65,7 @@ pub const SETTINGS_ITEMS: &[(SettingType, &str)] = &[
     (SettingType::WidgetMedia, "Show Media"),
     (SettingType::WidgetMatrix, "Show Matrix"),
     (SettingType::WidgetVideo, "Show Video"),
+    (SettingType::WidgetPinnedMedia, "Show Pinned Media"),
 ];
 
 pub fn render(f: &mut Frame, area: Rect, app: &App) {
@@ -187,6 +189,13 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
             }
             SettingType::WidgetMatrix => {
                 if app.config.widgets.matrix {
+                    "on".to_string()
+                } else {
+                    "off".to_string()
+                }
+            }
+            SettingType::WidgetPinnedMedia => {
+                if app.config.widgets.pinned_media {
                     "on".to_string()
                 } else {
                     "off".to_string()
@@ -337,6 +346,7 @@ fn change_setting(app: &mut App, forward: bool) {
         SettingType::WidgetMedia => app.config.widgets.media = !app.config.widgets.media,
         SettingType::WidgetMatrix => app.config.widgets.matrix = !app.config.widgets.matrix,
         SettingType::WidgetVideo => app.config.widgets.video = !app.config.widgets.video,
+        SettingType::WidgetPinnedMedia => app.config.widgets.pinned_media = !app.config.widgets.pinned_media,
     }
     app.config.save();
 }

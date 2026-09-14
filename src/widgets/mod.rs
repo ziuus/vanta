@@ -13,4 +13,5 @@ pub mod news;
 pub mod status;
 pub mod tasks;
 pub mod video;
+pub mod pinned_media;
 pub mod weather;

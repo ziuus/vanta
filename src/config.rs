@@ -27,6 +27,7 @@ pub struct UiConfig {
     pub clock_24h: bool,
     /// Clock font: standard | rounded | digital
     pub clock_font: String,
+    pub pinned_media_path: String,
     /// Clock style (fill): solid | dotted | hollow
     pub clock_style: String,
     pub timezones: Vec<String>,
@@ -48,6 +49,7 @@ impl Default for UiConfig {
             obsidian_vault: "~".to_string(),
             clock_24h: true,
             clock_font: "standard".to_string(),
+            pinned_media_path: "".to_string(),
             clock_style: "solid".to_string(),
             timezones: vec![
                 "UTC".to_string(),
@@ -76,6 +78,7 @@ pub struct WidgetConfig {
     pub media: bool,
     pub matrix: bool,
     pub video: bool,
+    pub pinned_media: bool,
     pub weather: bool,
     pub tasks: bool,
     pub agenda: bool,
@@ -98,6 +101,7 @@ impl Default for WidgetConfig {
             media: true,
             matrix: true,
             video: true,
+            pinned_media: true,
             weather: true,
             tasks: true,
             agenda: true,

@@ -3,7 +3,7 @@ use ratatui::Frame;
 
 use crate::app::{App, PanelId};
 use crate::screens::{panel, panel_full, too_small};
-use crate::widgets::{calendar, clock, matrix, music_viz, video};
+use crate::widgets::{calendar, clock, matrix, music_viz, video, pinned_media};
 
 const MIN: (u16, u16) = (70, 24);
 
@@ -57,15 +57,9 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
     );
     calendar::render(f, inner, theme, app.panel_states.calendar_month_offset);
 
-    match (cfg.matrix, cfg.video) {
-        (true, true) => {
-            let mid = Layout::horizontal([
-                Constraint::Ratio(1, 4),
-                Constraint::Ratio(1, 2),
-                Constraint::Ratio(1, 4),
-            ])
-            .spacing(1)
-            .split(rows[1]);
+    match (cfg.matrix, cfg.video, cfg.pinned_media) {
+        (true, true, false) => {
+            let mid = Layout::horizontal([Constraint::Ratio(1, 4), Constraint::Ratio(1, 2), Constraint::Ratio(1, 4)]).spacing(1).split(rows[1]);
             let inner = panel(f, mid[0], "matrix", theme, focus(PanelId::Matrix));
             matrix::render(f, inner, theme);
             let inner = panel(f, mid[1], "donut", theme, focus(PanelId::Video));
@@ -73,11 +67,38 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
             let inner = panel(f, mid[2], "matrix", theme, false);
             matrix::render(f, inner, theme);
         }
-        (true, false) => {
+        (true, true, true) => {
+            let mid = Layout::horizontal([Constraint::Ratio(1, 4), Constraint::Ratio(1, 2), Constraint::Ratio(1, 4)]).spacing(1).split(rows[1]);
+            let inner = panel(f, mid[0], "pinned media", theme, focus(PanelId::Media));
+            pinned_media::render(f, inner, theme, &app.config.ui.pinned_media_path);
+            let inner = panel(f, mid[1], "donut", theme, focus(PanelId::Video));
+            video::render(f, inner, theme, app.frame);
+            let inner = panel(f, mid[2], "matrix", theme, focus(PanelId::Matrix));
+            matrix::render(f, inner, theme);
+        }
+        (true, false, true) => {
+            let mid = Layout::horizontal([Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)]).spacing(1).split(rows[1]);
+            let inner = panel(f, mid[0], "matrix", theme, focus(PanelId::Matrix));
+            matrix::render(f, inner, theme);
+            let inner = panel(f, mid[1], "pinned media", theme, focus(PanelId::Media));
+            pinned_media::render(f, inner, theme, &app.config.ui.pinned_media_path);
+        }
+        (false, true, true) => {
+            let mid = Layout::horizontal([Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)]).spacing(1).split(rows[1]);
+            let inner = panel(f, mid[0], "donut", theme, focus(PanelId::Video));
+            video::render(f, inner, theme, app.frame);
+            let inner = panel(f, mid[1], "pinned media", theme, focus(PanelId::Media));
+            pinned_media::render(f, inner, theme, &app.config.ui.pinned_media_path);
+        }
+        (false, false, true) => {
+            let inner = panel(f, rows[1], "pinned media", theme, focus(PanelId::Media));
+            pinned_media::render(f, inner, theme, &app.config.ui.pinned_media_path);
+        }
+        (true, false, false) => {
             let inner = panel(f, rows[1], "matrix", theme, focus(PanelId::Matrix));
             matrix::render(f, inner, theme);
         }
-        (false, _) => {
+        (false, _, false) => {
             let inner = panel(f, rows[1], "donut", theme, focus(PanelId::Video));
             video::render(f, inner, theme, app.frame);
         }
