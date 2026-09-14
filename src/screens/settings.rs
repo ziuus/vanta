@@ -19,6 +19,7 @@ fn centered(area: Rect, w: u16, h: u16) -> Rect {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum SettingType {
+    DashboardPreset,
     ClockFont,
     ClockStyle,
     Theme,
@@ -44,6 +45,7 @@ pub enum SettingType {
 }
 
 pub const SETTINGS_ITEMS: &[(SettingType, &str)] = &[
+    (SettingType::DashboardPreset, "Dashboard Layout"),
     (SettingType::Theme, "Theme"),
     (SettingType::GaugeStyle, "Gauge Style"),
     (SettingType::GraphStyle, "Graph Style"),
@@ -102,6 +104,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
         };
 
         let val_str = match stype {
+            SettingType::DashboardPreset => app.config.dashboard.preset.clone(),
             SettingType::Theme => app.config.ui.theme.clone(),
             SettingType::GaugeStyle => app.config.ui.gauge_style.clone(),
             SettingType::GraphStyle => app.config.ui.graph_style.clone(),
@@ -277,6 +280,19 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyCode) {
 fn change_setting(app: &mut App, forward: bool) {
     let (stype, _) = SETTINGS_ITEMS[app.settings_row];
     match stype {
+        SettingType::DashboardPreset => {
+            let presets = ["cockpit", "minimal", "aesthetic", "workspace"];
+            let pos = presets
+                .iter()
+                .position(|&x| x == app.config.dashboard.preset)
+                .unwrap_or(0);
+            let next = if forward {
+                presets[(pos + 1) % presets.len()]
+            } else {
+                presets[(pos + presets.len() - 1) % presets.len()]
+            };
+            app.config.dashboard.apply_preset(next);
+        }
         SettingType::Theme => {
             app.cycle_theme();
             // cycle_theme already saves and toasts, but we want modal to stay open
