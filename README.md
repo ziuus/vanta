@@ -129,7 +129,7 @@ For when the build is running and you want something to look at. Includes suppor
 
 ### `4` — Workspace
 
-Turn your terminal into a productivity hub with a built-in file manager, RSS news reader, tasks, agenda, and Obsidian vault viewer.
+Turn your terminal into a productivity hub with a built-in file manager (with image previews), RSS news reader, tasks, agenda, and Obsidian vault viewer (with markdown syntax highlighting). Press `e` on any focused panel to edit the content in your `$EDITOR`.
 
 
 ### `?` — Help
@@ -154,6 +154,8 @@ Every key, on screen, on any page.
 | `q` | Quit |
 
 **Processes (Monitor):** `↑↓ PgUp PgDn Home End` select · `/` filter (`Enter` keeps, `Esc` clears) · `s` sort field · `r` reverse · `t` tree · `←→` fold · `c` full command · `k` SIGTERM · `K` SIGKILL (press twice to confirm, `x` cancels)
+
+**Workspace:** `e` opens the active note, agenda, task list, or file in your `$EDITOR`.
 
 **Calendar (focused):** `←→` month · `↑↓` year · `Home` today
 
