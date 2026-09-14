@@ -23,7 +23,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
             Style::default().fg(theme.dim),
         )]));
         lines.push(Line::from(vec![Span::styled(
-            " Sync ~/.config/vanta/agenda.ics",
+            " Press 'e' to edit agenda",
             Style::default().fg(theme.dim),
         )]));
     } else {

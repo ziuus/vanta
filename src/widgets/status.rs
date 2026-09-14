@@ -165,16 +165,24 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, is_focused: bool, select
     }
     let fx = facts();
 
-    let mut build_line = |idx: usize, k: &str, v_spans: Vec<Span<'static>>| {
-        let prefix = if is_focused && idx == selected {
-            Span::styled("> ", Style::default().fg(theme.accent))
+    let build_line = |idx: usize, k: &str, v_spans: Vec<Span<'static>>| {
+        let key_style = if is_focused && idx == selected {
+            Style::default().fg(theme.bg).bg(theme.accent)
+        } else if is_focused {
+            Style::default().fg(theme.text)
         } else {
-            Span::raw("  ")
+            Style::default().fg(theme.dim)
         };
+        
         let mut spans = vec![
-            prefix,
-            Span::styled(format!("{:<6}", k), if is_focused && idx == selected { Style::default().fg(theme.text) } else { Style::default().fg(theme.dim) })
+            Span::styled(if is_focused && idx == selected { format!(" {} ", k) } else { format!(" {} ", k) }, key_style),
+            Span::raw(" "),
         ];
+        // Ensure standard width for key column
+        let pad = 6_usize.saturating_sub(k.len() + 2);
+        if pad > 0 {
+            spans.push(Span::raw(" ".repeat(pad)));
+        }
         spans.extend(v_spans);
         Line::from(spans)
     };

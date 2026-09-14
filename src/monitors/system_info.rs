@@ -164,7 +164,7 @@ pub fn fmt_uptime(secs: u64) -> String {
 
 /// Every logo is exactly this wide (in cells). The render column is sized from
 /// it, and `logo_rows_are_uniform` enforces it.
-pub const LOGO_W: usize = 11;
+
 
 /// Pack a bitmap into braille lines at 2×4 dots per cell — the same subpixel
 /// trick the graphs use, which renders as a solid shape on a capable font
@@ -178,12 +178,25 @@ fn logo_lines(id: &str) -> Vec<String> {
 fn block_logo(id: &str) -> Vec<&'static str> {
     match id {
         "arch" | "archarm" | "endeavouros" | "manjaro" | "cachyos" => vec![
-            "     /\\     ",
-            "    /  \\    ",
-            "   /____\\   ",
-            "  /  __  \\  ",
-            " /  /  \\  \\ ",
-            "/__/    \\__\\",
+            "                   -`                   ",
+            "                  .o+`                  ",
+            "                 `ooo/                  ",
+            "                `+oooo:                 ",
+            "               `+oooooo:                ",
+            "               -+oooooo+:               ",
+            "             `/:-:++oooo+:              ",
+            "            `/++++/+++++++:             ",
+            "           `/++++++++++++++:            ",
+            "          `/+++ooooooooooooo/`          ",
+            "         ./ooosssso++osssssso+`         ",
+            "        .oossssso-````/ossssss+`        ",
+            "       -osssssso.      :ssssssso.       ",
+            "      :osssssss/        osssso+++.      ",
+            "     /ossssssss/        +sssssooo/-     ",
+            "   `/ossssso+/:-        -:/+osssso+-   ",
+            "  `+sso+:-`                 `.-/+oso:  ",
+            " `++:.                           `-/+/ ",
+            " .`                                 `/ ",
         ],
         "ubuntu" | "pop" | "linuxmint" => vec![
             "   ▄▄▄▄▄   ",
@@ -253,9 +266,10 @@ pub fn render_neofetch(f: &mut Frame, area: Rect, theme: &Theme, sum: &Summary, 
     // VANTA_LOGO forces a distro logo, for previewing art on any machine.
     let os_id = std::env::var("VANTA_LOGO").unwrap_or_else(|_| facts.os_id.clone());
     let logo = logo_lines(&os_id);
+    let max_len = logo.iter().map(|l| l.chars().count()).max().unwrap_or(0);
     // +2 for the leading indent and a column of air before the facts.
-    let logo_w: u16 = if area.width >= 44 {
-        LOGO_W as u16 + 2
+    let logo_w: u16 = if area.width >= (max_len + 25) as u16 {
+        max_len as u16 + 2
     } else {
         0
     };

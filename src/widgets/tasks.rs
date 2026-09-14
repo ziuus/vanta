@@ -21,7 +21,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
             Style::default().fg(theme.dim),
         )]));
         lines.push(Line::from(vec![Span::styled(
-            " Edit ~/.config/vanta/todo.md",
+            " Press 'e' to edit tasks",
             Style::default().fg(theme.dim),
         )]));
     } else {

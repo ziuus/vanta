@@ -569,7 +569,13 @@ impl App {
             Some(PanelId::WriterNotes) => {
                 let snap = crate::monitors::obsidian::snapshot();
                 if snap.notes.is_empty() {
-                    None
+                    let mut path = std::path::PathBuf::from(crate::config::Config::load().ui.obsidian_vault);
+                    if path.to_string_lossy() == "~" {
+                        path = std::path::PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "".to_string()));
+                    } else if path.to_string_lossy().starts_with("~/") {
+                        path = std::path::PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "".to_string())).join(&path.to_string_lossy()[2..]);
+                    }
+                    Some(path.join("vanta_note.md"))
                 } else {
                     let max_idx = snap.notes.len().saturating_sub(1);
                     let sel = self.panel_states.writer_selected.min(max_idx);

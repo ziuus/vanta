@@ -138,7 +138,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &mut App) {
     let num_notes = snap.notes.len();
     if num_notes == 0 {
         list_lines.push(Line::from(vec![Span::styled(
-            " No notes found in vault.",
+            " No notes found in vault. Press e to create.",
             Style::default().fg(theme.dim),
         )]));
     } else {
@@ -185,10 +185,17 @@ pub fn render(f: &mut Frame, area: Rect, app: &mut App) {
         )]));
         content_lines.push(Line::from(""));
         for line in note.content.lines() {
-            content_lines.push(Line::from(Span::styled(
-                line,
-                Style::default().fg(theme.text),
-            )));
+            let mut style = Style::default().fg(theme.text);
+            if line.starts_with("# ") || line.starts_with("## ") || line.starts_with("### ") || line.starts_with("#### ") {
+                style = style.fg(theme.accent).add_modifier(ratatui::style::Modifier::BOLD);
+            } else if line.starts_with("- ") || line.starts_with("* ") {
+                style = style.fg(theme.yellow);
+            } else if line.starts_with("> ") {
+                style = style.fg(theme.dim).add_modifier(ratatui::style::Modifier::ITALIC);
+            } else if line.starts_with("```") {
+                style = style.fg(theme.red);
+            }
+            content_lines.push(Line::from(Span::styled(line, style)));
         }
     }
 
