@@ -469,7 +469,12 @@ fn render_dashboard_panel(
             crate::widgets::news::render(f, inner, theme);
         }
         "pinned_media" | "media_preview" | "media-preview" | "image" => {
-            let inner = panel(f, area, "media preview", theme, focus(PanelId::PinnedMedia));
+            let hint = if app.panel_states.pinned_media_input_active {
+                format!("media path: {}_", app.panel_states.pinned_media_input)
+            } else {
+                "media preview".to_string()
+            };
+            let inner = panel(f, area, &hint, theme, focus(PanelId::PinnedMedia));
             crate::widgets::pinned_media::render(f, inner, theme, &app.config.ui.pinned_media_path);
         }
         "video" | "donut" => {

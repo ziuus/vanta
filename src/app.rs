@@ -224,6 +224,8 @@ pub struct PanelStates {
     pub agenda_selected: usize,
     pub agenda_input_active: bool,
     pub agenda_input: String,
+    pub pinned_media_input_active: bool,
+    pub pinned_media_input: String,
     pub status_selected: usize,
     pub dash_ratios: [u16; 3],
     pub work_ratio: u16,
@@ -252,6 +254,8 @@ impl Default for PanelStates {
             agenda_selected: 0,
             agenda_input_active: false,
             agenda_input: String::new(),
+            pinned_media_input_active: false,
+            pinned_media_input: String::new(),
             status_selected: 0,
             dash_ratios: [33, 34, 33],
             work_ratio: 25,
@@ -402,6 +406,30 @@ impl App {
             return;
         }
 
+        if ps.pinned_media_input_active {
+            match key.code {
+                KeyCode::Esc => {
+                    ps.pinned_media_input_active = false;
+                    ps.pinned_media_input.clear();
+                }
+                KeyCode::Enter => {
+                    if !ps.pinned_media_input.trim().is_empty() {
+                        self.config.ui.pinned_media_path = ps.pinned_media_input.trim().to_string();
+                        self.config.save();
+                    }
+                    ps.pinned_media_input_active = false;
+                    ps.pinned_media_input.clear();
+                }
+                KeyCode::Backspace => {
+                    ps.pinned_media_input.pop();
+                }
+                KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    ps.pinned_media_input.push(c);
+                }
+                _ => {}
+            }
+            return;
+        }
         if ps.task_input_active {
             match key.code {
                 KeyCode::Esc => {
@@ -513,6 +541,11 @@ impl App {
             KeyCode::BackTab => self.cycle_focus(false),
             KeyCode::Enter => {
                 match self.focused_panel {
+                    Some(PanelId::PinnedMedia) => {
+                        self.panel_states.pinned_media_input_active = true;
+                        self.panel_states.pinned_media_input.clear();
+                        return;
+                    }
                     Some(PanelId::WriterNotes) | Some(PanelId::Tasks) | Some(PanelId::Agenda) => {
                         self.trigger_focused_action();
                         return;

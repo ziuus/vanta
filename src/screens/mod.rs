@@ -95,7 +95,11 @@ pub fn render_panel(f: &mut Frame, area: Rect, app: &crate::app::App, id: crate:
     use crate::widgets::{calendar, clock, gauge, matrix, media, music_viz, status, video};
 
     let theme = &app.theme;
-    let title = format!("{} · zoomed · esc to return", id.label());
+    let title = if id == P::PinnedMedia && app.panel_states.pinned_media_input_active {
+        format!("media path: {}_ · zoomed · esc to return", app.panel_states.pinned_media_input)
+    } else {
+        format!("{} · zoomed · esc to return", id.label())
+    };
     let inner = panel(f, area, &title, theme, true);
     let sum = &app.summary;
     match id {
