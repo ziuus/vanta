@@ -57,7 +57,7 @@ npm install -g @ziuus/vanta && vanta
 **One-liner, no install:**
 
 ```bash
-npx @ziuus/vanta
+npx @ziuus/vanta@latest
 ```
 
 ### Requirements
