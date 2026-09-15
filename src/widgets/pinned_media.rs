@@ -17,9 +17,15 @@ struct CachedMedia {
     area_width: u16,
     area_height: u16,
     lines: Vec<Line<'static>>,
+    
+    // Slideshow state
+    is_dir: bool,
+    images: Vec<String>,
+    current_idx: usize,
+    last_tick: u64,
 }
 
-pub fn render(f: &mut Frame, area: Rect, theme: &Theme, path: &str) {
+pub fn render(f: &mut Frame, area: Rect, theme: &Theme, path: &str, tick: u64) {
     if path.is_empty() {
         let msg = Paragraph::new(vec![
             Line::from(vec![Span::styled(
@@ -45,10 +51,20 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, path: &str) {
 
     let needs_update = CACHED_IMAGE.with(|c| {
         let cache = c.borrow();
-        cache.is_none()
-            || cache.as_ref().unwrap().path != path
-            || cache.as_ref().unwrap().area_width != area.width
-            || cache.as_ref().unwrap().area_height != area.height
+        if cache.is_none() {
+            return true;
+        }
+        let cache = cache.as_ref().unwrap();
+        if cache.path != path || cache.area_width != area.width || cache.area_height != area.height {
+            return true;
+        }
+        if cache.is_dir {
+            // switch every ~150 ticks (5 sec at 30fps)
+            if tick > cache.last_tick + 150 {
+                return true;
+            }
+        }
+        false
     });
 
     if needs_update {
@@ -60,9 +76,49 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, path: &str) {
         } else {
             path.to_string()
         };
+        
+        let path_buf = std::path::Path::new(&expanded_path);
+        let mut is_dir = false;
+        let mut images = Vec::new();
+        let mut current_idx = 0;
+        let mut file_to_load = expanded_path.clone();
+
+        CACHED_IMAGE.with(|c| {
+            if let Some(cache) = c.borrow().as_ref() {
+                if cache.path == path && cache.area_width == area.width && cache.area_height == area.height {
+                    is_dir = cache.is_dir;
+                    images = cache.images.clone();
+                    current_idx = cache.current_idx;
+                }
+            }
+        });
+
+        if path_buf.is_dir() {
+            is_dir = true;
+            if images.is_empty() {
+                if let Ok(entries) = std::fs::read_dir(path_buf) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.is_file() {
+                            if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                                let ext = ext.to_lowercase();
+                                if ext == "png" || ext == "jpg" || ext == "jpeg" || ext == "gif" || ext == "webp" {
+                                    images.push(path.to_string_lossy().to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+                images.sort();
+            }
+            if !images.is_empty() {
+                current_idx = (current_idx + 1) % images.len();
+                file_to_load = images[current_idx].clone();
+            }
+        }
 
         let mut lines = Vec::new();
-        match image::open(&expanded_path) {
+        match image::open(&file_to_load) {
             Ok(img) => {
                 let img = img.to_rgb8();
                 let target_w = area.width as u32;
@@ -96,7 +152,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, path: &str) {
             }
             Err(e) => {
                 lines = vec![Line::from(vec![Span::styled(
-                    format!("Failed to load {}: {}", path, e),
+                    format!("Failed to load {}: {}", file_to_load, e),
                     ratatui::style::Style::default().fg(theme.red),
                 )])];
             }
@@ -108,6 +164,10 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, path: &str) {
                 area_width: area.width,
                 area_height: area.height,
                 lines,
+                is_dir,
+                images,
+                current_idx,
+                last_tick: tick,
             });
         });
     }

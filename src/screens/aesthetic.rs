@@ -82,7 +82,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
             .spacing(1)
             .split(rows[1]);
             let inner = panel(f, mid[0], "pinned media", theme, focus(PanelId::Media));
-            pinned_media::render(f, inner, theme, &app.config.ui.pinned_media_path);
+            pinned_media::render(f, inner, theme, &app.config.ui.pinned_media_path, app.frame);
             let inner = panel(f, mid[1], "donut", theme, focus(PanelId::Video));
             video::render(f, inner, theme, app.frame);
             let inner = panel(f, mid[2], "matrix", theme, focus(PanelId::Matrix));
@@ -95,7 +95,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
             let inner = panel(f, mid[0], "matrix", theme, focus(PanelId::Matrix));
             matrix::render(f, inner, theme);
             let inner = panel(f, mid[1], "pinned media", theme, focus(PanelId::Media));
-            pinned_media::render(f, inner, theme, &app.config.ui.pinned_media_path);
+            pinned_media::render(f, inner, theme, &app.config.ui.pinned_media_path, app.frame);
         }
         (false, true, true) => {
             let mid = Layout::horizontal([Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)])
@@ -104,11 +104,11 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
             let inner = panel(f, mid[0], "donut", theme, focus(PanelId::Video));
             video::render(f, inner, theme, app.frame);
             let inner = panel(f, mid[1], "pinned media", theme, focus(PanelId::Media));
-            pinned_media::render(f, inner, theme, &app.config.ui.pinned_media_path);
+            pinned_media::render(f, inner, theme, &app.config.ui.pinned_media_path, app.frame);
         }
         (false, false, true) => {
             let inner = panel(f, rows[1], "pinned media", theme, focus(PanelId::Media));
-            pinned_media::render(f, inner, theme, &app.config.ui.pinned_media_path);
+            pinned_media::render(f, inner, theme, &app.config.ui.pinned_media_path, app.frame);
         }
         (true, false, false) => {
             let inner = panel(f, rows[1], "matrix", theme, focus(PanelId::Matrix));

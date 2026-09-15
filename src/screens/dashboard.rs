@@ -9,7 +9,7 @@ use crate::monitors::{cpu, disk, gpu, memory, network, processes, system_info};
 use crate::screens::{panel, panel_full, too_small};
 use crate::widgets::{calendar, clock, gauge, matrix, media, meter, music_viz, status};
 
-const MIN: (u16, u16) = (96, 30);
+const MIN: (u16, u16) = (80, 24);
 
 /// Data-driven dashboard layout: reads `dashboard.layout` from config,
 /// supporting user-defined column assignments, panel reordering, and custom widgets.
@@ -475,7 +475,7 @@ fn render_dashboard_panel(
                 "media preview".to_string()
             };
             let inner = panel(f, area, &hint, theme, focus(PanelId::PinnedMedia));
-            crate::widgets::pinned_media::render(f, inner, theme, &app.config.ui.pinned_media_path);
+            crate::widgets::pinned_media::render(f, inner, theme, &app.config.ui.pinned_media_path, app.frame);
         }
         "video" | "donut" => {
             let inner = panel(f, area, "video", theme, focus(PanelId::Video));

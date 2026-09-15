@@ -171,7 +171,7 @@ pub fn render_panel(f: &mut Frame, area: Rect, app: &crate::app::App, id: crate:
         ),
         P::News => crate::widgets::news::render(f, inner, theme),
         P::PinnedMedia => {
-            crate::widgets::pinned_media::render(f, inner, theme, &app.config.ui.pinned_media_path)
+            crate::widgets::pinned_media::render(f, inner, theme, &app.config.ui.pinned_media_path, app.frame)
         }
         P::WriterNotes => {}
         P::Files => {}
