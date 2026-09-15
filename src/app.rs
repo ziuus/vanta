@@ -487,7 +487,7 @@ impl App {
 
         if self.show_help {
             match key.code {
-                KeyCode::Char('e') | KeyCode::Char('E') => self.trigger_focused_action(),
+                KeyCode::Char('e') | KeyCode::Char('E') if self.focused_panel != Some(PanelId::PinnedMedia) => self.trigger_focused_action(),
                 KeyCode::Char('q') | KeyCode::Char('Q') => self.running = false,
                 KeyCode::Char('T') => self.cycle_theme(),
                 _ => self.show_help = false,
@@ -502,7 +502,7 @@ impl App {
             KeyCode::Right if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.resize_focused(2)
             }
-            KeyCode::Char('e') | KeyCode::Char('E') => self.trigger_focused_action(),
+            KeyCode::Char('e') | KeyCode::Char('E') if self.focused_panel != Some(PanelId::PinnedMedia) => self.trigger_focused_action(),
             KeyCode::Char('q') | KeyCode::Char('Q') => self.running = false,
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.running = false
@@ -1224,7 +1224,7 @@ impl App {
                     hint("enter", if self.zoomed.is_some() { "unzoom" } else { "zoom" });
                 }
                 Some(PanelId::PinnedMedia) => {
-                    hint("e", "edit path");
+                    hint("e/i", "edit path");
                     hint("enter", if self.zoomed.is_some() { "unzoom" } else { "zoom" });
                     hint("tab", "focus");
                 }
