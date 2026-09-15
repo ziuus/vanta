@@ -541,11 +541,6 @@ impl App {
             KeyCode::BackTab => self.cycle_focus(false),
             KeyCode::Enter => {
                 match self.focused_panel {
-                    Some(PanelId::PinnedMedia) => {
-                        self.panel_states.pinned_media_input_active = true;
-                        self.panel_states.pinned_media_input.clear();
-                        return;
-                    }
                     Some(PanelId::WriterNotes) | Some(PanelId::Tasks) | Some(PanelId::Agenda) => {
                         self.trigger_focused_action();
                         return;
@@ -613,6 +608,13 @@ impl App {
                 | KeyCode::Char('K')
         );
         match self.focused_panel {
+            Some(PanelId::PinnedMedia) => match key {
+                KeyCode::Char('e') | KeyCode::Char('i') | KeyCode::Char('/') => {
+                    self.panel_states.pinned_media_input_active = true;
+                    self.panel_states.pinned_media_input.clear();
+                }
+                _ => {}
+            },
             Some(PanelId::Tasks) => match key {
                 KeyCode::Up | KeyCode::Char('k') => {
                     self.panel_states.tasks_selected =
@@ -1208,6 +1210,11 @@ impl App {
             hint("esc", "clear");
         } else {
             match self.focused_panel {
+                Some(PanelId::PinnedMedia) => {
+                    hint("e", "edit path");
+                    hint("enter", if self.zoomed.is_some() { "unzoom" } else { "zoom" });
+                    hint("tab", "focus");
+                }
                 Some(PanelId::Processes) => {
                     hint("↑↓", "select");
                     hint("/", "search");
