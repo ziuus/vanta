@@ -392,7 +392,7 @@ impl App {
                     if !ps.agenda_input.trim().is_empty() {
                         crate::monitors::agenda::add_event(&ps.agenda_input);
                     }
-                    ps.agenda_input_active = false;
+                    // Do not close input_active so user can add multiple items in a row
                     ps.agenda_input.clear();
                 }
                 KeyCode::Backspace => {
@@ -440,7 +440,7 @@ impl App {
                     if !ps.task_input.trim().is_empty() {
                         crate::monitors::tasks::add_task(&ps.task_input);
                     }
-                    ps.task_input_active = false;
+                    // Do not close input_active so user can add multiple items in a row
                     ps.task_input.clear();
                 }
                 KeyCode::Backspace => {
@@ -1208,8 +1208,21 @@ impl App {
             hint("type", "to filter");
             hint("enter", "keep filter");
             hint("esc", "clear");
+        } else if self.panel_states.task_input_active || self.panel_states.agenda_input_active || self.panel_states.pinned_media_input_active {
+            hint("type", "to insert");
+            hint("enter", "save (keep open)");
+            hint("esc", "done");
         } else {
             match self.focused_panel {
+                Some(PanelId::Tasks) | Some(PanelId::Agenda) => {
+                    hint("a", "add");
+                    hint("d", "delete");
+                    hint("e", "edit file");
+                    if self.focused_panel == Some(PanelId::Tasks) {
+                        hint("space", "toggle");
+                    }
+                    hint("enter", if self.zoomed.is_some() { "unzoom" } else { "zoom" });
+                }
                 Some(PanelId::PinnedMedia) => {
                     hint("e", "edit path");
                     hint("enter", if self.zoomed.is_some() { "unzoom" } else { "zoom" });
