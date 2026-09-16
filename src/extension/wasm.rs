@@ -28,6 +28,10 @@ impl WasmExtension {
         let metadata_bytes = plugin.call::<(), Vec<u8>>("metadata", ())?;
         let metadata: ExtensionMetadata = serde_json::from_slice(&metadata_bytes)?;
         
+        if !metadata.api_version.starts_with("0.9") {
+            return Err(extism::Error::msg(format!("Unsupported extension API version: {}", metadata.api_version)));
+        }
+        
         // Call widgets function to get list of widget IDs
         let widgets_bytes = plugin.call::<(), Vec<u8>>("widgets", ())?;
         let widgets: Vec<String> = serde_json::from_slice(&widgets_bytes)?;
@@ -72,15 +76,17 @@ impl Component for WasmComponent {
         // Call the render_widget function on WASM side with the widget ID
         match plugin.call::<&str, Vec<u8>>("render_widget", self.id) {
             Ok(bytes) => {
+                if bytes.len() > crate::protocol::MAX_PAYLOAD_SIZE {
+                    return; // silently drop oversized payloads for now, or render an error block
+                }
+                
                 if let Ok(ui_widget) = serde_json::from_slice::<UiWidget>(&bytes) {
-                    ui_renderer::render_widget(&ui_widget, f, area);
-                } else {
-                    // Render error text
+                    if ui_widget.validate().is_ok() {
+                        ui_renderer::render_widget(&ui_widget, f, area);
+                    }
                 }
             }
-            Err(_e) => {
-                // Render error text
-            }
+            Err(_e) => {}
         }
     }
 }
