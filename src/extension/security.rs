@@ -107,4 +107,11 @@ impl Extension for SecurityExtension {
     fn pages(&self) -> Vec<Box<dyn Page>> {
         vec![Box::new(SecurityPage::new())]
     }
+
+    fn components(&self) -> Vec<Box<dyn Component>> {
+        vec![
+            Box::new(ClamAvComponent),
+            Box::new(CveFeedComponent),
+        ]
+    }
 }

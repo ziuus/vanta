@@ -75,7 +75,7 @@ impl ExtensionManager {
         let meta = ext.metadata();
         
         // 1. Check if it's enabled in `[extensions.enabled]`
-        let mut enabled = true;
+        let mut enabled = false;
         let mut ext_config = None;
         
         if let Some(cfg) = global_ext_config {

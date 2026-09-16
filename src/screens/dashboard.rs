@@ -497,6 +497,7 @@ fn render_dashboard_panel(
             );
         }
         custom_id => {
+            let mut matched = false;
             if let Some((cfg_idx, _)) = app
                 .config
                 .custom_widgets
@@ -507,6 +508,18 @@ fn render_dashboard_panel(
                 let focused = app.focused_panel == Some(PanelId::Custom(cfg_idx));
                 app.custom_widgets
                     .render_widget(f, area, cfg_idx, focused, theme);
+                matched = true;
+            }
+            
+            if !matched {
+                for ext in &app.ext_manager.extensions {
+                    for mut comp in ext.components() {
+                        if comp.id().eq_ignore_ascii_case(custom_id) {
+                            comp.render(f, area, theme);
+                            break;
+                        }
+                    }
+                }
             }
         }
     }
