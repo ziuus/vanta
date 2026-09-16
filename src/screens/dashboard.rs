@@ -14,6 +14,11 @@ const MIN: (u16, u16) = (80, 24);
 /// Data-driven dashboard layout: reads `dashboard.layout` from config,
 /// supporting user-defined column assignments, panel reordering, and custom widgets.
 pub fn render(f: &mut Frame, area: Rect, app: &mut App) {
+    let layout = app.config.dashboard.layout.clone();
+    render_layout(f, area, app, &layout);
+}
+
+pub fn render_layout(f: &mut Frame, area: Rect, app: &mut App, layout: &[Vec<String>]) {
     if area.width < MIN.0 || area.height < MIN.1 {
         too_small(f, area, &app.theme, MIN);
         return;
@@ -21,10 +26,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &mut App) {
     let sum = app.summary.clone();
     let term = (f.area().width, f.area().height);
 
-    let assigned_custom_ids: Vec<String> = app
-        .config
-        .dashboard
-        .layout
+    let assigned_custom_ids: Vec<String> = layout
         .iter()
         .flat_map(|col| col.iter().cloned())
         .collect();
@@ -107,7 +109,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &mut App) {
     }
 
     if unassigned_custom_count > 0 && custom_area.height > 0 {
-        render_custom_row(f, custom_area, app, unassigned_custom_count);
+        render_custom_row(f, custom_area, app, unassigned_custom_count, layout);
     }
 }
 
@@ -525,7 +527,7 @@ fn render_dashboard_panel(
     }
 }
 
-fn render_custom_row(f: &mut Frame, area: Rect, app: &App, unassigned_count: usize) {
+fn render_custom_row(f: &mut Frame, area: Rect, app: &App, unassigned_count: usize, layout: &[Vec<String>]) {
     const MIN_W: u16 = 20;
     let max_fit = ((area.width / MIN_W) as usize).max(1);
     let n = unassigned_count.min(max_fit);
@@ -536,10 +538,7 @@ fn render_custom_row(f: &mut Frame, area: Rect, app: &App, unassigned_count: usi
     let constraints: Vec<Constraint> = (0..n).map(|_| Constraint::Ratio(1, n as u32)).collect();
     let cols = Layout::horizontal(constraints).split(area);
 
-    let assigned_custom_ids: Vec<String> = app
-        .config
-        .dashboard
-        .layout
+    let assigned_custom_ids: Vec<String> = layout
         .iter()
         .flat_map(|col| col.iter().cloned())
         .collect();

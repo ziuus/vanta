@@ -525,6 +525,9 @@ impl App {
                         modes.push(DashboardMode::Extension(page.title().to_string()));
                     }
                 }
+                for page in &self.config.pages {
+                    modes.push(DashboardMode::Extension(page.name.clone()));
+                }
                 if n > 0 && n <= modes.len() {
                     self.set_mode(modes[n - 1].clone());
                 }
@@ -1083,6 +1086,14 @@ impl App {
                     }
                 }
                 if !rendered {
+                    // It might be a custom page from config
+                    if let Some(cfg_page) = self.config.pages.iter().find(|p| p.name == name) {
+                        screens::dashboard::render_layout(f, main, self, &cfg_page.layout.clone());
+                        rendered = true;
+                    }
+                }
+                
+                if !rendered {
                     screens::dashboard::render(f, main, self);
                 }
             }
@@ -1197,6 +1208,9 @@ impl App {
             for page in ext.pages() {
                 modes.push(DashboardMode::Extension(page.title().to_string()));
             }
+        }
+        for page in &self.config.pages {
+            modes.push(DashboardMode::Extension(page.name.clone()));
         }
         
         for (i, m) in modes.into_iter().enumerate() {

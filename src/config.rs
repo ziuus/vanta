@@ -13,6 +13,15 @@ pub struct Config {
     /// Existing configs that omit this field load fine — serde defaults to an
     /// empty `Vec`.
     pub custom_widgets: Vec<CustomWidgetConfig>,
+    /// User-defined custom pages declared via `[[pages]]`.
+    #[serde(default)]
+    pub pages: Vec<CustomPageConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CustomPageConfig {
+    pub name: String,
+    pub layout: Vec<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
