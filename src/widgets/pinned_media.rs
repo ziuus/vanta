@@ -17,7 +17,7 @@ struct CachedMedia {
     area_width: u16,
     area_height: u16,
     lines: Vec<Line<'static>>,
-    
+
     // Slideshow state
     is_dir: bool,
     images: Vec<String>,
@@ -55,7 +55,8 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, path: &str, tick: u64) {
             return true;
         }
         let cache = cache.as_ref().unwrap();
-        if cache.path != path || cache.area_width != area.width || cache.area_height != area.height {
+        if cache.path != path || cache.area_width != area.width || cache.area_height != area.height
+        {
             return true;
         }
         if cache.is_dir {
@@ -76,7 +77,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, path: &str, tick: u64) {
         } else {
             path.to_string()
         };
-        
+
         let path_buf = std::path::Path::new(&expanded_path);
         let mut is_dir = false;
         let mut images = Vec::new();
@@ -85,7 +86,10 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, path: &str, tick: u64) {
 
         CACHED_IMAGE.with(|c| {
             if let Some(cache) = c.borrow().as_ref() {
-                if cache.path == path && cache.area_width == area.width && cache.area_height == area.height {
+                if cache.path == path
+                    && cache.area_width == area.width
+                    && cache.area_height == area.height
+                {
                     is_dir = cache.is_dir;
                     images = cache.images.clone();
                     current_idx = cache.current_idx;
@@ -102,7 +106,12 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, path: &str, tick: u64) {
                         if path.is_file() {
                             if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
                                 let ext = ext.to_lowercase();
-                                if ext == "png" || ext == "jpg" || ext == "jpeg" || ext == "gif" || ext == "webp" {
+                                if ext == "png"
+                                    || ext == "jpg"
+                                    || ext == "jpeg"
+                                    || ext == "gif"
+                                    || ext == "webp"
+                                {
                                     images.push(path.to_string_lossy().to_string());
                                 }
                             }

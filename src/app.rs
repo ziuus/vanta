@@ -490,7 +490,11 @@ impl App {
 
         if self.show_help {
             match key.code {
-                KeyCode::Char('e') | KeyCode::Char('E') if self.focused_panel != Some(PanelId::PinnedMedia) => self.trigger_focused_action(),
+                KeyCode::Char('e') | KeyCode::Char('E')
+                    if self.focused_panel != Some(PanelId::PinnedMedia) =>
+                {
+                    self.trigger_focused_action()
+                }
                 KeyCode::Char('q') | KeyCode::Char('Q') => self.running = false,
                 KeyCode::Char('T') => self.cycle_theme(),
                 _ => self.show_help = false,
@@ -505,7 +509,11 @@ impl App {
             KeyCode::Right if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.resize_focused(2)
             }
-            KeyCode::Char('e') | KeyCode::Char('E') if self.focused_panel != Some(PanelId::PinnedMedia) => self.trigger_focused_action(),
+            KeyCode::Char('e') | KeyCode::Char('E')
+                if self.focused_panel != Some(PanelId::PinnedMedia) =>
+            {
+                self.trigger_focused_action()
+            }
             KeyCode::Char('q') | KeyCode::Char('Q') => self.running = false,
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.running = false
@@ -1092,7 +1100,7 @@ impl App {
                         rendered = true;
                     }
                 }
-                
+
                 if !rendered {
                     screens::dashboard::render(f, main, self);
                 }
@@ -1195,14 +1203,14 @@ impl App {
         }
 
         let mut right: Vec<Span> = Vec::new();
-        
+
         let mut modes = vec![
             DashboardMode::Dashboard,
             DashboardMode::Monitor,
             DashboardMode::Aesthetic,
             DashboardMode::Workspace,
         ];
-        
+
         // Append all loaded extension pages dynamically!
         for ext in &self.ext_manager.extensions {
             for page in ext.pages() {
@@ -1212,7 +1220,7 @@ impl App {
         for page in &self.config.pages {
             modes.push(DashboardMode::Extension(page.name.clone()));
         }
-        
+
         for (i, m) in modes.into_iter().enumerate() {
             let style = if m == self.mode {
                 Style::default().fg(t.bg).bg(t.accent)
@@ -1220,11 +1228,12 @@ impl App {
                 dim
             };
             // Hotkey is simply (i+1) instead of hardcoded!
-            let hotkey = if i < 9 { format!("{}", i + 1) } else { format!("{}", i + 1) };
-            right.push(Span::styled(
-                format!(" {} {} ", hotkey, m.label()),
-                style,
-            ));
+            let hotkey = if i < 9 {
+                format!("{}", i + 1)
+            } else {
+                format!("{}", i + 1)
+            };
+            right.push(Span::styled(format!(" {} {} ", hotkey, m.label()), style));
             right.push(Span::styled(" ", base));
         }
         right.push(Span::styled("? help ", dim));
@@ -1265,7 +1274,10 @@ impl App {
             hint("type", "to filter");
             hint("enter", "keep filter");
             hint("esc", "clear");
-        } else if self.panel_states.task_input_active || self.panel_states.agenda_input_active || self.panel_states.pinned_media_input_active {
+        } else if self.panel_states.task_input_active
+            || self.panel_states.agenda_input_active
+            || self.panel_states.pinned_media_input_active
+        {
             hint("type", "to insert");
             hint("enter", "save (keep open)");
             hint("esc", "done");
@@ -1278,11 +1290,25 @@ impl App {
                     if self.focused_panel == Some(PanelId::Tasks) {
                         hint("space", "toggle");
                     }
-                    hint("enter", if self.zoomed.is_some() { "unzoom" } else { "zoom" });
+                    hint(
+                        "enter",
+                        if self.zoomed.is_some() {
+                            "unzoom"
+                        } else {
+                            "zoom"
+                        },
+                    );
                 }
                 Some(PanelId::PinnedMedia) => {
                     hint("e/i", "edit path");
-                    hint("enter", if self.zoomed.is_some() { "unzoom" } else { "zoom" });
+                    hint(
+                        "enter",
+                        if self.zoomed.is_some() {
+                            "unzoom"
+                        } else {
+                            "zoom"
+                        },
+                    );
                     hint("tab", "focus");
                 }
                 Some(PanelId::Processes) => {

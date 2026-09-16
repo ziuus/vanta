@@ -1,9 +1,9 @@
-pub mod extension;
-pub mod theme;
 pub mod app;
 pub mod config;
+pub mod custom;
+pub mod extension;
 pub mod mode;
 pub mod monitors;
 pub mod screens;
+pub mod theme;
 pub mod widgets;
-pub mod custom;

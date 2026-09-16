@@ -4,8 +4,8 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 use ratatui::Frame;
 
-use crate::theme::Theme;
 use super::{Component, Extension, ExtensionMetadata, Page};
+use crate::theme::Theme;
 
 /// A mock component for demonstration
 pub struct HelloWorldComponent;
@@ -18,14 +18,23 @@ impl Component for HelloWorldComponent {
     fn render(&mut self, f: &mut Frame, area: Rect, theme: &Theme) {
         let block = Block::default()
             .borders(Borders::ALL)
-            .title(Span::styled(" Hello World Widget ", Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)))
+            .title(Span::styled(
+                " Hello World Widget ",
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            ))
             .border_style(Style::default().fg(theme.dim));
-        
+
         let content = Paragraph::new(vec![
             Line::from(vec![Span::raw(" This is a custom component!")]),
-            Line::from(vec![Span::styled(" It was loaded from an extension.", Style::default().fg(theme.green))]),
-        ]).block(block);
-        
+            Line::from(vec![Span::styled(
+                " It was loaded from an extension.",
+                Style::default().fg(theme.green),
+            )]),
+        ])
+        .block(block);
+
         f.render_widget(content, area);
     }
 }
@@ -41,14 +50,29 @@ impl Component for ServerPingComponent {
     fn render(&mut self, f: &mut Frame, area: Rect, theme: &Theme) {
         let block = Block::default()
             .borders(Borders::ALL)
-            .title(Span::styled(" Server Ping ", Style::default().fg(theme.red).add_modifier(Modifier::BOLD)))
+            .title(Span::styled(
+                " Server Ping ",
+                Style::default().fg(theme.red).add_modifier(Modifier::BOLD),
+            ))
             .border_style(Style::default().fg(theme.dim));
-        
+
         let content = Paragraph::new(vec![
-            Line::from(vec![Span::styled("us-east-1", Style::default().fg(theme.green).add_modifier(Modifier::BOLD)), Span::raw(" 12ms")]),
-            Line::from(vec![Span::styled("eu-central", Style::default().fg(theme.yellow)), Span::raw(" 145ms")]),
-        ]).block(block);
-        
+            Line::from(vec![
+                Span::styled(
+                    "us-east-1",
+                    Style::default()
+                        .fg(theme.green)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(" 12ms"),
+            ]),
+            Line::from(vec![
+                Span::styled("eu-central", Style::default().fg(theme.yellow)),
+                Span::raw(" 145ms"),
+            ]),
+        ])
+        .block(block);
+
         f.render_widget(content, area);
     }
 }
@@ -107,9 +131,6 @@ impl Extension for TemplateExtension {
     }
 
     fn components(&self) -> Vec<Box<dyn Component>> {
-        vec![
-            Box::new(HelloWorldComponent),
-            Box::new(ServerPingComponent),
-        ]
+        vec![Box::new(HelloWorldComponent), Box::new(ServerPingComponent)]
     }
 }

@@ -26,10 +26,8 @@ pub fn render_layout(f: &mut Frame, area: Rect, app: &mut App, layout: &[Vec<Str
     let sum = app.summary.clone();
     let term = (f.area().width, f.area().height);
 
-    let assigned_custom_ids: Vec<String> = layout
-        .iter()
-        .flat_map(|col| col.iter().cloned())
-        .collect();
+    let assigned_custom_ids: Vec<String> =
+        layout.iter().flat_map(|col| col.iter().cloned()).collect();
 
     let unassigned_custom_count = app
         .config
@@ -477,7 +475,13 @@ fn render_dashboard_panel(
                 "media preview".to_string()
             };
             let inner = panel(f, area, &hint, theme, focus(PanelId::PinnedMedia));
-            crate::widgets::pinned_media::render(f, inner, theme, &app.config.ui.pinned_media_path, app.frame);
+            crate::widgets::pinned_media::render(
+                f,
+                inner,
+                theme,
+                &app.config.ui.pinned_media_path,
+                app.frame,
+            );
         }
         "video" | "donut" => {
             let inner = panel(f, area, "video", theme, focus(PanelId::Video));
@@ -512,7 +516,7 @@ fn render_dashboard_panel(
                     .render_widget(f, area, cfg_idx, focused, theme);
                 matched = true;
             }
-            
+
             if !matched {
                 for ext in &app.ext_manager.extensions {
                     for mut comp in ext.components() {
@@ -527,7 +531,13 @@ fn render_dashboard_panel(
     }
 }
 
-fn render_custom_row(f: &mut Frame, area: Rect, app: &App, unassigned_count: usize, layout: &[Vec<String>]) {
+fn render_custom_row(
+    f: &mut Frame,
+    area: Rect,
+    app: &App,
+    unassigned_count: usize,
+    layout: &[Vec<String>],
+) {
     const MIN_W: u16 = 20;
     let max_fit = ((area.width / MIN_W) as usize).max(1);
     let n = unassigned_count.min(max_fit);
@@ -538,10 +548,8 @@ fn render_custom_row(f: &mut Frame, area: Rect, app: &App, unassigned_count: usi
     let constraints: Vec<Constraint> = (0..n).map(|_| Constraint::Ratio(1, n as u32)).collect();
     let cols = Layout::horizontal(constraints).split(area);
 
-    let assigned_custom_ids: Vec<String> = layout
-        .iter()
-        .flat_map(|col| col.iter().cloned())
-        .collect();
+    let assigned_custom_ids: Vec<String> =
+        layout.iter().flat_map(|col| col.iter().cloned()).collect();
 
     let mut slot = 0usize;
     for (cfg_idx, cfg) in app.config.custom_widgets.iter().enumerate() {

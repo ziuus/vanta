@@ -1,6 +1,6 @@
+use crossterm::event::KeyEvent;
 use ratatui::layout::Rect;
 use ratatui::Frame;
-use crossterm::event::KeyEvent;
 use toml::Value;
 
 use crate::theme::Theme;
@@ -64,20 +64,23 @@ pub struct ExtensionManager {
 }
 
 impl ExtensionManager {
-
     pub fn new() -> Self {
         Self {
             extensions: Vec::new(),
         }
     }
 
-    pub fn register(&mut self, mut ext: Box<dyn Extension>, global_ext_config: Option<&toml::Value>) {
+    pub fn register(
+        &mut self,
+        mut ext: Box<dyn Extension>,
+        global_ext_config: Option<&toml::Value>,
+    ) {
         let meta = ext.metadata();
-        
+
         // 1. Check if it's enabled in `[extensions.enabled]`
         let mut enabled = false;
         let mut ext_config = None;
-        
+
         if let Some(cfg) = global_ext_config {
             // Read `enabled` array
             if let Some(enabled_arr) = cfg.get("enabled").and_then(|v| v.as_array()) {
@@ -86,7 +89,7 @@ impl ExtensionManager {
             // Extract `[extensions.<id>]` specific config
             ext_config = cfg.get(meta.id);
         }
-        
+
         if enabled {
             ext.init(ext_config);
             self.extensions.push(ext);

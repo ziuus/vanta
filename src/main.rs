@@ -62,7 +62,10 @@ fn main() -> io::Result<()> {
     terminal.clear()?;
 
     let mut app = App::new(config);
-    app.ext_manager.register(Box::new(vanta::extension::template::TemplateExtension), app.config.extensions.as_ref());
+    app.ext_manager.register(
+        Box::new(vanta::extension::template::TemplateExtension),
+        app.config.extensions.as_ref(),
+    );
     let res = run(&mut terminal, &mut app);
 
     vanta::widgets::music_viz::shutdown();

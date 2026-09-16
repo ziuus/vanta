@@ -96,7 +96,10 @@ pub fn render_panel(f: &mut Frame, area: Rect, app: &crate::app::App, id: crate:
 
     let theme = &app.theme;
     let title = if id == P::PinnedMedia && app.panel_states.pinned_media_input_active {
-        format!("media path: {}_ · zoomed · esc to return", app.panel_states.pinned_media_input)
+        format!(
+            "media path: {}_ · zoomed · esc to return",
+            app.panel_states.pinned_media_input
+        )
     } else {
         format!("{} · zoomed · esc to return", id.label())
     };
@@ -170,9 +173,13 @@ pub fn render_panel(f: &mut Frame, area: Rect, app: &crate::app::App, id: crate:
             &app.panel_states.task_input,
         ),
         P::News => crate::widgets::news::render(f, inner, theme),
-        P::PinnedMedia => {
-            crate::widgets::pinned_media::render(f, inner, theme, &app.config.ui.pinned_media_path, app.frame)
-        }
+        P::PinnedMedia => crate::widgets::pinned_media::render(
+            f,
+            inner,
+            theme,
+            &app.config.ui.pinned_media_path,
+            app.frame,
+        ),
         P::WriterNotes => {}
         P::Files => {}
         P::Processes => {
