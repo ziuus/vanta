@@ -71,9 +71,26 @@ impl ExtensionManager {
         }
     }
 
-    pub fn register(&mut self, mut ext: Box<dyn Extension>) {
-        ext.init(None);
-        self.extensions.push(ext);
+    pub fn register(&mut self, mut ext: Box<dyn Extension>, global_ext_config: Option<&toml::Value>) {
+        let meta = ext.metadata();
+        
+        // 1. Check if it's enabled in `[extensions.enabled]`
+        let mut enabled = true;
+        let mut ext_config = None;
+        
+        if let Some(cfg) = global_ext_config {
+            // Read `enabled` array
+            if let Some(enabled_arr) = cfg.get("enabled").and_then(|v| v.as_array()) {
+                enabled = enabled_arr.iter().any(|v| v.as_str() == Some(meta.id));
+            }
+            // Extract `[extensions.<id>]` specific config
+            ext_config = cfg.get(meta.id);
+        }
+        
+        if enabled {
+            ext.init(ext_config);
+            self.extensions.push(ext);
+        }
     }
 
     pub fn all_pages(&self) -> Vec<Box<dyn Page>> {

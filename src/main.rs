@@ -70,7 +70,7 @@ fn main() -> io::Result<()> {
     terminal.clear()?;
 
     let mut app = App::new(config);
-    app.ext_manager.register(Box::new(crate::extension::security::SecurityExtension));
+    app.ext_manager.register(Box::new(crate::extension::security::SecurityExtension), app.config.extensions.as_ref());
     let res = run(&mut terminal, &mut app);
 
     widgets::music_viz::shutdown();

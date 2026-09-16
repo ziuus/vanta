@@ -8,6 +8,7 @@ pub struct Config {
     pub ui: UiConfig,
     pub widgets: WidgetConfig,
     pub dashboard: DashboardConfig,
+    pub extensions: Option<toml::Value>,
     /// User-defined custom widgets declared via `[[custom_widgets]]` entries.
     /// Existing configs that omit this field load fine — serde defaults to an
     /// empty `Vec`.
