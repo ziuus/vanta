@@ -1,3 +1,4 @@
+pub mod wasm;
 use crossterm::event::KeyEvent;
 use ratatui::layout::Rect;
 use ratatui::Frame;
@@ -6,13 +7,15 @@ use toml::Value;
 use crate::theme::Theme;
 
 /// Metadata for a Vanta Extension.
-#[derive(Debug, Clone)]
+use serde::{Serialize, Deserialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtensionMetadata {
-    pub id: &'static str,
-    pub name: &'static str,
-    pub author: &'static str,
-    pub version: &'static str,
-    pub description: &'static str,
+    pub id: String,
+    pub name: String,
+    pub author: String,
+    pub version: String,
+    pub description: String,
 }
 
 /// A Component (Widget) provided by an extension.
@@ -90,7 +93,7 @@ impl ExtensionManager {
         if let Some(cfg) = global_ext_config {
             // Read `enabled` array
             if let Some(enabled_arr) = cfg.get("enabled").and_then(|v| v.as_array()) {
-                enabled = enabled_arr.iter().any(|v| v.as_str() == Some(meta.id));
+                enabled = enabled_arr.iter().any(|v| v.as_str() == Some(&meta.id));
             }
             // Extract `[extensions.<id>]` specific config
             ext_config = cfg.get(meta.id);

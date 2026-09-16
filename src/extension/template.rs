@@ -124,11 +124,11 @@ pub struct TemplateExtension;
 impl Extension for TemplateExtension {
     fn metadata(&self) -> ExtensionMetadata {
         ExtensionMetadata {
-            id: "template",
-            name: "Vanta Template Extension",
-            author: "Vanta Core",
-            version: "1.0.0",
-            description: "A reference implementation of a Vanta Extension.",
+            id: "template".to_string(),
+            name: "Vanta Template Extension".to_string(),
+            author: "Vanta Core".to_string(),
+            version: "1.0.0".to_string(),
+            description: "A reference implementation of a Vanta Extension.".to_string(),
         }
     }
 
