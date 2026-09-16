@@ -1,12 +1,4 @@
-pub mod extension;
-mod app;
-mod config;
-mod custom;
-mod mode;
-mod monitors;
-mod screens;
 mod theme;
-mod widgets;
 
 use std::io::{self, IsTerminal, Write};
 use std::time::{Duration, Instant};
@@ -19,8 +11,8 @@ use crossterm::terminal::{
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 
-use crate::app::App;
-use crate::config::Config;
+use vanta::app::App;
+use vanta::config::Config;
 
 fn restore_terminal() {
     let _ = disable_raw_mode();
@@ -35,7 +27,7 @@ fn print_help() {
          config: {}\n\
          keys:   1/2/3 pages · ? help · T theme · v visualizer · q quit",
         env!("CARGO_PKG_VERSION"),
-        config::config_path()
+        vanta::config::config_path()
     );
 }
 
@@ -70,10 +62,10 @@ fn main() -> io::Result<()> {
     terminal.clear()?;
 
     let mut app = App::new(config);
-    app.ext_manager.register(Box::new(crate::extension::template::TemplateExtension), app.config.extensions.as_ref());
+    app.ext_manager.register(Box::new(vanta::extension::template::TemplateExtension), app.config.extensions.as_ref());
     let res = run(&mut terminal, &mut app);
 
-    widgets::music_viz::shutdown();
+    vanta::widgets::music_viz::shutdown();
     app.ext_manager.shutdown_all();
     restore_terminal();
     res
