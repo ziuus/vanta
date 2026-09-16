@@ -1,48 +1,110 @@
-# Vanta Extension API (V1)
+# Vanta Extension & Customization Guide
 
-Vanta features a strictly sandboxed, opt-in Extension API. This allows developers to build new pages and widgets without polluting the core dashboard logic or relying on messy forks.
+Vanta allows you to customize your terminal dashboard experience either without writing code (via `config.toml`) or by building reusable Rust extensions.
 
-## How it works
+---
 
-In V1, extensions are compiled directly into the Vanta binary. 
-An extension can provide:
-1. **Pages**: Full-screen, pre-designed layouts that automatically appear in the top navigation.
-2. **Components (Widgets)**: Isolated UI boxes (e.g. `hello_world`) that users can inject into their own custom layouts in `config.toml`.
+## 1. Zero-Code Customization (For Users)
 
-## Creating an Extension
+You can customize your dashboard layout or create entirely new pages directly in `~/.config/vanta/config.toml`.
 
-The reference implementation is the `TemplateExtension` located in `src/extension/template.rs`. 
+### A. Customizing the Main Dashboard Grid
+Rearrange the layout by specifying columns and widget IDs in `[dashboard.layout]`:
 
-To create a new extension:
-1. Implement the `Component` trait for your widgets.
-2. Implement the `Page` trait if you want a dedicated navigation screen.
-3. Implement the `Extension` trait to bundle them together and handle configuration.
-4. Register your extension in `src/main.rs`.
-
-```rust
-use crate::extension::{Extension, ExtensionMetadata, Component, Page};
-
-pub struct MyExtension;
-
-impl Extension for MyExtension {
-    fn metadata(&self) -> ExtensionMetadata {
-        ExtensionMetadata {
-            id: "my_ext",
-            name: "My Awesome Extension",
-            author: "You",
-            version: "1.0",
-            description: "Adds cool widgets.",
-        }
-    }
-    
-    // Optional: Return components users can use in config.toml
-    fn components(&self) -> Vec<Box<dyn Component>> {
-        vec![Box::new(MyWidget)]
-    }
-}
+```toml
+[dashboard]
+layout = [
+    ["system", "cpu", "memory", "network"],
+    ["clock", "processes"]
+]
 ```
 
-## Official Community Integrations
+### B. Creating Custom Pages
+Add `[[pages]]` to create dedicated tab views with custom layouts. They automatically appear in the top navigation bar with hotkeys (`1`, `2`, `3`, etc.):
 
-To keep the core binary blazing fast, we recommend keeping standard Vanta slim. 
-Large community extensions will be housed in the **vanta-integrations** repository (coming soon), where users can mix and match the crates they want to compile into their personalized Vanta builds.
+```toml
+[[pages]]
+name = "DevOps View"
+layout = [
+    ["system", "network"],
+    ["processes", "server_ping"]
+]
+
+[[pages]]
+name = "Media Focus"
+layout = [
+    ["pinned_media", "video"],
+    ["media", "clock"]
+]
+```
+
+---
+
+## 2. Building Rust Extensions (For Developers)
+
+Extensions allow developers to build reusable widgets (`Component`) and full-screen views (`Page`) in Rust.
+
+### A. Extension Traits Overview (`vanta::extension`)
+
+1. **`Component`**: A single UI box (e.g. `server_ping`).
+   ```rust
+   pub trait Component: Send + Sync {
+       fn id(&self) -> &'static str; // Unique identifier used in config layout
+       fn render(&mut self, f: &mut Frame, area: Rect, theme: &Theme);
+   }
+   ```
+
+2. **`Page`**: A full-screen view (e.g. `SecurityPage`).
+   ```rust
+   pub trait Page: Send + Sync {
+       fn id(&self) -> &'static str;
+       fn title(&self) -> &'static str; // Navigation title
+       fn render(&mut self, f: &mut Frame, area: Rect, theme: &Theme);
+   }
+   ```
+
+3. **`Extension`**: Bundles metadata, pages, and components together.
+   ```rust
+   pub trait Extension: Send + Sync {
+       fn metadata(&self) -> ExtensionMetadata;
+       fn init(&mut self, config: Option<&toml::Value>) {}
+       fn pages(&self) -> Vec<Box<dyn Page>> { vec![] }
+       fn components(&self) -> Vec<Box<dyn Component>> { vec![] }
+       fn shutdown(&mut self) {}
+   }
+   ```
+
+### B. Creating an Extension Crate
+1. Create a new Rust library crate.
+2. Add `vanta` as a dependency in your `Cargo.toml`:
+   ```toml
+   [dependencies]
+   vanta = { git = "https://github.com/ziuus/vanta" }
+   ratatui = "0.29"
+   ```
+3. Implement the `Extension` and `Component`/`Page` traits in `src/lib.rs`.
+
+---
+
+## 3. Registering & Using Extensions
+
+### A. Register in Core (`src/main.rs`)
+To include an extension in a Vanta build:
+```rust
+app.ext_manager.register(
+    Box::new(my_extension_crate::MyExtension),
+    app.config.extensions.as_ref()
+);
+```
+
+### B. Enable in Config (`config.toml`)
+Extensions are **disabled by default**. Users must explicitly enable them:
+```toml
+[extensions]
+enabled = ["my_ext_id"]
+
+[extensions.my_ext_id]
+custom_setting = "value"
+```
+
+Once enabled, components exported by the extension (e.g. `server_ping`) can be placed directly into any layout grid in `config.toml`.
