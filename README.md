@@ -193,6 +193,28 @@ matrix = true
 video = true
 ```
 
+## Extensions & Custom Pages (v0.8.0+)
+
+Vanta introduces the **V1 Extension API** and **Zero-Code Custom Pages**.
+
+### Creating Custom Pages (No Code Required)
+Add `[[pages]]` entries to `~/.config/vanta/config.toml` to build custom views with flexible grid layouts:
+
+```toml
+[[pages]]
+name = "DevOps"
+layout = [
+    ["system", "network"],
+    ["processes", "clock"]
+]
+```
+
+### Using & Building Extensions
+- **Using an Extension**: Community-built extensions can be integrated into your binary from the [vanta-integrations](https://github.com/ziuus/vanta-integrations) repository and enabled via `[extensions] enabled = ["ext_id"]`.
+- **Building an Extension**: Learn how to build custom Rust pages and widgets by reading the **[Extension Developer Guide](docs/EXTENSIONS.md)** and checking **[AGENTS.md](AGENTS.md)**.
+
+> 🔒 **Security Notice**: Extensions are trusted Rust code compiled directly into Vanta. They are **NOT** sandboxed. Always inspect third-party extension source code before adding it to your build.
+
 ## Custom Widgets
 
 Add your own data panels to the Dashboard without recompiling Vanta.  
