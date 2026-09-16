@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use ratatui::style::Color;
 
 /// Named palettes, in the order `T` cycles through them.

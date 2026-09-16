@@ -83,6 +83,12 @@ pub struct TemplatePage {
     ping: ServerPingComponent,
 }
 
+impl Default for TemplatePage {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TemplatePage {
     pub fn new() -> Self {
         Self {

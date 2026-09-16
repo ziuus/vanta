@@ -5,6 +5,12 @@ pub struct History<const N: usize> {
     len: usize,
 }
 
+impl<const N: usize> Default for History<N> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<const N: usize> History<N> {
     pub const fn new() -> Self {
         Self {

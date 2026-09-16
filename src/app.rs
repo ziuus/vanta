@@ -520,7 +520,7 @@ impl App {
             }
             KeyCode::Char('?') | KeyCode::F(1) => self.show_help = true,
             KeyCode::Char('S') | KeyCode::Char(',') => self.show_settings = true,
-            KeyCode::Char(c) if c.is_digit(10) => {
+            KeyCode::Char(c) if c.is_ascii_digit() => {
                 let n = c.to_digit(10).unwrap() as usize;
                 let mut modes = vec![
                     DashboardMode::Dashboard,
@@ -1228,11 +1228,7 @@ impl App {
                 dim
             };
             // Hotkey is simply (i+1) instead of hardcoded!
-            let hotkey = if i < 9 {
-                format!("{}", i + 1)
-            } else {
-                format!("{}", i + 1)
-            };
+            let hotkey = format!("{}", i + 1);
             right.push(Span::styled(format!(" {} {} ", hotkey, m.label()), style));
             right.push(Span::styled(" ", base));
         }
