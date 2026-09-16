@@ -2,7 +2,7 @@ use clap::{Parser, Subcommand};
 use serde::Deserialize;
 use sha2::{Sha256, Digest};
 use std::fs;
-use std::io::{Read, Write};
+use std::io::Read;
 use std::path::PathBuf;
 
 const REGISTRY_URL: &str = "https://raw.githubusercontent.com/ziuus/vanta-integrations/main/registry.json";
@@ -180,13 +180,21 @@ fn install(id: String) {
         eprintln!("  Got:      {}", hash);
         return;
     }
-    println!("✓ Verified extension signature (sha256)");
+    println!("✓ Verified SHA-256 checksum");
     
-    // Install
+    // Install atomically
     let ext_dir = get_extensions_dir();
     let wasm_path = ext_dir.join(format!("{}.wasm", ext.id));
-    if let Err(e) = fs::write(&wasm_path, buf) {
+    let tmp_path = ext_dir.join(format!("{}.wasm.tmp", ext.id));
+    
+    if let Err(e) = fs::write(&tmp_path, buf) {
         eprintln!("Failed to write extension to disk: {}", e);
+        return;
+    }
+    
+    if let Err(e) = fs::rename(&tmp_path, &wasm_path) {
+        eprintln!("Failed to atomically install extension: {}", e);
+        let _ = fs::remove_file(&tmp_path);
         return;
     }
     
@@ -240,17 +248,22 @@ fn enable(id: String) {
     let path = get_config_path();
     let content = match fs::read_to_string(&path) {
         Ok(c) => c,
-        Err(_) => return eprintln!("Could not read config.toml"),
+        Err(_) => {
+            // Create a default config if it doesn't exist
+            if let Some(parent) = path.parent() {
+                let _ = fs::create_dir_all(parent);
+            }
+            let default_config = "[extensions]\nenabled = []\n";
+            let _ = fs::write(&path, default_config);
+            default_config.to_string()
+        }
     };
     
-    // Very simple string manipulation for enable since we just append if needed
-    // In a real app we'd use toml_edit Document
     if content.contains(&format!("\"{}\"", id)) || content.contains(&format!("'{}'", id)) {
         println!("Extension '{}' is already enabled.", id);
         return;
     }
     
-    // Simplest way: just regex or replace enabled = [
     if let Some(idx) = content.find("enabled = [") {
         let mut new_content = String::new();
         let (before, after) = content.split_at(idx + "enabled = [".len());
@@ -261,7 +274,16 @@ fn enable(id: String) {
         fs::write(&path, new_content).unwrap();
         println!("✓ Enabled '{}' in config.toml", id);
     } else {
-        eprintln!("Could not find 'enabled = [' array in config.toml.");
+        // Append [extensions] if missing, or just append enabled array
+        let mut new_content = content.clone();
+        if !new_content.contains("[extensions]") {
+            new_content.push_str("\n[extensions]\n");
+        }
+        if !new_content.contains("enabled = [") {
+            new_content.push_str(&format!("enabled = [\"{}\"]\n", id));
+        }
+        fs::write(&path, new_content).unwrap();
+        println!("✓ Enabled '{}' in config.toml", id);
     }
 }
 

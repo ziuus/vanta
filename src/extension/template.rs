@@ -11,7 +11,7 @@ use crate::theme::Theme;
 pub struct HelloWorldComponent;
 
 impl Component for HelloWorldComponent {
-    fn id(&self) -> &'static str {
+    fn id(&self) -> &str {
         "hello_world"
     }
 
@@ -43,7 +43,7 @@ impl Component for HelloWorldComponent {
 pub struct ServerPingComponent;
 
 impl Component for ServerPingComponent {
-    fn id(&self) -> &'static str {
+    fn id(&self) -> &str {
         "server_ping"
     }
 
@@ -99,7 +99,7 @@ impl TemplatePage {
 }
 
 impl Page for TemplatePage {
-    fn id(&self) -> &'static str {
+    fn id(&self) -> &str {
         "template_dashboard"
     }
 
@@ -128,6 +128,7 @@ impl Extension for TemplateExtension {
             name: "Vanta Template Extension".to_string(),
             author: "Vanta Core".to_string(),
             version: "1.0.0".to_string(),
+            api_version: "0.9.0".to_string(),
             description: "A reference implementation of a Vanta Extension.".to_string(),
         }
     }

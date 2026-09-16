@@ -15,12 +15,13 @@ pub struct ExtensionMetadata {
     pub name: String,
     pub author: String,
     pub version: String,
+    pub api_version: String,
     pub description: String,
 }
 
 /// A Component (Widget) provided by an extension.
 pub trait Component {
-    fn id(&self) -> &'static str;
+    fn id(&self) -> &str;
     fn render(&mut self, f: &mut Frame, area: Rect, theme: &Theme);
     fn handle_key(&mut self, _key: KeyEvent) -> bool {
         // Return true if the key was consumed
@@ -30,7 +31,7 @@ pub trait Component {
 
 /// A full Page provided by an extension.
 pub trait Page {
-    fn id(&self) -> &'static str;
+    fn id(&self) -> &str;
     fn title(&self) -> &'static str;
     fn render(&mut self, f: &mut Frame, area: Rect, theme: &Theme);
     fn handle_key(&mut self, _key: KeyEvent) -> bool {

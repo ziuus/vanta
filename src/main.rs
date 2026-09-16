@@ -21,16 +21,6 @@ fn restore_terminal() {
     let _ = io::stdout().flush();
 }
 
-fn print_help() {
-    println!(
-        "vanta {} — aesthetic terminal system dashboard\n\n\
-         usage: vanta [--version] [--help]\n\n\
-         config: {}\n\
-         keys:   1/2/3 pages · ? help · T theme · v visualizer · q quit",
-        env!("CARGO_PKG_VERSION"),
-        vanta::config::config_path()
-    );
-}
 
 fn main() -> io::Result<()> {
     use clap::Parser;
