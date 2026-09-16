@@ -108,4 +108,4 @@ impl ExtensionManager {
         }
     }
 }
-pub mod security;
+pub mod template;

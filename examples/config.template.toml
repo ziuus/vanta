@@ -1,0 +1,26 @@
+# Vanta Template Configuration
+# Copy this to ~/.config/vanta/config.toml to test the extension system!
+
+[ui]
+refresh_rate = 1.0
+fps = 30
+startup_mode = "dashboard"
+
+# 1. Enable the Template extension
+[extensions]
+enabled = ["template"]
+
+# 2. Configure the main dashboard layout to include extension widgets
+[dashboard]
+layout = [
+    ["system", "cpu", "memory", "network"],
+    ["hello_world", "server_ping", "processes"]
+]
+
+# 3. Create an entirely custom page (Will appear in the navigation bar)
+[[pages]]
+name = "My Custom View"
+layout = [
+    ["matrix", "hello_world"],
+    ["server_ping", "network", "processes"]
+]

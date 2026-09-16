@@ -7,11 +7,11 @@ Vanta features a strictly sandboxed, opt-in Extension API. This allows developer
 In V1, extensions are compiled directly into the Vanta binary. 
 An extension can provide:
 1. **Pages**: Full-screen, pre-designed layouts that automatically appear in the top navigation.
-2. **Components (Widgets)**: Isolated UI boxes (e.g. `cve_feed`) that users can inject into their own custom layouts in `config.toml`.
+2. **Components (Widgets)**: Isolated UI boxes (e.g. `hello_world`) that users can inject into their own custom layouts in `config.toml`.
 
 ## Creating an Extension
 
-The reference implementation is the `SecurityExtension` located in `src/extension/security.rs`. 
+The reference implementation is the `TemplateExtension` located in `src/extension/template.rs`. 
 
 To create a new extension:
 1. Implement the `Component` trait for your widgets.
