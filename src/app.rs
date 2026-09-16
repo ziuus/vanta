@@ -77,8 +77,8 @@ pub enum PanelId {
 
 impl PanelId {
     /// Tab order for a page, honouring widget toggles and custom dashboard layout.
-    pub fn for_mode(mode: DashboardMode, cfg: &Config) -> Vec<PanelId> {
-        if mode == DashboardMode::Dashboard {
+    pub fn for_mode(mode: &DashboardMode, cfg: &Config) -> Vec<PanelId> {
+        if *mode == DashboardMode::Dashboard {
             let mut list = Vec::new();
             for col in &cfg.dashboard.layout {
                 for name in col {
@@ -128,6 +128,7 @@ impl PanelId {
                 (PanelId::News, w.news),
                 (PanelId::Visualizer, w.music_viz),
             ],
+            DashboardMode::Extension(_) => vec![],
         };
         list.into_iter()
             .filter(|(_, on)| *on)
@@ -268,6 +269,7 @@ impl Default for PanelStates {
 pub struct App {
     pub running: bool,
     pub config: Config,
+    pub ext_manager: crate::extension::ExtensionManager,
     pub theme: Theme,
     pub mode: DashboardMode,
     pub frame: u64,
@@ -300,9 +302,10 @@ impl App {
         let custom_widgets = CustomWidgetManager::start_all(&config.custom_widgets);
         let mut app = Self {
             running: true,
+            ext_manager: crate::extension::ExtensionManager::new(),
             theme,
             config,
-            mode,
+            mode: mode.clone(),
             frame: 0,
             focused_panel: None,
             panel_states: PanelStates::default(),
@@ -317,7 +320,7 @@ impl App {
             sampler_interval,
             custom_widgets,
         };
-        if mode == DashboardMode::Monitor {
+        if mode.clone() == DashboardMode::Monitor {
             app.focused_panel = Some(PanelId::Processes);
         }
         app
@@ -331,9 +334,9 @@ impl App {
         if self.mode == mode {
             return;
         }
-        self.mode = mode;
+        self.mode = mode.clone();
         self.zoomed = None;
-        self.focused_panel = (mode == DashboardMode::Monitor).then_some(PanelId::Processes);
+        self.focused_panel = (mode.clone() == DashboardMode::Monitor).then_some(PanelId::Processes);
         self.config.ui.startup_mode = mode.as_str().to_string();
         self.config.save();
     }
@@ -347,7 +350,7 @@ impl App {
     }
 
     fn cycle_focus(&mut self, forward: bool) {
-        let panels = PanelId::for_mode(self.mode, &self.config);
+        let panels = PanelId::for_mode(&self.mode, &self.config);
         if panels.is_empty() {
             return;
         }
@@ -509,10 +512,23 @@ impl App {
             }
             KeyCode::Char('?') | KeyCode::F(1) => self.show_help = true,
             KeyCode::Char('S') | KeyCode::Char(',') => self.show_settings = true,
-            KeyCode::Char('1') => self.set_mode(DashboardMode::Dashboard),
-            KeyCode::Char('2') => self.set_mode(DashboardMode::Monitor),
-            KeyCode::Char('3') => self.set_mode(DashboardMode::Aesthetic),
-            KeyCode::Char('4') => self.set_mode(DashboardMode::Workspace),
+            KeyCode::Char(c) if c.is_digit(10) => {
+                let n = c.to_digit(10).unwrap() as usize;
+                let mut modes = vec![
+                    DashboardMode::Dashboard,
+                    DashboardMode::Monitor,
+                    DashboardMode::Aesthetic,
+                    DashboardMode::Workspace,
+                ];
+                for ext in &self.ext_manager.extensions {
+                    for page in ext.pages() {
+                        modes.push(DashboardMode::Extension(page.title().to_string()));
+                    }
+                }
+                if n > 0 && n <= modes.len() {
+                    self.set_mode(modes[n - 1].clone());
+                }
+            }
             KeyCode::Char('T') => self.cycle_theme(),
             KeyCode::Char('v') | KeyCode::Char('V') => {
                 music_viz::cycle_style();
@@ -589,7 +605,7 @@ impl App {
                     | KeyCode::End
             )
         {
-            let panels = PanelId::for_mode(self.mode, &self.config);
+            let panels = PanelId::for_mode(&self.mode, &self.config);
             self.focused_panel = if panels.contains(&PanelId::Processes) {
                 Some(PanelId::Processes)
             } else {
@@ -737,7 +753,7 @@ impl App {
             _ => {}
         }
 
-        if self.mode == DashboardMode::Monitor && process_hotkey {
+        if self.mode.clone() == DashboardMode::Monitor && process_hotkey {
             self.focused_panel = Some(PanelId::Processes);
         }
 
@@ -1049,12 +1065,27 @@ impl App {
 
         self.render_title(f, title_bar);
 
-        match (self.zoomed, self.mode) {
+        match (self.zoomed, self.mode.clone()) {
             (Some(p), _) => screens::render_panel(f, main, self, p),
             (None, DashboardMode::Dashboard) => screens::dashboard::render(f, main, self),
             (None, DashboardMode::Monitor) => screens::monitor::render(f, main, self),
             (None, DashboardMode::Aesthetic) => screens::aesthetic::render(f, main, self),
             (None, DashboardMode::Workspace) => screens::workspace::render(f, main, self),
+            (None, DashboardMode::Extension(name)) => {
+                let mut rendered = false;
+                for ext in &self.ext_manager.extensions {
+                    for mut page in ext.pages() {
+                        if page.title() == name {
+                            page.render(f, main, &self.theme);
+                            rendered = true;
+                            break;
+                        }
+                    }
+                }
+                if !rendered {
+                    screens::dashboard::render(f, main, self);
+                }
+            }
         }
 
         self.render_status(f, status_bar);
@@ -1153,19 +1184,31 @@ impl App {
         }
 
         let mut right: Vec<Span> = Vec::new();
-        for m in [
+        
+        let mut modes = vec![
             DashboardMode::Dashboard,
             DashboardMode::Monitor,
             DashboardMode::Aesthetic,
             DashboardMode::Workspace,
-        ] {
+        ];
+        
+        // Append all loaded extension pages dynamically!
+        for ext in &self.ext_manager.extensions {
+            for page in ext.pages() {
+                modes.push(DashboardMode::Extension(page.title().to_string()));
+            }
+        }
+        
+        for (i, m) in modes.into_iter().enumerate() {
             let style = if m == self.mode {
                 Style::default().fg(t.bg).bg(t.accent)
             } else {
                 dim
             };
+            // Hotkey is simply (i+1) instead of hardcoded!
+            let hotkey = if i < 9 { format!("{}", i + 1) } else { format!("{}", i + 1) };
             right.push(Span::styled(
-                format!(" {} {} ", m.hotkey(), m.label()),
+                format!(" {} {} ", hotkey, m.label()),
                 style,
             ));
             right.push(Span::styled(" ", base));
@@ -1274,7 +1317,7 @@ impl App {
         if let Some(p) = self.focused_panel {
             right.push(Span::styled(format!("[{}] ", p.label()), base.fg(t.accent)));
         }
-        if self.mode == DashboardMode::Monitor {
+        if self.mode.clone() == DashboardMode::Monitor {
             let ps = &self.panel_states;
             right.push(Span::styled(
                 format!(

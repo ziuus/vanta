@@ -1,3 +1,4 @@
+pub mod extension;
 mod app;
 mod config;
 mod custom;
@@ -69,9 +70,11 @@ fn main() -> io::Result<()> {
     terminal.clear()?;
 
     let mut app = App::new(config);
+    app.ext_manager.register(Box::new(crate::extension::security::SecurityExtension));
     let res = run(&mut terminal, &mut app);
 
     widgets::music_viz::shutdown();
+    app.ext_manager.shutdown_all();
     restore_terminal();
     res
 }
