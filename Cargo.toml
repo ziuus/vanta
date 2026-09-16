@@ -26,6 +26,8 @@ ical = "0.11.0"
 rss = "2.1.2"
 extism = "1.30.0"
 directories = "6.0.0"
+clap = { version = "4.6.7", features = ["derive"] }
+sha2 = "0.11.0"
 
 [profile.release]
 opt-level = 3

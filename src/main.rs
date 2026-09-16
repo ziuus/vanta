@@ -1,3 +1,4 @@
+mod cli;
 mod theme;
 
 use std::io::{self, IsTerminal, Write};
@@ -32,12 +33,9 @@ fn print_help() {
 }
 
 fn main() -> io::Result<()> {
-    let mut args = std::env::args().skip(1);
-    if let Some(a) = args.next() {
-        match a.as_str() {
-            "-V" | "--version" => println!("vanta {}", env!("CARGO_PKG_VERSION")),
-            _ => print_help(),
-        }
+    use clap::Parser;
+    let cli_args = cli::Cli::parse();
+    if cli::handle_cli(cli_args) {
         return Ok(());
     }
 
