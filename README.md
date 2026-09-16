@@ -193,12 +193,42 @@ matrix = true
 video = true
 ```
 
-## Extensions & Custom Pages (v0.8.0+)
+## WASM Extensions (v0.10+)
 
-Vanta introduces the **V1 Extension API** and **Zero-Code Custom Pages**.
+Vanta is extensible through runtime WASM extensions. You can install completely new UI panels and capabilities created by the community *without* recompiling Vanta.
 
-### Creating Custom Pages (No Code Required)
-Add `[[pages]]` entries to `~/.config/vanta/config.toml` to build custom views with flexible grid layouts:
+### 1. Discover Extensions
+Search the community registry (hosted via the [vanta-integrations](https://github.com/ziuus/vanta-integrations) repo):
+```bash
+vanta search
+```
+```text
+Vanta Extensions (API v0.9.1)
+
+  security     Vanta Security
+               Live CVE security feeds and threat monitoring.
+               v0.1.0 (API v0.9.0) by Community
+```
+
+### 2. Install & Verify
+Install an extension. Vanta will securely download the `.wasm` artifact, verify its **SHA-256 checksum**, check API compatibility, and place it in your local extensions folder:
+```bash
+vanta install security
+```
+
+> 🔒 **Security Notice**: Extensions are sandboxed by default. Currently, extensions are granted UI and Configuration access, but are denied Network, Filesystem, and Process execution capabilities.
+
+### 3. Enable in Config
+Enable the extension so Vanta loads it on startup:
+```bash
+vanta enable security
+```
+It will automatically append to the `enabled` array in your `~/.config/vanta/config.toml`. 
+
+Start Vanta (`vanta`) and the new panel will appear in your dashboard! 
+
+### Custom Pages (No Code Required)
+You can still build custom views natively with flexible grid layouts by defining `[[pages]]` in your config:
 
 ```toml
 [[pages]]
@@ -208,12 +238,6 @@ layout = [
     ["processes", "clock"]
 ]
 ```
-
-### Using & Building Extensions
-- **Using an Extension**: Community-built extensions can be integrated into your binary from the [vanta-integrations](https://github.com/ziuus/vanta-integrations) repository and enabled via `[extensions] enabled = ["ext_id"]`.
-- **Building an Extension**: Learn how to build custom Rust pages and widgets by reading the **[Extension Developer Guide](docs/EXTENSIONS.md)** and checking **[AGENTS.md](AGENTS.md)**.
-
-> 🔒 **Security Notice**: Extensions are trusted Rust code compiled directly into Vanta. They are **NOT** sandboxed. Always inspect third-party extension source code before adding it to your build.
 
 ## Custom Widgets
 
