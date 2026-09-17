@@ -8,13 +8,15 @@ use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
 use crate::monitors::history::History;
-use crate::theme::Theme;
-use crate::widgets::meter;
-use ratatui::widgets::Sparkline;
+    use crate::theme::Theme;
+    use crate::widgets::meter;
 
 #[derive(Clone, Default)]
 pub struct CpuSnapshot {
     pub usage: f32,
+    pub user_pct: f32,
+    pub sys_pct: f32,
+    pub iowait_pct: f32,
     pub cores: Vec<f32>,
     pub load: (f64, f64, f64),
     pub freq_mhz: u64,
@@ -30,23 +32,61 @@ impl CpuSnapshot {
 }
 
 static SNAP: LazyLock<Mutex<CpuSnapshot>> = LazyLock::new(|| Mutex::new(CpuSnapshot::default()));
-static HISTORY: LazyLock<Mutex<History<240>>> = LazyLock::new(|| Mutex::new(History::new()));
+static HISTORY_USAGE: LazyLock<Mutex<History<240>>> = LazyLock::new(|| Mutex::new(History::new()));
+static HISTORY_USER: LazyLock<Mutex<History<240>>> = LazyLock::new(|| Mutex::new(History::new()));
+static HISTORY_SYS: LazyLock<Mutex<History<240>>> = LazyLock::new(|| Mutex::new(History::new()));
+static HISTORY_IOWAIT: LazyLock<Mutex<History<240>>> = LazyLock::new(|| Mutex::new(History::new()));
 
 pub fn snapshot() -> CpuSnapshot {
     SNAP.lock().unwrap().clone()
 }
 
 /// Called once per tick with a freshly refreshed sysinfo handle.
+static PREV_STAT: Mutex<Option<(f64, f64, f64, f64)>> = Mutex::new(None); // (user, sys, iowait, total)
+
 pub fn sample(sys: &sysinfo::System) {
+    let mut user_pct = 0.0;
+    let mut sys_pct = 0.0;
+    let mut iowait_pct = 0.0;
+    
+    if let Ok(stat) = fs::read_to_string("/proc/stat") {
+        if let Some(line) = stat.lines().find(|l| l.starts_with("cpu ")) {
+            let p: Vec<f64> = line.split_whitespace().skip(1).filter_map(|s| s.parse().ok()).collect();
+            if p.len() >= 8 {
+                let user = p[0] + p[1];
+                let sys_val = p[2] + p[5] + p[6];
+                let iowait = p[4];
+                let total = p.iter().sum::<f64>();
+                
+                let mut prev = PREV_STAT.lock().unwrap();
+                if let Some((p_user, p_sys, p_iowait, p_total)) = *prev {
+                    let d_total = total - p_total;
+                    if d_total > 0.0 {
+                        user_pct = ((user - p_user) / d_total * 100.0) as f32;
+                        sys_pct = ((sys_val - p_sys) / d_total * 100.0) as f32;
+                        iowait_pct = ((iowait - p_iowait) / d_total * 100.0) as f32;
+                    }
+                }
+                *prev = Some((user, sys_val, iowait, total));
+            }
+        }
+    }
+
     let la = sysinfo::System::load_average();
     let snap = CpuSnapshot {
         usage: sys.global_cpu_usage(),
+        user_pct,
+        sys_pct,
+        iowait_pct,
         cores: sys.cpus().iter().map(|c| c.cpu_usage()).collect(),
         load: (la.one, la.five, la.fifteen),
         freq_mhz: sys.cpus().iter().map(|c| c.frequency()).max().unwrap_or(0),
         temps: read_core_temps(),
     };
-    HISTORY.lock().unwrap().push(snap.usage as f64);
+    HISTORY_USAGE.lock().unwrap().push(snap.usage as f64);
+    HISTORY_USER.lock().unwrap().push(snap.user_pct as f64);
+    HISTORY_SYS.lock().unwrap().push(snap.sys_pct as f64);
+    HISTORY_IOWAIT.lock().unwrap().push(snap.iowait_pct as f64);
     *SNAP.lock().unwrap() = snap;
 }
 
@@ -138,13 +178,58 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
     }
     f.render_widget(Paragraph::new(Line::from(header)), chunks[0]);
 
-    let hist = HISTORY.lock().unwrap().recent(chunks[1].width as usize);
-    let hist_u64: Vec<u64> = hist.iter().map(|&v| v as u64).collect();
+    use ratatui::widgets::{Axis, Chart, Dataset, GraphType};
+    use ratatui::symbols;
+
+    let points = chunks[1].width as usize * 2;
+    let hist_usage = HISTORY_USAGE.lock().unwrap().recent(points);
+    let hist_user = HISTORY_USER.lock().unwrap().recent(points);
+    let hist_sys = HISTORY_SYS.lock().unwrap().recent(points);
+    let hist_io = HISTORY_IOWAIT.lock().unwrap().recent(points);
+
+    let mk_data = |h: &[f64]| -> Vec<(f64, f64)> {
+        h.iter().enumerate().map(|(i, &v)| (i as f64, v)).collect()
+    };
+
+    let data_usage = mk_data(&hist_usage);
+    let data_user = mk_data(&hist_user);
+    let data_sys = mk_data(&hist_sys);
+    let data_io = mk_data(&hist_io);
+
+    // If there is data, graph bounds will match data.len(), else 1.0 to avoid crash
+    let x_max = (data_usage.len() as f64).max(1.0);
+
+    let datasets = vec![
+        Dataset::default()
+            .name("Total")
+            .marker(symbols::Marker::Braille)
+            .graph_type(GraphType::Line)
+            .style(Style::default().fg(theme.accent))
+            .data(&data_usage),
+        Dataset::default()
+            .name("User")
+            .marker(symbols::Marker::Braille)
+            .graph_type(GraphType::Line)
+            .style(Style::default().fg(theme.secondary))
+            .data(&data_user),
+        Dataset::default()
+            .name("Sys")
+            .marker(symbols::Marker::Braille)
+            .graph_type(GraphType::Line)
+            .style(Style::default().fg(theme.yellow))
+            .data(&data_sys),
+        Dataset::default()
+            .name("IOWait")
+            .marker(symbols::Marker::Braille)
+            .graph_type(GraphType::Line)
+            .style(Style::default().fg(theme.red))
+            .data(&data_io),
+    ];
+
     f.render_widget(
-        Sparkline::default()
-            .data(&hist_u64)
-            .max(100)
-            .style(Style::default().fg(theme.accent)),
+        Chart::new(datasets)
+            .x_axis(Axis::default().bounds([0.0, x_max]))
+            .y_axis(Axis::default().bounds([0.0, 100.0])),
         chunks[1],
     );
 
