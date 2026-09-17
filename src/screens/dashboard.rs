@@ -211,9 +211,9 @@ fn panel_constraint(
             _ => 7,
         };
         if is_last && !has_flex_in_col {
-            Constraint::Min(h)
+            Constraint::Min(apply(h))
         } else {
-            Constraint::Length(h)
+            Constraint::Length(apply(h))
         }
     }
 }

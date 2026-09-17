@@ -925,9 +925,6 @@ impl App {
     }
 
     fn resize_focused_vertical(&mut self, delta: i16) {
-        if self.mode != DashboardMode::Dashboard {
-            return;
-        }
         if let Some(id) = self.focused_panel {
             let key = format!("{:?}", id).to_lowercase();
             let new_val = {
