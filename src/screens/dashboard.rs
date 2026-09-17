@@ -92,17 +92,38 @@ pub fn render_layout(f: &mut Frame, area: Rect, app: &mut App, layout: &[Vec<Str
 
         let has_flex = active_panels.iter().any(|p| is_flex_panel(p));
         let num_panels = active_panels.len();
+        
+        let mut flex_adj_total = 0;
+        for p in active_panels.iter() {
+            if is_flex_panel(p) {
+                if let Some(id) = crate::app::PanelId::from_name(p, &app.config) {
+                    let key = format!("{:?}", id).to_lowercase();
+                    flex_adj_total += app.panel_states.dash_vertical.get(&key).copied().unwrap_or(0);
+                }
+            }
+        }
+        
+        // Distribute -flex_adj_total to rigid components
+        let mut flex_remainder = -flex_adj_total;
+
         let constraints: Vec<Constraint> = active_panels
             .iter()
             .enumerate()
             .map(|(i, p)| {
-                let p_id_str = p.replace("-", "").replace("_", "").to_lowercase();
-                // We need to match what we save in app.rs. app.rs saves format!("{:?}", id).to_lowercase().
-                // To be safe we can just lookup by checking if p_id_str is a substring or something, or better yet, convert p to PanelId.
                 let mut adj = 0;
                 if let Some(id) = crate::app::PanelId::from_name(p, &app.config) {
                     let key = format!("{:?}", id).to_lowercase();
                     adj = app.panel_states.dash_vertical.get(&key).copied().unwrap_or(0);
+                }
+                if !is_flex_panel(p) && flex_remainder != 0 {
+                    // Try to give this rigid component 2 or -2 units of the remainder, or whatever is left
+                    let chunk = if flex_remainder > 0 { 
+                        flex_remainder.min(2) 
+                    } else { 
+                        flex_remainder.max(-2) 
+                    };
+                    adj += chunk;
+                    flex_remainder -= chunk;
                 }
                 panel_constraint(p, i == num_panels - 1, has_flex, mounts, main_area.height, adj)
             })

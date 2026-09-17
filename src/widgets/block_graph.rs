@@ -186,21 +186,20 @@ impl<'a> BlockGraph<'a> {
                 let cell_sub_y_base = from_bottom * 8; // bottom of this cell
                 
                 let (ch, color) = if is_dual {
-                    let mut level = 0;
                     let mut is_bottom = false;
                     // top half goes up from center
-                    if (cell_sub_y_base as f64) >= center_y {
+                    let level = if (cell_sub_y_base as f64) >= center_y {
                         let top_lit = lit1 / 2;
                         let dist_from_center = cell_sub_y_base - (center_y as usize);
-                        level = top_lit.saturating_sub(dist_from_center).min(8);
+                        top_lit.saturating_sub(dist_from_center).min(8)
                     } else {
                         // bottom half goes down from center
                         // cell_sub_y_base + 7 is the top of this cell
                         let bottom_lit = lit2 / 2;
                         let dist_from_center = (center_y as usize).saturating_sub(cell_sub_y_base + 8);
-                        level = bottom_lit.saturating_sub(dist_from_center).min(8);
                         is_bottom = true;
-                    }
+                        bottom_lit.saturating_sub(dist_from_center).min(8)
+                    };
                     if level == 0 { continue; }
                     
                     let cell_center = (from_bottom as f64 + 0.5) * 8.0;
@@ -216,7 +215,7 @@ impl<'a> BlockGraph<'a> {
                 } else if self.mirrored {
                     let half_lit = lit1 / 2;
                     let dist_from_center = ((cell_sub_y_base as f64 + 4.0) - center_y).abs() as usize;
-                    let mut level = half_lit.saturating_sub(dist_from_center.saturating_sub(4)).min(8);
+                    let level = half_lit.saturating_sub(dist_from_center.saturating_sub(4)).min(8);
                     if level == 0 { continue; }
                     let cell_center = (from_bottom as f64 + 0.5) * 8.0;
                     let dist_from_center_cells = (cell_center - center_y).abs() / 8.0;
