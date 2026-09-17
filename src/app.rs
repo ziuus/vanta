@@ -930,8 +930,12 @@ impl App {
         }
         if let Some(id) = self.focused_panel {
             let key = format!("{:?}", id).to_lowercase();
-            let entry = self.panel_states.dash_vertical.entry(key.clone()).or_insert(0);
-            *entry = (*entry + delta).clamp(-30, 30);
+            let new_val = {
+                let entry = self.panel_states.dash_vertical.entry(key.clone()).or_insert(0);
+                *entry = (*entry + delta).clamp(-30, 30);
+                *entry
+            };
+            self.toast(format!("Resized {} vertically (adj: {})", key, new_val));
         }
     }
 
