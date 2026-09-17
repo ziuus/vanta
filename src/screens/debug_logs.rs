@@ -21,7 +21,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &mut App) {
         .borders(Borders::ALL)
         .border_style(Style::default().fg(t.dim))
         .title(Span::styled(format!(" Debug Logs (Hidden) - {} ", filter_text), Style::default().fg(t.accent)))
-        .title_bottom(Span::styled(" [~] Exit  [c] Clear  [t] Filter by Target ", Style::default().fg(t.dim)));
+        .title_bottom(Span::styled(" [~] Exit  [c] Clear  [s] Save  [t] Filter by Target ", Style::default().fg(t.dim)));
 
     let logs = logger::LOGS.read().unwrap();
     
@@ -71,5 +71,29 @@ pub fn render(f: &mut Frame, area: Rect, app: &mut App) {
         );
     } else {
         f.render_widget(Paragraph::new(lines).block(b), area);
+    }
+}
+
+pub fn save_logs(app: &mut App) {
+    let logs = logger::LOGS.read().unwrap();
+    let filtered: Vec<_> = logs.iter().filter(|l| {
+        if app.panel_states.log_target.is_empty() { true } else { l.target.contains(&app.panel_states.log_target) }
+    }).collect();
+    
+    let mut out = String::new();
+    for l in &filtered {
+        out.push_str(&format!("{} {:5} [{}] {}\n", l.timestamp, l.level, l.target, l.message));
+    }
+    
+    let target_name = if app.panel_states.log_target.is_empty() {
+        "all".to_string()
+    } else {
+        app.panel_states.log_target.replace("::", "-").replace("/", "_").replace("\\", "_")
+    };
+    
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+    let path = format!("{}/vanta-logs-{}.txt", home, target_name);
+    if let Ok(_) = std::fs::write(&path, out) {
+        log::info!(target: "core", "Saved {} logs to {}", filtered.len(), path);
     }
 }

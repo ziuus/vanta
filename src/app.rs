@@ -533,6 +533,9 @@ impl App {
                     let mut logs = crate::logger::LOGS.write().unwrap();
                     logs.clear();
                 }
+                KeyCode::Char('s') => {
+                    crate::screens::debug_logs::save_logs(self);
+                }
                 KeyCode::F(12) | KeyCode::Char('~') => {
                     self.set_mode(DashboardMode::Dashboard);
                 }
@@ -563,6 +566,11 @@ impl App {
                 if self.mode == DashboardMode::DebugLogs {
                     self.set_mode(DashboardMode::Dashboard);
                 } else {
+                    if let Some(panel) = self.focused_panel {
+                        self.panel_states.log_target = format!("{:?}", panel).to_lowercase();
+                    } else {
+                        self.panel_states.log_target.clear();
+                    }
                     self.set_mode(DashboardMode::DebugLogs);
                 }
             }
