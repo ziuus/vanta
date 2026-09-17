@@ -96,7 +96,7 @@ pub fn sample() {
 
 /// Two stacked graphs (down / up), each auto-scaled to its own recent peak.
 pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
-    if area.height < 2 {
+    if area.height < 3 {
         return;
     }
     let (rx_h, tx_h, snap) = {
@@ -113,33 +113,11 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
         )
     };
 
-    let halves = Layout::vertical([Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)]).split(area);
-    let global_peak = rx_h.iter().chain(tx_h.iter()).copied().fold(0.0, f64::max).max(1.0);
-    let rows = [
-        (
-            halves[0],
-            "↓",
-            snap.rx_kbps,
-            &rx_h,
-            theme.accent,
-            snap.rx_total,
-        ),
-        (
-            halves[1],
-            "↑",
-            snap.tx_kbps,
-            &tx_h,
-            theme.secondary,
-            snap.tx_total,
-        ),
-    ];
-    for (half, arrow, rate, hist, color, total) in rows {
-        if half.height == 0 {
-            continue;
-        }
-        let split = Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).split(half);
-        let peak = global_peak;
-        let head = Line::from(vec![
+    let split = Layout::vertical([Constraint::Length(1), Constraint::Length(1), Constraint::Min(0)]).split(area);
+    let peak = rx_h.iter().chain(tx_h.iter()).copied().fold(0.0, f64::max).max(1.0);
+
+    let mk_line = |arrow: &str, rate: f64, peak: f64, color, total| {
+        let mut head = Line::from(vec![
             Span::styled(format!("{} ", arrow), Style::default().fg(color)),
             Span::styled(
                 format!("{:>10}", meter::fmt_kbps(rate)),
@@ -150,30 +128,31 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
                 Style::default().fg(theme.dim),
             ),
         ]);
-        let mut head = head;
         if area.width >= 44 {
             head.spans.push(Span::styled(
                 format!("  total {}", meter::fmt_bytes(total)),
                 Style::default().fg(theme.dim),
             ));
         }
-        f.render_widget(Paragraph::new(head), split[0]);
-        if split[1].height > 0 {
-            // dynamically color the network graph based on load relative to peak
-            let cur = hist.last().copied().unwrap_or(0.0);
-            let dynamic_color = if peak > 0.0 {
-                theme.usage(cur / peak * 100.0)
-            } else {
-                color
-            };
-            
-            // Wait, we need to pass a slice to BlockGraph
-            f.render_widget(
-                BlockGraph::new(hist)
-                    .max(peak)
-                    .colors(dynamic_color, theme.yellow, theme.red),
-                split[1],
-            );
-        }
+        head
+    };
+
+    f.render_widget(Paragraph::new(mk_line("↓", snap.rx_kbps, peak, theme.accent, snap.rx_total)), split[0]);
+    f.render_widget(Paragraph::new(mk_line("↑", snap.tx_kbps, peak, theme.secondary, snap.tx_total)), split[1]);
+
+    if split[2].height > 0 {
+        let rx_cur = rx_h.last().copied().unwrap_or(0.0);
+        let rx_dyn = if peak > 0.0 { theme.usage(rx_cur / peak * 100.0) } else { theme.accent };
+        let tx_cur = tx_h.last().copied().unwrap_or(0.0);
+        let tx_dyn = if peak > 0.0 { theme.usage(tx_cur / peak * 100.0) } else { theme.secondary };
+        
+        f.render_widget(
+            BlockGraph::new(&rx_h)
+                .data2(&tx_h)
+                .max(peak)
+                .colors(rx_dyn, theme.yellow, theme.red)
+                .colors2(tx_dyn, theme.yellow, theme.red),
+            split[2],
+        );
     }
 }
