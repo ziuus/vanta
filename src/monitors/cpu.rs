@@ -150,14 +150,22 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
     let color = theme.usage(snap.usage as f64);
     let mut header = vec![
         Span::styled(format!("{:>3.0}%", snap.usage), Style::default().fg(color)),
-        Span::styled(
-            format!(
-                "  load {:.2} {:.2} {:.2}",
-                snap.load.0, snap.load.1, snap.load.2
-            ),
-            Style::default().fg(theme.dim),
-        ),
     ];
+
+    if snap.user_pct > 0.5 || snap.sys_pct > 0.5 || snap.iowait_pct > 0.5 {
+        header.push(Span::styled(format!("  u{:.0}%", snap.user_pct), Style::default().fg(theme.secondary)));
+        header.push(Span::styled(format!(" s{:.0}%", snap.sys_pct), Style::default().fg(theme.yellow)));
+        header.push(Span::styled(format!(" w{:.0}%", snap.iowait_pct), Style::default().fg(theme.red)));
+    }
+
+    header.push(Span::styled(
+        format!(
+            "  load {:.2} {:.2} {:.2}",
+            snap.load.0, snap.load.1, snap.load.2
+        ),
+        Style::default().fg(theme.dim),
+    ));
+
     if snap.freq_mhz > 0 {
         header.push(Span::styled(
             format!("  {:.1}GHz", snap.freq_mhz as f64 / 1000.0),
@@ -170,7 +178,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
             Style::default().fg(theme.temp(t)),
         ));
     }
-    if area.width >= 56 {
+    if area.width >= 70 {
         header.push(Span::styled(
             format!("  {} threads", core_count),
             Style::default().fg(theme.dim),
@@ -178,62 +186,18 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
     }
     f.render_widget(Paragraph::new(Line::from(header)), chunks[0]);
 
-    use ratatui::widgets::{Axis, Chart, Dataset, GraphType};
-    use ratatui::symbols;
+    use ratatui::widgets::Sparkline;
 
-    let points = (chunks[1].width as usize).saturating_mul(2);
-    // Ensure bounds are strictly valid (max > 0) to avoid divide-by-zero in ratatui scaling
-    let x_max = (points.saturating_sub(1) as f64).max(1.0);
+    let hist_usage = HISTORY_USAGE.lock().unwrap().recent(chunks[1].width as usize);
+    let hist_u64: Vec<u64> = hist_usage.iter().map(|&v| v as u64).collect();
 
-    let hist_usage = HISTORY_USAGE.lock().unwrap().recent(points);
-    let hist_user = HISTORY_USER.lock().unwrap().recent(points);
-    let hist_sys = HISTORY_SYS.lock().unwrap().recent(points);
-    let hist_io = HISTORY_IOWAIT.lock().unwrap().recent(points);
-
-    // Map the history array to X coordinates that align to the RIGHT side of the chart.
-    // If we have `len` points, the oldest (index 0) is placed at `points - len`.
-    let mk_data = |h: &[f64]| -> Vec<(f64, f64)> {
-        let len = h.len();
-        let offset = points.saturating_sub(len);
-        h.iter().enumerate().map(|(i, &v)| ((offset + i) as f64, v)).collect()
-    };
-
-    let data_usage = mk_data(&hist_usage);
-    let data_user = mk_data(&hist_user);
-    let data_sys = mk_data(&hist_sys);
-    let data_io = mk_data(&hist_io);
-
-    let datasets = vec![
-        Dataset::default()
-            .name("Total")
-            .marker(symbols::Marker::Braille)
-            .graph_type(GraphType::Line)
-            .style(Style::default().fg(theme.accent))
-            .data(&data_usage),
-        Dataset::default()
-            .name("User")
-            .marker(symbols::Marker::Braille)
-            .graph_type(GraphType::Line)
-            .style(Style::default().fg(theme.secondary))
-            .data(&data_user),
-        Dataset::default()
-            .name("Sys")
-            .marker(symbols::Marker::Braille)
-            .graph_type(GraphType::Line)
-            .style(Style::default().fg(theme.yellow))
-            .data(&data_sys),
-        Dataset::default()
-            .name("IOWait")
-            .marker(symbols::Marker::Braille)
-            .graph_type(GraphType::Line)
-            .style(Style::default().fg(theme.red))
-            .data(&data_io),
-    ];
-
+    // Dynamically color the entire sparkline based on the current load.
+    // This gives an immediate visual indicator of heavy load, turning from blue to orange/red.
     f.render_widget(
-        Chart::new(datasets)
-            .x_axis(Axis::default().bounds([0.0, x_max]))
-            .y_axis(Axis::default().bounds([0.0, 100.0])),
+        Sparkline::default()
+            .data(&hist_u64)
+            .max(100)
+            .style(Style::default().fg(color)),
         chunks[1],
     );
 
