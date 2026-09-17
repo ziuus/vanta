@@ -159,11 +159,18 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
         f.render_widget(Paragraph::new(head), split[0]);
         if split[1].height > 0 {
             let u64_hist: Vec<u64> = hist.iter().map(|&v| v as u64).collect();
+            // dynamically color the network graph based on load relative to peak
+            let cur = u64_hist.last().copied().unwrap_or(0) as f64;
+            let dynamic_color = if peak > 0.0 {
+                theme.usage(cur / peak * 100.0)
+            } else {
+                color
+            };
             f.render_widget(
                 Sparkline::default()
                     .data(&u64_hist)
                     .max(peak as u64)
-                    .style(Style::default().fg(color)),
+                    .style(Style::default().fg(dynamic_color)),
                 split[1],
             );
         }

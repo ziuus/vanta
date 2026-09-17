@@ -192,16 +192,10 @@ impl Theme {
         }
     }
 
-    /// Green → yellow → red by threshold. Shared by every "usage %" readout so
-    /// colours mean the same thing everywhere.
+    /// Smooth green → yellow → red gradient by load percentage.
+    /// Shared by every "usage %" readout so colours are intensely load-reactive.
     pub fn usage(&self, pct: f64) -> Color {
-        if pct >= 90.0 {
-            self.red
-        } else if pct >= 75.0 {
-            self.yellow
-        } else {
-            self.accent
-        }
+        self.usage_ramp(pct / 100.0)
     }
 
     pub fn temp(&self, c: f64) -> Color {
