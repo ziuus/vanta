@@ -96,7 +96,15 @@ pub fn render_layout(f: &mut Frame, area: Rect, app: &mut App, layout: &[Vec<Str
             .iter()
             .enumerate()
             .map(|(i, p)| {
-                panel_constraint(p, i == num_panels - 1, has_flex, mounts, main_area.height)
+                let p_id_str = p.replace("-", "").replace("_", "").to_lowercase();
+                // We need to match what we save in app.rs. app.rs saves format!("{:?}", id).to_lowercase().
+                // To be safe we can just lookup by checking if p_id_str is a substring or something, or better yet, convert p to PanelId.
+                let mut adj = 0;
+                if let Some(id) = crate::app::PanelId::from_name(p, &app.config) {
+                    let key = format!("{:?}", id).to_lowercase();
+                    adj = app.panel_states.dash_vertical.get(&key).copied().unwrap_or(0);
+                }
+                panel_constraint(p, i == num_panels - 1, has_flex, mounts, main_area.height, adj)
             })
             .collect();
 
@@ -142,12 +150,17 @@ fn panel_constraint(
     has_flex_in_col: bool,
     mounts: u16,
     total_height: u16,
+    adjustment: i16,
 ) -> Constraint {
+    let apply = |base: u16| -> u16 {
+        (base as i16 + adjustment).max(3) as u16
+    };
+
     if is_flex_panel(name) {
         if name.eq_ignore_ascii_case("cpu") {
-            Constraint::Min(8)
+            Constraint::Min(apply(8))
         } else {
-            Constraint::Min(6)
+            Constraint::Min(apply(6))
         }
     } else {
         let h = match name.to_lowercase().as_str() {

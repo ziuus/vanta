@@ -232,6 +232,7 @@ pub struct PanelStates {
     pub pinned_media_input: String,
     pub status_selected: usize,
     pub dash_ratios: [u16; 3],
+    pub dash_vertical: std::collections::HashMap<String, i16>,
     pub work_ratio: u16,
     pub process_selected_pid: Option<u32>,
     pub process_collapsed: HashSet<u32>,
@@ -264,6 +265,7 @@ impl Default for PanelStates {
             pinned_media_input: String::new(),
             status_selected: 0,
             dash_ratios: [33, 34, 33],
+dash_vertical: std::collections::HashMap::new(),
             work_ratio: 25,
             process_selected_pid: None,
             process_collapsed: HashSet::new(),
@@ -550,6 +552,12 @@ impl App {
             }
             KeyCode::Right if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.resize_focused(2)
+            }
+            KeyCode::Up if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.resize_focused_vertical(2)
+            }
+            KeyCode::Down if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.resize_focused_vertical(-2)
             }
             KeyCode::Char('e') | KeyCode::Char('E')
                 if self.focused_panel != Some(PanelId::PinnedMedia) =>
@@ -913,6 +921,20 @@ impl App {
             crate::monitors::agenda::rescan();
             let snap_files = crate::monitors::files::snapshot();
             crate::monitors::files::chdir(&snap_files.current_dir);
+        }
+    }
+
+    fn resize_focused_vertical(&mut self, delta: i16) {
+        if self.mode != DashboardMode::Dashboard {
+            return;
+        }
+        if let Some(id) = self.focused_panel {
+             // we might need a way to get the string representation
+            // but PanelId derives Display or we can just format it? Let's check PanelId.
+            // Wait, we can just use format!("{:?}", id).to_lowercase()
+            let key = format!("{:?}", id).to_lowercase();
+            let entry = self.panel_states.dash_vertical.entry(key).or_insert(0);
+            *entry = (*entry + delta).clamp(-30, 30);
         }
     }
 
