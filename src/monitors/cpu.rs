@@ -181,23 +181,27 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
     use ratatui::widgets::{Axis, Chart, Dataset, GraphType};
     use ratatui::symbols;
 
-    let points = chunks[1].width as usize * 2;
+    let points = (chunks[1].width as usize).saturating_mul(2);
+    // Ensure bounds are strictly valid (max > 0) to avoid divide-by-zero in ratatui scaling
+    let x_max = (points.saturating_sub(1) as f64).max(1.0);
+
     let hist_usage = HISTORY_USAGE.lock().unwrap().recent(points);
     let hist_user = HISTORY_USER.lock().unwrap().recent(points);
     let hist_sys = HISTORY_SYS.lock().unwrap().recent(points);
     let hist_io = HISTORY_IOWAIT.lock().unwrap().recent(points);
 
+    // Map the history array to X coordinates that align to the RIGHT side of the chart.
+    // If we have `len` points, the oldest (index 0) is placed at `points - len`.
     let mk_data = |h: &[f64]| -> Vec<(f64, f64)> {
-        h.iter().enumerate().map(|(i, &v)| (i as f64, v)).collect()
+        let len = h.len();
+        let offset = points.saturating_sub(len);
+        h.iter().enumerate().map(|(i, &v)| ((offset + i) as f64, v)).collect()
     };
 
     let data_usage = mk_data(&hist_usage);
     let data_user = mk_data(&hist_user);
     let data_sys = mk_data(&hist_sys);
     let data_io = mk_data(&hist_io);
-
-    // If there is data, graph bounds will match data.len(), else 1.0 to avoid crash
-    let x_max = (data_usage.len() as f64).max(1.0);
 
     let datasets = vec![
         Dataset::default()
