@@ -141,6 +141,13 @@ pub struct UiConfig {
     pub gauge_style: String,
     /// History graph style: block | braille.
     pub graph_style: String,
+    /// Transparent background
+    #[serde(default = "default_true")]
+    pub transparent: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for UiConfig {
@@ -163,6 +170,7 @@ impl Default for UiConfig {
             visualizer: "bars".to_string(),
             gauge_style: "arc".to_string(),
             graph_style: "block".to_string(),
+            transparent: true,
         }
     }
 }

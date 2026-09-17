@@ -54,6 +54,7 @@ pub struct BlockGraph<'a> {
     color_safe: Color,
     color_warn: Color,
     color_crit: Color,
+    mirrored: bool,
 }
 
 impl<'a> BlockGraph<'a> {
@@ -65,7 +66,13 @@ impl<'a> BlockGraph<'a> {
             color_safe: Color::Green,
             color_warn: Color::Yellow,
             color_crit: Color::Red,
+            mirrored: false,
         }
+    }
+
+    pub fn mirrored(mut self, mirrored: bool) -> Self {
+        self.mirrored = mirrored;
+        self
     }
 
     pub fn max(mut self, max: f64) -> Self {
@@ -146,11 +153,13 @@ impl<'a> BlockGraph<'a> {
         }
     }
 
-    fn render_braille(&self, area: Rect, buf: &mut Buffer) {
+        fn render_braille(&self, area: Rect, buf: &mut Buffer) {
         let cols = area.width as usize;
         let sub_w = cols * 2; // two dot-columns per cell
         let sub_h = area.height as usize * 4; // four dot-rows per cell
         let span = (self.max - self.min).max(f64::EPSILON);
+        
+        let center_y = sub_h as f64 / 2.0;
 
         // Lit height, in sub-rows from the bottom, for each dot-column.
         let lit: Vec<usize> = (0..sub_w)
@@ -177,17 +186,41 @@ impl<'a> BlockGraph<'a> {
                 for k in 0..4 {
                     // k=0 is the top dot-row of the cell.
                     let sub_from_bottom = from_bottom_cell * 4 + (3 - k);
-                    if lit[lx] > sub_from_bottom {
-                        bits |= BRAILLE_LEFT[k];
-                    }
-                    if lit[rx] > sub_from_bottom {
-                        bits |= BRAILLE_RIGHT[k];
+                    
+                    if self.mirrored {
+                        // In mirrored mode, check if sub_from_bottom is within the lit band around center
+                        let lx_half = lit[lx] as f64 / 2.0;
+                        if (sub_from_bottom as f64 - center_y).abs() <= lx_half {
+                            bits |= BRAILLE_LEFT[k];
+                        }
+                        let rx_half = lit[rx] as f64 / 2.0;
+                        if (sub_from_bottom as f64 - center_y).abs() <= rx_half {
+                            bits |= BRAILLE_RIGHT[k];
+                        }
+                    } else {
+                        if lit[lx] > sub_from_bottom {
+                            bits |= BRAILLE_LEFT[k];
+                        }
+                        if lit[rx] > sub_from_bottom {
+                            bits |= BRAILLE_RIGHT[k];
+                        }
                     }
                 }
                 if bits == 0 {
                     continue;
                 }
-                let cf = (from_bottom_cell as f64 + 0.5) / filled_cells;
+                
+                // For color, calculate distance from base (or center)
+                let cf = if self.mirrored {
+                    let cell_center = (from_bottom_cell as f64 + 0.5) * 4.0;
+                    let dist_from_center_cells = (cell_center - center_y).abs() / 4.0;
+                    // cf is 0 at center, 1 at the outer tip of the lit band
+                    let max_dist = (filled_cells / 2.0).max(f64::EPSILON);
+                    dist_from_center_cells / max_dist
+                } else {
+                    (from_bottom_cell as f64 + 0.5) / filled_cells
+                };
+                
                 let color = self.cell_color(t, cf);
                 let ch = char::from_u32(0x2800 + bits as u32).unwrap_or(' ');
                 let (px, py) = (area.left() + cx as u16, area.top() + cy as u16);

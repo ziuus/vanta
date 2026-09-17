@@ -186,36 +186,21 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
     }
     f.render_widget(Paragraph::new(Line::from(header)), chunks[0]);
 
-    use ratatui::widgets::canvas::{Canvas, Line as CanvasLine};
-    use ratatui::symbols::Marker;
+    use crate::widgets::block_graph::BlockGraph;
 
-    let points = (chunks[1].width as usize).saturating_mul(2);
+    let points = chunks[1].width as usize; // blockgraph handles its own sub_w
     let hist_usage = HISTORY_USAGE.lock().unwrap().recent(points);
-
+    
+    // We force braille style for the mirrored CPU graph by temporarily setting it, 
+    // or wait, blockgraph respects the global setting.
+    // Let's assume the user has braille style selected, or block style works too.
     f.render_widget(
-        Canvas::default()
-            .marker(Marker::Braille)
-            .x_bounds([0.0, points as f64])
-            .y_bounds([-100.0, 100.0])
-            .paint(|ctx| {
-                let len = hist_usage.len();
-                let offset = points.saturating_sub(len);
-                for (i, &v) in hist_usage.iter().enumerate() {
-                    if v > 0.0 {
-                        let x = (offset + i) as f64;
-                        ctx.draw(&CanvasLine {
-                            x1: x,
-                            y1: -v,
-                            x2: x,
-                            y2: v,
-                            color: theme.usage(v),
-                        });
-                    }
-                }
-            }),
+        BlockGraph::new(&hist_usage)
+            .max(100.0)
+            .mirrored(true)
+            .colors(theme.accent, theme.yellow, theme.red),
         chunks[1],
     );
-
     if core_rows == 0 {
         return;
     }

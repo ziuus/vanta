@@ -1117,10 +1117,13 @@ impl App {
         self.custom_widgets.tick();
 
         let area = f.area();
-        f.render_widget(
-            ratatui::widgets::Block::default().style(Style::default().bg(self.theme.bg)),
-            area,
-        );
+        
+        if !self.config.ui.transparent {
+            f.render_widget(
+                ratatui::widgets::Block::default().style(Style::default().bg(self.theme.bg)),
+                area,
+            );
+        }
         let [title_bar, main, status_bar] = Layout::vertical([
             Constraint::Length(1),
             Constraint::Min(0),
