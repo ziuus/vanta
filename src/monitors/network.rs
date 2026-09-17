@@ -10,7 +10,7 @@ use ratatui::Frame;
 use crate::monitors::history::History;
 use crate::theme::Theme;
 use crate::widgets::meter;
-use ratatui::widgets::Sparkline;
+use crate::widgets::block_graph::BlockGraph;
 
 const HIST: usize = 240;
 
@@ -114,6 +114,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
     };
 
     let halves = Layout::vertical([Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)]).split(area);
+    let global_peak = rx_h.iter().chain(tx_h.iter()).copied().fold(0.0, f64::max).max(1.0);
     let rows = [
         (
             halves[0],
@@ -137,7 +138,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
             continue;
         }
         let split = Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).split(half);
-        let peak = hist.iter().copied().fold(0.0, f64::max).max(1.0);
+        let peak = global_peak;
         let head = Line::from(vec![
             Span::styled(format!("{} ", arrow), Style::default().fg(color)),
             Span::styled(
@@ -158,19 +159,19 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
         }
         f.render_widget(Paragraph::new(head), split[0]);
         if split[1].height > 0 {
-            let u64_hist: Vec<u64> = hist.iter().map(|&v| v as u64).collect();
             // dynamically color the network graph based on load relative to peak
-            let cur = u64_hist.last().copied().unwrap_or(0) as f64;
+            let cur = hist.last().copied().unwrap_or(0.0);
             let dynamic_color = if peak > 0.0 {
                 theme.usage(cur / peak * 100.0)
             } else {
                 color
             };
+            
+            // Wait, we need to pass a slice to BlockGraph
             f.render_widget(
-                Sparkline::default()
-                    .data(&u64_hist)
-                    .max(peak as u64)
-                    .style(Style::default().fg(dynamic_color)),
+                BlockGraph::new(hist)
+                    .max(peak)
+                    .colors(dynamic_color, theme.yellow, theme.red),
                 split[1],
             );
         }
