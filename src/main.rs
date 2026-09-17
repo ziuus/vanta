@@ -23,6 +23,8 @@ fn restore_terminal() {
 
 
 fn main() -> io::Result<()> {
+    vanta::logger::init();
+    log::info!(target: "core", "Vanta started (v{})", env!("CARGO_PKG_VERSION"));
     use clap::Parser;
     let cli_args = cli::Cli::parse();
     if cli::handle_cli(cli_args) {

@@ -129,6 +129,7 @@ impl PanelId {
                 (PanelId::Visualizer, w.music_viz),
             ],
             DashboardMode::Extension(_) => vec![],
+            DashboardMode::DebugLogs => vec![],
         };
         list.into_iter()
             .filter(|(_, on)| *on)
@@ -214,6 +215,8 @@ pub struct PanelStates {
     pub process_search: String,
     pub process_search_active: bool,
     pub process_tree_mode: bool,
+    pub log_target: String,
+    pub log_target_input_active: bool,
     pub process_compact_cmd: bool,
     pub writer_scroll: usize,
     pub writer_selected: usize,
@@ -244,6 +247,8 @@ impl Default for PanelStates {
             process_search: String::new(),
             process_search_active: false,
             process_tree_mode: false,
+            log_target: String::new(),
+            log_target_input_active: false,
             process_compact_cmd: true,
             writer_scroll: 0,
             writer_selected: 0,
@@ -433,6 +438,22 @@ impl App {
             }
             return;
         }
+        if ps.log_target_input_active {
+            match key.code {
+                KeyCode::Esc | KeyCode::Enter => {
+                    ps.log_target_input_active = false;
+                }
+                KeyCode::Backspace => {
+                    ps.log_target.pop();
+                }
+                KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    ps.log_target.push(c);
+                }
+                _ => {}
+            }
+            return;
+        }
+
         if ps.task_input_active {
             match key.code {
                 KeyCode::Esc => {
@@ -502,6 +523,24 @@ impl App {
             return;
         }
 
+        if self.mode == DashboardMode::DebugLogs {
+            match key.code {
+                KeyCode::Char('t') => {
+                    self.panel_states.log_target_input_active = true;
+                    self.panel_states.log_target.clear();
+                }
+                KeyCode::Char('c') => {
+                    let mut logs = crate::logger::LOGS.write().unwrap();
+                    logs.clear();
+                }
+                KeyCode::F(12) | KeyCode::Char('~') => {
+                    self.set_mode(DashboardMode::Dashboard);
+                }
+                _ => {}
+            }
+            return;
+        }
+
         match key.code {
             KeyCode::Left if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.resize_focused(-2)
@@ -520,6 +559,13 @@ impl App {
             }
             KeyCode::Char('?') | KeyCode::F(1) => self.show_help = true,
             KeyCode::Char('S') | KeyCode::Char(',') => self.show_settings = true,
+            KeyCode::F(12) | KeyCode::Char('~') => {
+                if self.mode == DashboardMode::DebugLogs {
+                    self.set_mode(DashboardMode::Dashboard);
+                } else {
+                    self.set_mode(DashboardMode::DebugLogs);
+                }
+            }
             KeyCode::Char(c) if c.is_ascii_digit() => {
                 let n = c.to_digit(10).unwrap() as usize;
                 let mut modes = vec![
@@ -1082,6 +1128,7 @@ impl App {
             (None, DashboardMode::Monitor) => screens::monitor::render(f, main, self),
             (None, DashboardMode::Aesthetic) => screens::aesthetic::render(f, main, self),
             (None, DashboardMode::Workspace) => screens::workspace::render(f, main, self),
+            (None, DashboardMode::DebugLogs) => screens::debug_logs::render(f, main, self),
             (None, DashboardMode::Extension(name)) => {
                 let mut rendered = false;
                 for ext in &self.ext_manager.extensions {

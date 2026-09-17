@@ -1,3 +1,4 @@
+pub mod debug_logs;
 pub mod aesthetic;
 pub mod dashboard;
 pub mod help;

@@ -7,6 +7,7 @@ pub enum DashboardMode {
     Monitor,
     Aesthetic,
     Workspace,
+    DebugLogs,
     Extension(String),
 }
 
@@ -17,6 +18,7 @@ impl DashboardMode {
             Self::Monitor => "Monitor",
             Self::Aesthetic => "Aesthetic",
             Self::Workspace => "Workspace",
+            Self::DebugLogs => "Debug Logs",
             Self::Extension(name) => name,
         }
     }
@@ -30,6 +32,7 @@ impl DashboardMode {
             "workspace" | "writer" => Self::Workspace,
             "processes" => Self::Monitor,
             "media" => Self::Aesthetic,
+            "debug" | "logs" => Self::DebugLogs,
             // If it's none of the above, we map it to Extension (or fallback to Dashboard if needed).
             // For safety, we fallback to Dashboard for unknown ones right now.
             other => Self::Extension(other.to_string()),
@@ -42,6 +45,7 @@ impl DashboardMode {
             Self::Monitor => "monitor",
             Self::Aesthetic => "aesthetic",
             Self::Workspace => "workspace",
+            Self::DebugLogs => "logs",
             Self::Extension(name) => name,
         }
     }

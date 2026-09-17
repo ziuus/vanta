@@ -1,6 +1,6 @@
 [package]
 name = "vanta"
-version = "0.10.0"
+version = "0.10.2"
 edition = "2021"
 description = "Aesthetic Rust TUI system dashboard — monitoring meets flex widgets"
 authors = ["zius"]
@@ -28,6 +28,7 @@ extism = "1.30.0"
 directories = "6.0.0"
 clap = { version = "4.6.7", features = ["derive"] }
 sha2 = "0.11.0"
+log = "0.4.34"
 
 [profile.release]
 opt-level = 3

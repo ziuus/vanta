@@ -1,4 +1,6 @@
+
 #![allow(dead_code)]
+pub mod logger;
 pub mod protocol;
 pub mod ui_renderer;
 pub mod app;

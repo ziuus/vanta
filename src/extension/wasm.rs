@@ -19,6 +19,7 @@ pub struct WasmExtension {
 
 impl WasmExtension {
     pub fn new(path: PathBuf) -> Result<Self, extism::Error> {
+        log::info!(target: "extension", "Loading WASM extension from {:?}", path);
         let wasm = Wasm::file(&path);
         // Set a strict 10ms timeout on execution so WASM plugins cannot stall the Vanta render loop
         let manifest = Manifest::new([wasm]).with_timeout(std::time::Duration::from_millis(10));

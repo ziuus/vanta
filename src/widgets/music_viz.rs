@@ -201,7 +201,19 @@ fn detect_monitor_source() -> Option<String> {
         .ok()?;
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    // Prefer a monitor that's actively RUNNING/IDLE (audio flowing right now).
+    // 1. Get the default sink first. If it exists and has a monitor, that's our best bet.
+    let mut default_monitor = None;
+    if let Ok(out) = Command::new("pactl").args(["get-default-sink"]).output() {
+        let sink = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if !sink.is_empty() {
+            default_monitor = Some(format!("{sink}.monitor"));
+        }
+    }
+
+    let mut running_monitor = None;
+    let mut idle_monitor = None;
+    let mut any_monitor = None;
+
     for line in stdout.lines() {
         let parts: Vec<&str> = line.split('\t').collect();
         if parts.len() < 4 {
@@ -209,34 +221,42 @@ fn detect_monitor_source() -> Option<String> {
         }
         let name = parts[1];
         let state = parts[3];
-        if name.ends_with(".monitor") && (state == "RUNNING" || state == "IDLE") {
-            return Some(name.to_string());
-        }
-    }
 
-    // Nothing active (all SUSPENDED, e.g. no audio yet). Bind to the default
-    // sink's monitor so cava still connects on PipeWire — bare "auto" often
-    // fails to bind and leaves the bars dead.
-    if let Ok(out) = Command::new("pactl").args(["get-default-sink"]).output() {
-        let sink = String::from_utf8_lossy(&out.stdout).trim().to_string();
-        if !sink.is_empty() {
-            let monitor = format!("{sink}.monitor");
-            // Confirm the monitor exists in the source list before using it.
-            if stdout.lines().any(|l| l.contains(&monitor)) {
-                return Some(monitor);
+        if name.ends_with(".monitor") {
+            // If this is the default monitor and it's not explicitly suspended, use it right away!
+            if Some(name) == default_monitor.as_deref() && state != "SUSPENDED" {
+                return Some(name.to_string());
+            }
+            if state == "RUNNING" && running_monitor.is_none() {
+                running_monitor = Some(name.to_string());
+            } else if state == "IDLE" && idle_monitor.is_none() {
+                idle_monitor = Some(name.to_string());
+            }
+            if any_monitor.is_none() {
+                any_monitor = Some(name.to_string());
             }
         }
     }
 
-    // Last resort: any .monitor at all, regardless of state.
-    for line in stdout.lines() {
-        let parts: Vec<&str> = line.split('\t').collect();
-        if parts.len() >= 2 && parts[1].ends_with(".monitor") {
-            return Some(parts[1].to_string());
+    // 2. If default sink wasn't active, pick the first explicitly RUNNING monitor
+    if let Some(m) = running_monitor {
+        return Some(m);
+    }
+
+    // 3. Pick the first explicitly IDLE monitor
+    if let Some(m) = idle_monitor {
+        return Some(m);
+    }
+
+    // 4. Fallback to default sink monitor even if it's suspended, so Pipewire connects when it wakes
+    if let Some(dm) = default_monitor {
+        if stdout.lines().any(|l| l.contains(&dm)) {
+            return Some(dm);
         }
     }
 
-    None
+    // 5. Last resort
+    any_monitor
 }
 
 fn read_cava_bars() -> Vec<f32> {
