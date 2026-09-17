@@ -152,6 +152,10 @@ Every key, on screen, on any page.
 | `<` `>` | Volume down / up |
 | `?` | Help overlay |
 | `q` | Quit |
+| `~` / `F12` | Toggle Debug Logs overlay (`s` saves them to file) |
+| `S` / `,` | Open Settings overlay |
+| `Ctrl + ←/→` | Resize dashboard columns horizontally (when focused) |
+| `Ctrl + ↑/↓` | Resize dashboard components vertically (when focused) |
 
 **Processes (Monitor):** `↑↓ PgUp PgDn Home End` select · `/` filter (`Enter` keeps, `Esc` clears) · `s` sort field · `r` reverse · `t` tree · `←→` fold · `c` full command · `k` SIGTERM · `K` SIGKILL (press twice to confirm, `x` cancels)
 
