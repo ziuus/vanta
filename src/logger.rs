@@ -19,12 +19,6 @@ impl Log for MemoryLogger {
 
     fn log(&self, record: &Record) {
         if self.enabled(record.metadata()) {
-            let msg = format!("[{}] {}", record.target(), record.args());
-            if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open("/tmp/vanta_debug.log") {
-                use std::io::Write;
-                let _ = writeln!(file, "{}", msg);
-            }
-
             let mut logs = LOGS.write().unwrap();
             logs.push(LogEntry {
                 level: record.level(),
@@ -32,10 +26,6 @@ impl Log for MemoryLogger {
                 message: format!("{}", record.args()),
                 timestamp: chrono::Local::now().format("%H:%M:%S").to_string(),
             });
-            if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open("/tmp/vanta_debug.log") {
-                use std::io::Write;
-                let _ = writeln!(file, "Pushed to LOGS, new len: {}", logs.len());
-            }
             if logs.len() > 1000 {
                 logs.remove(0);
             }
