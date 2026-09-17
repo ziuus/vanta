@@ -547,16 +547,16 @@ impl App {
         }
 
         match key.code {
-            KeyCode::Left if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            KeyCode::Left | KeyCode::Char('h') | KeyCode::Char('H') if key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SHIFT) => {
                 self.resize_focused(-2)
             }
-            KeyCode::Right if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            KeyCode::Right | KeyCode::Char('l') | KeyCode::Char('L') if key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SHIFT) => {
                 self.resize_focused(2)
             }
-            KeyCode::Up if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            KeyCode::Up | KeyCode::Char('k') | KeyCode::Char('K') if key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SHIFT) => {
                 self.resize_focused_vertical(2)
             }
-            KeyCode::Down if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            KeyCode::Down | KeyCode::Char('j') | KeyCode::Char('J') if key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SHIFT) => {
                 self.resize_focused_vertical(-2)
             }
             KeyCode::Char('e') | KeyCode::Char('E')
@@ -929,11 +929,8 @@ impl App {
             return;
         }
         if let Some(id) = self.focused_panel {
-             // we might need a way to get the string representation
-            // but PanelId derives Display or we can just format it? Let's check PanelId.
-            // Wait, we can just use format!("{:?}", id).to_lowercase()
             let key = format!("{:?}", id).to_lowercase();
-            let entry = self.panel_states.dash_vertical.entry(key).or_insert(0);
+            let entry = self.panel_states.dash_vertical.entry(key.clone()).or_insert(0);
             *entry = (*entry + delta).clamp(-30, 30);
         }
     }
