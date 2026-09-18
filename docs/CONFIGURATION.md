@@ -28,6 +28,42 @@ matrix = true
 video = true
 ```
 
+## Dashboard Layout
+
+You can completely customize the layout of the main Dashboard (Page 1) by defining a `[dashboard]` block in your `config.toml`. 
+
+The `layout` parameter is an array of columns. Each column is an array of widget IDs arranged vertically.
+
+```toml
+[dashboard]
+preset = "custom"
+layout = [
+    # Column 1 (Left)
+    ["system", "gauges", "cpu", "storage"], 
+    
+    # Column 2 (Middle)
+    ["clock", "media", "visualizer", "processes"], 
+    
+    # Column 3 (Right)
+    ["status", "weather", "memory", "network", "calendar"]
+]
+```
+
+### Swapping Widgets
+You can remove widgets, rearrange them, or replace them entirely! If you install a community WASM extension (e.g., `coin`), or create a `[[custom_widgets]]` entry with `id = "pi_temp"`, you can simply drop that ID directly into the layout.
+
+For example, to replace the semi-circle `gauges` with a spinning 3D `coin` extension:
+```toml
+layout = [
+    ["system", "coin", "cpu", "storage"], 
+    # ...
+]
+```
+
+**Built-in Widget IDs:**
+`system`, `gauges`, `cpu`, `storage`, `clock`, `media`, `visualizer`, `processes`, `status`, `weather`, `memory`, `network`, `calendar`.
+
+
 ## WASM Extensions (v0.10+)
 
 Vanta is extensible through runtime WASM extensions. You can install completely new UI panels and capabilities created by the community *without* recompiling Vanta.
