@@ -1,0 +1,3 @@
+pub fn parse_color(hex: &str) -> Option<ratatui::style::Color> {
+    // ...
+}

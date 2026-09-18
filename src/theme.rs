@@ -1,8 +1,16 @@
 #![allow(dead_code)]
 use ratatui::style::Color;
+use std::collections::HashMap;
+use std::sync::LazyLock;
+use std::fs;
+use std::path::PathBuf;
+use serde::Deserialize;
 
-/// Named palettes, in the order `T` cycles through them.
-pub const THEME_NAMES: [&str; 8] = [
+
+
+
+
+pub const BUILTIN_THEMES: [&str; 8] = [
     "dark",
     "catppuccin",
     "tokyo-night",
@@ -12,6 +20,88 @@ pub const THEME_NAMES: [&str; 8] = [
     "light",
     "solarized-light",
 ];
+
+#[derive(Deserialize)]
+struct CustomTheme {
+    bg: String,
+    accent: String,
+    secondary: String,
+    surface: String,
+    text: String,
+    dim: String,
+    green: String,
+    yellow: String,
+    red: String,
+}
+
+fn parse_hex(hex: &str) -> Option<Color> {
+    let hex = hex.trim_start_matches('#');
+    if hex.len() == 6 {
+        let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+        let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+        let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+        Some(rgb(r, g, b))
+    } else {
+        None
+    }
+}
+
+impl CustomTheme {
+    fn to_theme(&self) -> Option<Theme> {
+        Some(Theme {
+            bg: parse_hex(&self.bg)?,
+            accent: parse_hex(&self.accent)?,
+            secondary: parse_hex(&self.secondary)?,
+            surface: parse_hex(&self.surface)?,
+            text: parse_hex(&self.text)?,
+            dim: parse_hex(&self.dim)?,
+            green: parse_hex(&self.green)?,
+            yellow: parse_hex(&self.yellow)?,
+            red: parse_hex(&self.red)?,
+        })
+    }
+}
+
+static CUSTOM_THEMES: LazyLock<HashMap<String, Theme>> = LazyLock::new(|| {
+    let mut map = HashMap::new();
+    let mut dir = if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
+        PathBuf::from(xdg)
+    } else if let Ok(home) = std::env::var("HOME") {
+        let mut p = PathBuf::from(home);
+        p.push(".config");
+        p
+    } else {
+        PathBuf::from(".config")
+    };
+    dir.push("vanta");
+    dir.push("themes");
+    
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|s| s.to_str()) == Some("toml") {
+                if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                    if let Ok(content) = fs::read_to_string(&path) {
+                        if let Ok(ct) = toml::from_str::<CustomTheme>(&content) {
+                            if let Some(theme) = ct.to_theme() {
+                                map.insert(stem.to_string(), theme);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    map
+});
+
+pub fn theme_names() -> Vec<String> {
+    let mut names: Vec<String> = BUILTIN_THEMES.iter().map(|s| s.to_string()).collect();
+    let mut custom: Vec<String> = CUSTOM_THEMES.keys().cloned().collect();
+    custom.sort();
+    names.extend(custom);
+    names
+}
 
 #[derive(Clone)]
 pub struct Theme {
@@ -50,6 +140,9 @@ pub fn blend(a: Color, b: Color, t: f32) -> Color {
 
 impl Theme {
     pub fn from_name(name: &str) -> Self {
+        if let Some(custom) = CUSTOM_THEMES.get(name) {
+            return custom.clone();
+        }
         match name {
             "light" => Self::light(),
             "dracula" => Self::dracula(),
@@ -63,9 +156,10 @@ impl Theme {
     }
 
     /// Name that follows `current` in the cycle order.
-    pub fn next_name(current: &str) -> &'static str {
-        let idx = THEME_NAMES.iter().position(|&n| n == current).unwrap_or(0);
-        THEME_NAMES[(idx + 1) % THEME_NAMES.len()]
+    pub fn next_name(current: &str) -> String {
+        let names = theme_names();
+        let idx = names.iter().position(|n| n == current).unwrap_or(0);
+        names[(idx + 1) % names.len()].clone()
     }
 
     pub fn dark() -> Self {

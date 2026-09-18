@@ -5,7 +5,7 @@ use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
 use ratatui::Frame;
 
 use crate::config::{self, Config};
-use crate::theme::{Theme, THEME_NAMES};
+use crate::theme::Theme;
 
 fn centered(area: Rect, w: u16, h: u16) -> Rect {
     let w = w.min(area.width);
@@ -31,7 +31,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, config: &Config) {
     let head = |s: &str| Line::from(Span::styled(format!(" {}", s), base.fg(theme.secondary)));
     let blank = Line::from(Span::styled("", base));
 
-    let themes = THEME_NAMES.join(", ");
+    let themes = crate::theme::theme_names().join(", ");
     let lines = vec![
         head("pages"),
         key("1 2 3", "dashboard · monitor · aesthetic"),

@@ -351,7 +351,7 @@ impl App {
     pub fn cycle_theme(&mut self) {
         let next = Theme::next_name(&self.config.ui.theme);
         self.config.ui.theme = next.to_string();
-        self.theme = Theme::from_name(next);
+        self.theme = Theme::from_name(&next);
         self.config.save();
         self.toast(format!("theme · {}", next));
     }
