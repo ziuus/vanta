@@ -1138,7 +1138,8 @@ impl App {
 
         let area = f.area();
         
-        if !self.config.ui.transparent {
+        let is_transparent = self.config.ui.transparent.unwrap_or_else(|| !self.theme.is_light());
+        if !is_transparent {
             f.render_widget(
                 ratatui::widgets::Block::default().style(Style::default().bg(self.theme.bg)),
                 area,

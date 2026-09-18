@@ -138,6 +138,13 @@ impl Theme {
         }
     }
 
+    pub fn is_light(&self) -> bool {
+        // A simple heuristic for truecolor: if background RGB average > 128, it's light.
+        // Wait, we know the exact light themes! But a heuristic handles custom themes too.
+        let Color::Rgb(r, g, b) = self.bg else { return false };
+        (r as u16 + g as u16 + b as u16) / 3 > 128
+    }
+
     pub fn dracula() -> Self {
         Self {
             bg: rgb(40, 42, 54),

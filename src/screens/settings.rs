@@ -23,6 +23,7 @@ pub enum SettingType {
     ClockFont,
     ClockStyle,
     Theme,
+    Transparent,
     GaugeStyle,
     GraphStyle,
     Visualizer,
@@ -47,6 +48,7 @@ pub enum SettingType {
 pub const SETTINGS_ITEMS: &[(SettingType, &str)] = &[
     (SettingType::DashboardPreset, "Dashboard Layout"),
     (SettingType::Theme, "Theme"),
+    (SettingType::Transparent, "Transparent Background"),
     (SettingType::GaugeStyle, "Gauge Style"),
     (SettingType::GraphStyle, "Graph Style"),
     (SettingType::Visualizer, "Visualizer"),
@@ -106,6 +108,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
         let val_str = match stype {
             SettingType::DashboardPreset => app.config.dashboard.preset.clone(),
             SettingType::Theme => app.config.ui.theme.clone(),
+            SettingType::Transparent => { let c = app.config.ui.transparent.unwrap_or_else(|| !app.theme.is_light()); if c { "on".to_string() } else { "off".to_string() } },
             SettingType::GaugeStyle => app.config.ui.gauge_style.clone(),
             SettingType::GraphStyle => app.config.ui.graph_style.clone(),
             SettingType::Visualizer => app.config.ui.visualizer.clone(),
@@ -295,9 +298,11 @@ fn change_setting(app: &mut App, forward: bool) {
         }
         SettingType::Theme => {
             app.cycle_theme();
-            // cycle_theme already saves and toasts, but we want modal to stay open
-            // Theme cycling goes forward only via cycle_theme?
-            // Wait, we can implement backwards by iterating themes, but cycle_theme is sufficient
+        }
+        SettingType::Transparent => {
+            let current = app.config.ui.transparent.unwrap_or_else(|| !app.theme.is_light());
+            app.config.ui.transparent = Some(!current);
+            app.config.save();
         }
         SettingType::GaugeStyle => {
             crate::widgets::gauge::cycle_style();
