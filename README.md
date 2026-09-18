@@ -169,6 +169,26 @@ Every key, on screen, on any page.
 
 Cycle with `T` — your choice is written back to the config file.
 
+### Custom Themes
+
+You can easily load custom themes dynamically without recompiling Vanta.
+
+1. Create a `themes` folder inside your config directory (e.g. `~/.config/vanta/themes/`).
+2. Drop in a `.toml` file with your theme name (e.g., `cyberpunk.toml`).
+3. Define your colors using hex codes:
+   ```toml
+   bg = "#000000"
+   accent = "#00ff00"
+   secondary = "#ff00ff"
+   surface = "#111111"
+   text = "#ffffff"
+   dim = "#555555"
+   green = "#00ff00"
+   yellow = "#ffff00"
+   red = "#ff0000"
+   ```
+4. Press `T` in Vanta to cycle to it, or set it explicitly in your `config.toml` (`theme = "cyberpunk"`).
+
 ## Configuration
 
 `~/.config/vanta/config.toml`. Every key is optional; delete the file to reset.
