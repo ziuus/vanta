@@ -290,7 +290,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, _is_detailed: bool) {
             meter::fmt_bytes(m.used),
             meter::fmt_bytes(m.total)
         );
-        let bar_w = (rows[2].width as usize).saturating_sub(tail.len());
+        let bar_w = (rows[2].width as usize).saturating_sub(tail.chars().count());
         let (on, off) = meter::track(pct / 100.0, bar_w);
         f.render_widget(
             Paragraph::new(Line::from(vec![
@@ -331,7 +331,7 @@ pub fn render_storage(f: &mut Frame, area: Rect, theme: &Theme) {
                 String::new()
             };
             let bar_w = (area.width as usize)
-                .saturating_sub(label.len() + pct_s.len() + size.len())
+                .saturating_sub(label.chars().count() + pct_s.chars().count() + size.chars().count())
                 .max(4);
             let (on, off) = meter::track(pct / 100.0, bar_w);
             Line::from(vec![

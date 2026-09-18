@@ -143,6 +143,7 @@ pub struct UiConfig {
     pub graph_style: String,
     /// Transparent background
     #[serde(default)]
+    pub meter_style: String,
     pub transparent: Option<bool>,
 }
 
@@ -166,6 +167,7 @@ impl Default for UiConfig {
             visualizer: "bars".to_string(),
             gauge_style: "arc".to_string(),
             graph_style: "block".to_string(),
+            meter_style: "block".to_string(),
             transparent: None,
         }
     }

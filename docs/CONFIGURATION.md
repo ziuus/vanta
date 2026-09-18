@@ -12,6 +12,9 @@ theme = "dark"
 startup_mode = "dashboard"
 clock_24h = true
 visualizer = "bars"     # bars | mirror | wave | peaks
+gauge_style = "arc"     # arc | bars | vertical
+graph_style = "block"   # block | braille
+meter_style = "block"   # block | braille | ascii
 
 [widgets]               # all default to true
 cpu = true

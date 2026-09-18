@@ -1,18 +1,53 @@
 /// Smooth horizontal bar: eighth-block resolution so a 20-cell meter has 160
 /// distinct fill levels instead of 20.
-const EIGHTHS: [&str; 9] = [" ", "▏", "▎", "▍", "▌", "▋", "▊", "▉", "█"];
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+/// Smooth horizontal bar: eighth-block resolution
+const BLOCKS: [&str; 9] = [" ", "▏", "▎", "▍", "▌", "▋", "▊", "▉", "█"];
+const BRAILLE: [&str; 9] = [" ", "⡀", "⡄", "⡆", "⡇", "⣇", "⣧", "⣷", "⣿"];
+const ASCII: [&str; 9] = [" ", "-", "-", "=", "=", "*", "#", "#", "@"];
+
+const STYLE_COUNT: usize = 3;
+static METER_STYLE: AtomicUsize = AtomicUsize::new(0); // 0 = block, 1 = braille, 2 = ascii
+
+pub fn set_style(name: &str) {
+    let idx = match name {
+        "braille" => 1,
+        "ascii" => 2,
+        _ => 0,
+    };
+    METER_STYLE.store(idx, Ordering::Relaxed);
+}
+
+pub fn style_name() -> &'static str {
+    match METER_STYLE.load(Ordering::Relaxed) % STYLE_COUNT {
+        1 => "braille",
+        2 => "ascii",
+        _ => "block",
+    }
+}
+
+pub fn cycle_style() {
+    METER_STYLE.fetch_add(1, Ordering::Relaxed);
+}
 
 /// Filled portion of a `width`-cell bar for `frac` in 0..=1.
 pub fn bar(frac: f64, width: usize) -> String {
     if width == 0 {
         return String::new();
     }
+    let glyphs = match METER_STYLE.load(Ordering::Relaxed) % STYLE_COUNT {
+        1 => BRAILLE,
+        2 => ASCII,
+        _ => BLOCKS,
+    };
     let levels = width * 8;
     let filled = (frac.clamp(0.0, 1.0) * levels as f64).round() as usize;
     (0..width)
-        .map(|i| EIGHTHS[filled.saturating_sub(i * 8).min(8)])
+        .map(|i| glyphs[filled.saturating_sub(i * 8).min(8)])
         .collect()
 }
+
 
 /// Track-style bar: heavy line for the filled part, light for the rest.
 /// Reads well in tight rows where a solid block would be too loud.

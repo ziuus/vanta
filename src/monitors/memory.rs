@@ -66,7 +66,7 @@ fn row<'a>(label: &'a str, used: u64, total: u64, pct: f64, width: u16, theme: &
         meter::fmt_bytes(total)
     );
     let pct_str = format!("{:>3.0}%", pct);
-    let fixed = label.len() + 1 + stats.len() + 2 + pct_str.len() + 1;
+    let fixed = label.chars().count() + 1 + stats.chars().count() + 2 + pct_str.chars().count() + 1;
     let bar_w = (width as usize).saturating_sub(fixed);
     let (on, off) = meter::track(pct / 100.0, bar_w);
     let c = theme.usage(pct);

@@ -230,7 +230,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, is_detailed: bool) {
         let pct = format!("{:>3.0}%", usage);
         let right_label = format!("{}{}", pct, temp_str);
         
-        let bar_w = cell.width.saturating_sub((label.len() + right_label.len()) as u16) as usize;
+        let bar_w = cell.width.saturating_sub((label.chars().count() + right_label.chars().count()) as u16) as usize;
         
         let mut spans = vec![
             Span::styled(label, Style::default().fg(theme.dim)),

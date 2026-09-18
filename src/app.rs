@@ -305,6 +305,7 @@ impl App {
         let sampler_interval = monitors::start(Duration::from_secs_f64(config.ui.refresh_rate));
         music_viz::set_style(&config.ui.visualizer);
         crate::widgets::gauge::set_style(&config.ui.gauge_style);
+        crate::widgets::meter::set_style(&config.ui.meter_style);
         crate::widgets::block_graph::set_style(&config.ui.graph_style);
         let custom_widgets = CustomWidgetManager::start_all(&config.custom_widgets);
         let mut app = Self {
