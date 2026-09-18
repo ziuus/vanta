@@ -937,47 +937,13 @@ impl App {
     }
 
     fn resize_focused(&mut self, delta: i16) {
-        if self.mode == DashboardMode::Dashboard {
-            let id = if let Some(i) = self.focused_panel {
-                i
-            } else {
-                return;
-            };
-            let col = match id {
-                PanelId::System | PanelId::Gauges | PanelId::Cpu | PanelId::Disk => 0,
-                PanelId::Clock | PanelId::Media | PanelId::Visualizer | PanelId::Processes => 1,
-                PanelId::Status
-                | PanelId::Weather
-                | PanelId::Memory
-                | PanelId::Network
-                | PanelId::Calendar => 2,
-                _ => return,
-            };
-            if col == 0 {
-                self.panel_states.dash_ratios[0] =
-                    (self.panel_states.dash_ratios[0] as i16 + delta).clamp(10, 80) as u16;
-                self.panel_states.dash_ratios[1] =
-                    (100 - self.panel_states.dash_ratios[0] - self.panel_states.dash_ratios[2])
-                        .clamp(10, 80);
-            } else if col == 1 {
-                self.panel_states.dash_ratios[1] =
-                    (self.panel_states.dash_ratios[1] as i16 + delta).clamp(10, 80) as u16;
-                self.panel_states.dash_ratios[2] =
-                    (100 - self.panel_states.dash_ratios[0] - self.panel_states.dash_ratios[1])
-                        .clamp(10, 80);
-            } else if col == 2 {
-                self.panel_states.dash_ratios[2] =
-                    (self.panel_states.dash_ratios[2] as i16 - delta).clamp(10, 80) as u16;
-                self.panel_states.dash_ratios[1] =
-                    (100 - self.panel_states.dash_ratios[0] - self.panel_states.dash_ratios[2])
-                        .clamp(10, 80);
-            }
-        } else if self.mode == DashboardMode::Workspace {
-            let id = if let Some(i) = self.focused_panel {
-                i
-            } else {
-                return;
-            };
+        let id = if let Some(i) = self.focused_panel {
+            i
+        } else {
+            return;
+        };
+
+        if self.mode == DashboardMode::Workspace {
             let left = matches!(id, PanelId::Agenda | PanelId::Tasks | PanelId::News);
             if left {
                 self.panel_states.work_ratio =
@@ -985,6 +951,75 @@ impl App {
             } else {
                 self.panel_states.work_ratio =
                     (self.panel_states.work_ratio as i16 - delta).clamp(10, 90) as u16;
+            }
+            return;
+        }
+
+        let col = match self.mode {
+            DashboardMode::Dashboard => {
+                let layout = &self.config.dashboard.layout;
+                let id_str = format!("{:?}", id).to_lowercase();
+                let mut found_col = None;
+                for (c_idx, c_arr) in layout.iter().enumerate() {
+                    for item in c_arr {
+                        if item == &id_str || (item == "cve_feed" && id_str == "cve") {
+                            found_col = Some(c_idx);
+                            break;
+                        }
+                    }
+                }
+                found_col
+            }
+            DashboardMode::Monitor => match id {
+                PanelId::Cpu => Some(0),
+                PanelId::Memory | PanelId::Disk => Some(1),
+                PanelId::Network | PanelId::Gpu | PanelId::System => Some(2),
+                _ => None,
+            },
+            DashboardMode::Extension(ref ext_id) => {
+                let mut found_col = None;
+                let pages = &self.config.pages; {
+                    if let Some(page) = pages.iter().find(|p| p.name == *ext_id) {
+                        let id_str = format!("{:?}", id).to_lowercase();
+                        for (c_idx, c_arr) in page.layout.iter().enumerate() {
+                            for item in c_arr {
+                                if item == &id_str || (item == "cve_feed" && id_str == "cve") {
+                                    found_col = Some(c_idx);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                found_col
+            }
+            _ => None,
+        };
+
+        if let Some(c) = col {
+            if c == 0 {
+                self.panel_states.dash_ratios[0] =
+                    (self.panel_states.dash_ratios[0] as i16 + delta).clamp(10, 80) as u16;
+                let rem = 100u16.saturating_sub(self.panel_states.dash_ratios[0]);
+                if self.panel_states.dash_ratios[2] > 0 {
+                    self.panel_states.dash_ratios[1] = rem.saturating_sub(self.panel_states.dash_ratios[2]).clamp(10, 80);
+                } else {
+                    self.panel_states.dash_ratios[1] = rem;
+                }
+            } else if c == 1 {
+                self.panel_states.dash_ratios[1] =
+                    (self.panel_states.dash_ratios[1] as i16 + delta).clamp(10, 80) as u16;
+                let rem = 100u16.saturating_sub(self.panel_states.dash_ratios[1]);
+                if self.panel_states.dash_ratios[2] > 0 {
+                    self.panel_states.dash_ratios[2] = rem.saturating_sub(self.panel_states.dash_ratios[0]).clamp(10, 80);
+                } else {
+                    self.panel_states.dash_ratios[0] = rem;
+                }
+            } else if c == 2 {
+                self.panel_states.dash_ratios[2] =
+                    (self.panel_states.dash_ratios[2] as i16 - delta).clamp(10, 80) as u16;
+                let rem = 100u16.saturating_sub(self.panel_states.dash_ratios[2]);
+                self.panel_states.dash_ratios[1] = rem.saturating_sub(self.panel_states.dash_ratios[0]).clamp(10, 80);
             }
         }
     }

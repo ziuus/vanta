@@ -18,21 +18,45 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
     let show_gpu = app.config.widgets.gpu;
 
     // The band grows with the terminal but the table always keeps the majority.
-    let band_h = (area.height * 2 / 5).clamp(14, 22);
+    let panel_constraint = |c: Constraint, id: &str| -> Constraint {
+        let adj = *app.panel_states.dash_vertical.get(id).unwrap_or(&0);
+        let apply = |v: u16| -> u16 {
+            if adj < 0 {
+                v.saturating_sub(adj.abs() as u16)
+            } else {
+                v.saturating_add(adj as u16)
+            }
+        };
+        match c {
+            Constraint::Percentage(p) => Constraint::Percentage(apply(p)),
+            Constraint::Length(l) => Constraint::Length(apply(l)),
+            Constraint::Min(m) => Constraint::Min(apply(m)),
+            Constraint::Max(m) => Constraint::Max(apply(m)),
+            Constraint::Ratio(n, d) => Constraint::Ratio(n, d),
+            Constraint::Fill(f) => Constraint::Fill(f),
+        }
+    };
+
+    let adj_cpu = *app.panel_states.dash_vertical.get("cpu").unwrap_or(&0);
+    let band_h = ((area.height * 2 / 5).clamp(14, 22) as i16 + adj_cpu).max(10) as u16;
     let [band, table] =
         Layout::vertical([Constraint::Length(band_h), Constraint::Min(8)]).areas(area);
 
+    let r = app.panel_states.dash_ratios;
     let cols = Layout::horizontal([
-        Constraint::Ratio(2, 5),
-        Constraint::Ratio(3, 10),
-        Constraint::Ratio(3, 10),
+        Constraint::Percentage(r[0]),
+        Constraint::Percentage(r[1]),
+        Constraint::Percentage(r[2]),
     ])
     .split(band);
 
     let inner = panel(f, cols[0], "cpu", theme, focus(PanelId::Cpu));
     cpu::render(f, inner, theme);
 
-    let col1 = Layout::vertical([Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)]).split(cols[1]);
+    let col1 = Layout::vertical([
+        panel_constraint(Constraint::Percentage(50), "memory"),
+        panel_constraint(Constraint::Percentage(50), "disk")
+    ]).split(cols[1]);
     let inner = panel(f, col1[0], "memory", theme, focus(PanelId::Memory));
     memory::render(f, inner, theme);
     let inner = panel(f, col1[1], "disk", theme, focus(PanelId::Disk));
@@ -40,16 +64,16 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
 
     let col2 = if show_gpu {
         Layout::vertical([
-            Constraint::Ratio(2, 5),
-            Constraint::Ratio(2, 5),
-            Constraint::Length(5),
+            panel_constraint(Constraint::Percentage(40), "network"),
+            panel_constraint(Constraint::Percentage(40), "gpu"),
+            panel_constraint(Constraint::Length(5), "system"),
         ])
         .split(cols[2])
     } else {
         Layout::vertical([
-            Constraint::Min(4),
+            panel_constraint(Constraint::Min(4), "network"),
             Constraint::Length(0),
-            Constraint::Length(5),
+            panel_constraint(Constraint::Length(5), "system"),
         ])
         .split(cols[2])
     };

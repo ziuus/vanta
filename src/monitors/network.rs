@@ -102,8 +102,8 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
     let (rx_h, tx_h, snap) = {
         let n = NET.lock().unwrap();
         (
-            n.rx.recent(area.width as usize),
-            n.tx.recent(area.width as usize),
+            n.rx.recent(1000),
+            n.tx.recent(1000),
             NetSnapshot {
                 rx_kbps: n.rx_kbps,
                 tx_kbps: n.tx_kbps,

@@ -188,8 +188,8 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
 
     use crate::widgets::block_graph::BlockGraph;
 
-    let points = chunks[1].width as usize; // blockgraph handles its own sub_w
-    let hist_usage = HISTORY_USAGE.lock().unwrap().recent(points);
+    let _points = chunks[1].width as usize; // blockgraph handles its own sub_w
+    let hist_usage = HISTORY_USAGE.lock().unwrap().recent(1000);
     
     // We force braille style for the mirrored CPU graph by temporarily setting it, 
     // or wait, blockgraph respects the global setting.

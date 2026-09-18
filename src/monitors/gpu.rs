@@ -260,7 +260,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
     }
     f.render_widget(Paragraph::new(Line::from(head)), chunks[0]);
 
-    let hist = HISTORY.lock().unwrap().recent(chunks[1].width as usize);
+    let hist = HISTORY.lock().unwrap().recent(1000);
     f.render_widget(
         BlockGraph::new(&hist)
             .max(100.0)

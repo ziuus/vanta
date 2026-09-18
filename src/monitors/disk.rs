@@ -218,8 +218,8 @@ fn io_for(st: &State, mount: &Mount) -> Option<(f64, f64, Vec<f64>, usize)> {
     Some((
         dev.read_kbps,
         dev.write_kbps,
-        dev.hist.recent(HIST),
-        dev.hist.recent(HIST).len(),
+        dev.hist.recent(1000),
+        dev.hist.recent(1000).len(),
     ))
 }
 
