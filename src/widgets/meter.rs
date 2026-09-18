@@ -5,15 +5,17 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 /// Smooth horizontal bar: eighth-block resolution
 const BLOCKS: [&str; 9] = [" ", "▏", "▎", "▍", "▌", "▋", "▊", "▉", "█"];
 const BRAILLE: [&str; 9] = [" ", "⡀", "⡄", "⡆", "⡇", "⣇", "⣧", "⣷", "⣿"];
+const DOTS: [&str; 9] = [" ", "·", "·", "•", "•", "●", "●", "⬤", "⬤"];
 const ASCII: [&str; 9] = [" ", "-", "-", "=", "=", "*", "#", "#", "@"];
 
-const STYLE_COUNT: usize = 3;
-static METER_STYLE: AtomicUsize = AtomicUsize::new(0); // 0 = block, 1 = braille, 2 = ascii
+const STYLE_COUNT: usize = 4;
+static METER_STYLE: AtomicUsize = AtomicUsize::new(0); // 0 = block, 1 = braille, 2 = dot, 3 = ascii
 
 pub fn set_style(name: &str) {
     let idx = match name {
         "braille" => 1,
-        "ascii" => 2,
+        "dot" | "dots" => 2,
+        "ascii" => 3,
         _ => 0,
     };
     METER_STYLE.store(idx, Ordering::Relaxed);
@@ -22,7 +24,8 @@ pub fn set_style(name: &str) {
 pub fn style_name() -> &'static str {
     match METER_STYLE.load(Ordering::Relaxed) % STYLE_COUNT {
         1 => "braille",
-        2 => "ascii",
+        2 => "dots",
+        3 => "ascii",
         _ => "block",
     }
 }
@@ -38,7 +41,8 @@ pub fn bar(frac: f64, width: usize) -> String {
     }
     let glyphs = match METER_STYLE.load(Ordering::Relaxed) % STYLE_COUNT {
         1 => BRAILLE,
-        2 => ASCII,
+        2 => DOTS,
+        3 => ASCII,
         _ => BLOCKS,
     };
     let levels = width * 8;
@@ -54,7 +58,12 @@ pub fn bar(frac: f64, width: usize) -> String {
 pub fn track(frac: f64, width: usize) -> (String, String) {
     let filled = ((frac.clamp(0.0, 1.0)) * width as f64).round() as usize;
     let filled = filled.min(width);
-    ("━".repeat(filled), "─".repeat(width - filled))
+    match METER_STYLE.load(Ordering::Relaxed) % STYLE_COUNT {
+        1 => ("⣿".repeat(filled), "⡀".repeat(width.saturating_sub(filled))),
+        2 => ("●".repeat(filled), "·".repeat(width.saturating_sub(filled))),
+        3 => ("=".repeat(filled), "-".repeat(width.saturating_sub(filled))),
+        _ => ("━".repeat(filled), "─".repeat(width.saturating_sub(filled))),
+    }
 }
 
 pub fn fmt_bytes(b: u64) -> String {
