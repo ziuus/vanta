@@ -230,27 +230,46 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, is_detailed: bool) {
         let pct = format!("{:>3.0}%", usage);
         let right_label = format!("{}{}", pct, temp_str);
         
-        let bar_w = cell.width.saturating_sub((label.chars().count() + right_label.chars().count()) as u16) as usize;
+        let right_label_chars = right_label.chars().count() as u16;
+        let label_chars = label.chars().count() as u16;
         
-        let mut spans = vec![
-            Span::styled(label, Style::default().fg(theme.dim)),
-            Span::styled(
+        let core_chunks = Layout::horizontal([
+            Constraint::Length(label_chars),
+            Constraint::Min(0),
+            Constraint::Length(right_label_chars),
+        ]).split(cell);
+        
+        let bar_w = core_chunks[1].width as usize;
+
+        // 1. Left Label
+        f.render_widget(
+            Paragraph::new(Span::styled(label, Style::default().fg(theme.dim))),
+            core_chunks[0],
+        );
+        
+        // 2. Bar
+        f.render_widget(
+            Paragraph::new(Span::styled(
                 meter::bar(usage as f64 / 100.0, bar_w),
                 Style::default().fg(c),
-            ),
+            )),
+            core_chunks[1],
+        );
+        
+        // 3. Right Label (pct + temp)
+        let mut right_spans = vec![
             Span::styled(format!("{:>4}", pct), Style::default().fg(c)),
         ];
-        
         if let Some(t) = snap.temps.get(i) {
-            spans.push(Span::styled(
+            right_spans.push(Span::styled(
                 format!(" {:>3.0}°C", t),
                 Style::default().fg(theme.temp(*t)),
             ));
         }
         
         f.render_widget(
-            Paragraph::new(Line::from(spans)),
-            cell,
+            Paragraph::new(Line::from(right_spans)).alignment(ratatui::layout::Alignment::Right),
+            core_chunks[2],
         );
     }
 }
