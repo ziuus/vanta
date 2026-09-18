@@ -26,6 +26,7 @@ pub enum SettingType {
     Transparent,
     GaugeStyle,
     GraphStyle,
+    MeterStyle,
     Visualizer,
     RefreshRate,
     Fps,
@@ -51,6 +52,7 @@ pub const SETTINGS_ITEMS: &[(SettingType, &str)] = &[
     (SettingType::Transparent, "Transparent Background"),
     (SettingType::GaugeStyle, "Gauge Style"),
     (SettingType::GraphStyle, "Graph Style"),
+    (SettingType::MeterStyle, "Meter Style"),
     (SettingType::Visualizer, "Visualizer"),
     (SettingType::ClockFont, "Clock Font"),
     (SettingType::ClockStyle, "Clock Style"),
@@ -111,6 +113,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
             SettingType::Transparent => { let c = app.config.ui.transparent.unwrap_or_else(|| !app.theme.is_light()); if c { "on".to_string() } else { "off".to_string() } },
             SettingType::GaugeStyle => app.config.ui.gauge_style.clone(),
             SettingType::GraphStyle => app.config.ui.graph_style.clone(),
+            SettingType::MeterStyle => app.config.ui.meter_style.clone(),
             SettingType::Visualizer => app.config.ui.visualizer.clone(),
             SettingType::ClockFont => app.config.ui.clock_font.clone(),
             SettingType::ClockStyle => app.config.ui.clock_style.clone(),
@@ -311,6 +314,10 @@ fn change_setting(app: &mut App, forward: bool) {
         SettingType::GraphStyle => {
             crate::widgets::block_graph::cycle_style();
             app.config.ui.graph_style = crate::widgets::block_graph::style_name().to_string();
+        }
+        SettingType::MeterStyle => {
+            crate::widgets::meter::cycle_style();
+            app.config.ui.meter_style = crate::widgets::meter::style_name().to_string();
         }
         SettingType::Visualizer => {
             crate::widgets::music_viz::cycle_style();

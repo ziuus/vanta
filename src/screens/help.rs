@@ -48,7 +48,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, config: &Config) {
         ),
         key(
             "g G",
-            "gauge style / graph style (arc·bars·vertical / block·braille)",
+            "gauge style (arc·bars·vertical·dots) / graph style (block·braille)",
         ),
         key("S ,", "settings menu"),
         key("+ -", "sample faster / slower   ?    this help"),

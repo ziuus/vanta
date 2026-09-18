@@ -1456,6 +1456,7 @@ impl App {
                     hint("n/p", "track");
                     hint("<>", "volume");
                     hint("v", "visualizer");
+                    hint("g", "gauge");
                     hint("T", "theme");
                     hint("S", "settings");
                     hint("+/-", "refresh");
