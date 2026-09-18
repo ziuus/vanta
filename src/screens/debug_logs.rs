@@ -47,9 +47,22 @@ pub fn render(f: &mut Frame, area: Rect, app: &mut App) {
     }).collect();
 
     if lines.is_empty() {
-        lines.push(Line::from(vec![
-            Span::styled(format!("(No logs found in ring buffer. Total items: {})", logs.len()), Style::default().fg(t.dim))
-        ]));
+        if app.panel_states.log_target.is_empty() {
+            lines.push(Line::from(vec![
+                Span::styled("(No logs in ring buffer)", Style::default().fg(t.dim))
+            ]));
+        } else {
+            lines.push(Line::from(vec![
+                Span::styled(
+                    format!(
+                        "(No logs matching component filter \"{}\". Total logs in buffer: {} — press 't' then Enter to clear filter)",
+                        app.panel_states.log_target,
+                        logs.len()
+                    ),
+                    Style::default().fg(t.dim),
+                )
+            ]));
+        }
     }
 
     if app.panel_states.log_target_input_active {
