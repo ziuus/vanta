@@ -10,6 +10,9 @@
     "release": "node sync-version.js && npm publish --access public",
     "postinstall": "node install.js"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "files": [
     "bin/vanta.js",
     "install.js"
