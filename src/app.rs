@@ -625,6 +625,15 @@ impl App {
                     crate::widgets::block_graph::style_name()
                 ));
             }
+            KeyCode::Char('m') => {
+                crate::widgets::meter::cycle_style();
+                self.config.ui.meter_style = crate::widgets::meter::style_name().to_string();
+                self.config.save();
+                self.toast(format!(
+                    "meters · {}",
+                    crate::widgets::meter::style_name()
+                ));
+            }
             KeyCode::Char('+') | KeyCode::Char('=') => self.adjust_refresh(true),
             KeyCode::Char('-') | KeyCode::Char('_') => self.adjust_refresh(false),
             KeyCode::Tab => self.cycle_focus(true),
@@ -1457,6 +1466,8 @@ impl App {
                     hint("<>", "volume");
                     hint("v", "visualizer");
                     hint("g", "gauge");
+                    hint("m", "meter");
+                    hint("G", "graph");
                     hint("T", "theme");
                     hint("S", "settings");
                     hint("+/-", "refresh");

@@ -22,8 +22,8 @@ const V_EIGHTHS: [char; 9] = [' ', ' ', '▂', '▃', '▄', '▅', '▆', '▇'
 const TRACK: char = '·';
 
 // ── Style selection ──
-// 0 = arc (semicircle dial), 1 = bars (horizontal), 2 = vertical (columns), 3 = dots (dotted arc).
-const STYLE_COUNT: usize = 4;
+// 0 = arc (semicircle dial), 1 = bars (horizontal), 2 = vertical (columns), 3 = dots (bubble dots), 4 = braille (braille dots).
+const STYLE_COUNT: usize = 5;
 static GAUGE_STYLE: AtomicUsize = AtomicUsize::new(0);
 
 /// Cycle to the next gauge style. Bound to `g` globally.
@@ -37,7 +37,8 @@ pub fn set_style(name: &str) {
     let idx = match name {
         "bars" => 1,
         "vertical" => 2,
-        "dots" | "dot" | "braille" => 3,
+        "dots" | "dot" => 3,
+        "braille" => 4,
         _ => 0,
     };
     GAUGE_STYLE.store(idx, Ordering::Relaxed);
@@ -49,6 +50,7 @@ pub fn style_name() -> &'static str {
         1 => "bars",
         2 => "vertical",
         3 => "dots",
+        4 => "braille",
         _ => "arc",
     }
 }
@@ -63,6 +65,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, metrics: &[(&str, f64, S
         1 => render_bars(f, area, theme, metrics),
         2 => render_vertical(f, area, theme, metrics),
         3 => render_dots(f, area, theme, metrics),
+        4 => render_braille(f, area, theme, metrics),
         _ => render_arc(f, area, theme, metrics),
     }
 }
@@ -376,6 +379,69 @@ fn ring_dots(pct: f64, label: &str, value: &str, col: Color, theme: &Theme) -> V
     rows
 }
 
+fn ring_braille(pct: f64, label: &str, value: &str, col: Color, theme: &Theme) -> Vec<Line<'static>> {
+    let sweep = pct.clamp(0.0, 100.0) / 100.0 * 180.0;
+    let h_px = H * 2;
+    let mut px = vec![vec![Px::Empty; W]; h_px];
+
+    for (y, row) in px.iter_mut().enumerate() {
+        for (x, cell) in row.iter_mut().enumerate() {
+            let dx = (x as f64 + 0.5 - W as f64 / 2.0) / (W as f64 / 2.0);
+            let dy = (h_px as f64 - (y as f64 + 0.5)) / h_px as f64;
+            let r = (dx * dx + dy * dy).sqrt();
+            if !(INNER..=1.0).contains(&r) {
+                continue;
+            }
+            let ang = (-dy).atan2(dx).to_degrees() + 180.0;
+            *cell = if ang <= sweep {
+                Px::Fill(theme.usage_ramp(ang / 180.0))
+            } else {
+                Px::Track
+            };
+        }
+    }
+
+    let track = Style::default().fg(theme.surface);
+    let fg = |c: Color| Style::default().fg(c);
+    let mut rows: Vec<Line<'static>> = (0..H)
+        .map(|y| {
+            let spans = (0..W)
+                .map(|x| match (px[y * 2][x], px[y * 2 + 1][x]) {
+                    (Px::Empty, Px::Empty) => Span::raw(" "),
+                    (Px::Fill(c), Px::Fill(_)) => Span::styled("⣿", fg(c)),
+                    (Px::Track, Px::Track) => Span::styled("⣿", track),
+                    (Px::Fill(c), Px::Empty) => Span::styled("⠉", fg(c)),
+                    (Px::Empty, Px::Fill(c)) => Span::styled("⣀", fg(c)),
+                    (Px::Track, Px::Empty) => Span::styled("⠉", track),
+                    (Px::Empty, Px::Track) => Span::styled("⣀", track),
+                    (Px::Fill(c), Px::Track) => Span::styled("⠉", fg(c).bg(theme.surface)),
+                    (Px::Track, Px::Fill(c)) => Span::styled("⣀", fg(c).bg(theme.surface)),
+                })
+                .collect::<Vec<_>>();
+            Line::from(spans)
+        })
+        .collect();
+
+    let hollow = ((W as f64 / 2.0) * INNER * 2.0) as usize - 2;
+    let start = (W - hollow) / 2;
+    let put = |line: &mut Line<'static>, text: &str, style: Style| {
+        let n = text.chars().count().min(hollow);
+        let pad = (hollow - n) / 2;
+        let mut spans = Vec::new();
+        for (i, span) in line.spans.iter().enumerate() {
+            if i < start + pad || i >= start + pad + n {
+                spans.push(span.clone());
+            } else if i == start + pad {
+                spans.push(Span::styled(text.chars().take(n).collect::<String>(), style));
+            }
+        }
+        line.spans = spans;
+    };
+    put(&mut rows[H - 2], label, Style::default().fg(theme.dim));
+    put(&mut rows[H - 1], value, Style::default().fg(col));
+    rows
+}
+
 fn render_dots(f: &mut Frame, area: Rect, theme: &Theme, metrics: &[(&str, f64, String, Color)]) {
     if area.height < H as u16 {
         return render_bars(f, area, theme, metrics);
@@ -408,13 +474,45 @@ fn render_dots(f: &mut Frame, area: Rect, theme: &Theme, metrics: &[(&str, f64, 
     );
 }
 
+fn render_braille(f: &mut Frame, area: Rect, theme: &Theme, metrics: &[(&str, f64, String, Color)]) {
+    if area.height < H as u16 {
+        return render_bars(f, area, theme, metrics);
+    }
+    let gap = 2usize;
+    let n = metrics
+        .len()
+        .min(((area.width as usize + gap) / (W + gap)).max(1));
+    let total = n * W + (n - 1) * gap;
+    let pad = (area.width as usize).saturating_sub(total) / 2;
+
+    let mut rows: Vec<Line<'static>> = (0..H)
+        .map(|_| Line::from(vec![Span::raw(" ".repeat(pad))]))
+        .collect();
+    for (i, (label, pct, value, col)) in metrics.iter().take(n).enumerate() {
+        for (r, line) in ring_braille(*pct, label, value, *col, theme)
+            .into_iter()
+            .enumerate()
+        {
+            if i > 0 {
+                rows[r].spans.push(Span::raw(" ".repeat(gap)));
+            }
+            rows[r].spans.extend(line.spans);
+        }
+    }
+    let top = area.height.saturating_sub(H as u16) / 2;
+    f.render_widget(
+        Paragraph::new(rows),
+        Rect::new(area.x, area.y + top, area.width, H as u16),
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn style_name_roundtrips() {
-        for name in ["arc", "bars", "vertical"] {
+        for name in ["arc", "bars", "vertical", "dots", "braille"] {
             set_style(name);
             assert_eq!(style_name(), name);
         }

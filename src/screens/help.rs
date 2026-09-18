@@ -47,8 +47,8 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, config: &Config) {
             "next theme               v    visualizer (bars/mirror/wave/peaks)",
         ),
         key(
-            "g G",
-            "gauge style (arc·bars·vertical·dots) / graph style (block·braille)",
+            "g m G",
+            "gauge (arc/bars/vert/dots/braille) · m meter · G graph",
         ),
         key("S ,", "settings menu"),
         key("+ -", "sample faster / slower   ?    this help"),
