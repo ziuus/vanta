@@ -95,7 +95,7 @@ pub fn sample() {
 }
 
 /// Two stacked graphs (down / up), each auto-scaled to its own recent peak.
-pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
+pub fn render(f: &mut Frame, area: Rect, theme: &Theme, _is_detailed: bool) {
     if area.height < 3 {
         return;
     }

@@ -208,7 +208,7 @@ fn centered_note(f: &mut Frame, area: Rect, text: &str, theme: &Theme) {
     );
 }
 
-pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
+pub fn render(f: &mut Frame, area: Rect, theme: &Theme, _is_detailed: bool) {
     if area.height < 1 {
         return;
     }

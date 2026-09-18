@@ -133,12 +133,12 @@ pub fn render_panel(f: &mut Frame, area: Rect, app: &crate::app::App, id: crate:
             ];
             gauge::render(f, inner, theme, &m)
         }
-        P::Cpu => cpu::render(f, inner, theme),
-        P::Memory => memory::render(f, inner, theme),
-        P::Disk => disk::render(f, inner, theme),
+        P::Cpu => cpu::render(f, inner, theme, true),
+        P::Memory => memory::render(f, inner, theme, true),
+        P::Disk => disk::render(f, inner, theme, true),
         P::Storage => disk::render_storage(f, inner, theme),
-        P::Network => network::render(f, inner, theme),
-        P::Gpu => gpu::render(f, inner, theme),
+        P::Network => network::render(f, inner, theme, true),
+        P::Gpu => gpu::render(f, inner, theme, true),
         P::Clock => clock::render(
             f,
             inner,

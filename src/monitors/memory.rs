@@ -79,7 +79,7 @@ fn row<'a>(label: &'a str, used: u64, total: u64, pct: f64, width: u16, theme: &
     ])
 }
 
-pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
+pub fn render(f: &mut Frame, area: Rect, theme: &Theme, _is_detailed: bool) {
     if area.height < 2 {
         return;
     }

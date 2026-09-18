@@ -288,7 +288,7 @@ fn render_dashboard_panel(
                 theme,
                 focus(PanelId::Cpu),
             );
-            cpu::render(f, inner, theme);
+            cpu::render(f, inner, theme, false);
         }
         "storage" => {
             let inner = panel(f, area, "storage", theme, focus(PanelId::Storage));
@@ -296,7 +296,7 @@ fn render_dashboard_panel(
         }
         "disk" => {
             let inner = panel(f, area, "disk", theme, focus(PanelId::Disk));
-            disk::render(f, inner, theme);
+            disk::render(f, inner, theme, false);
         }
         "clock" => {
             let inner = panel(f, area, "clock", theme, focus(PanelId::Clock));
@@ -384,7 +384,7 @@ fn render_dashboard_panel(
                 theme,
                 focus(PanelId::Memory),
             );
-            memory::render(f, inner, theme);
+            memory::render(f, inner, theme, false);
         }
         "network" | "net" => {
             let net_rt = format!(" ↓{:.0} ↑{:.0} kb/s ", sum.rx_kbps, sum.tx_kbps);
@@ -397,7 +397,7 @@ fn render_dashboard_panel(
                 theme,
                 focus(PanelId::Network),
             );
-            network::render(f, inner, theme);
+            network::render(f, inner, theme, false);
         }
         "calendar" | "cal" => {
             let cal_hint = if app.panel_states.calendar_month_offset == 0 {
@@ -422,7 +422,7 @@ fn render_dashboard_panel(
         }
         "gpu" => {
             let inner = panel(f, area, "gpu", theme, focus(PanelId::Gpu));
-            gpu::render(f, inner, theme);
+            gpu::render(f, inner, theme, false);
         }
         "agenda" => {
             let snap = crate::monitors::agenda::snapshot();

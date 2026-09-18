@@ -127,7 +127,7 @@ fn read_core_temps() -> Vec<f64> {
 }
 
 /// Monitor-page CPU panel: header, big history graph, per-core meters.
-pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
+pub fn render(f: &mut Frame, area: Rect, theme: &Theme, is_detailed: bool) {
     if area.height < 3 || area.width < 20 {
         return;
     }
@@ -136,9 +136,13 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
 
     // Two cores per line when wide enough, otherwise one.
     let per_line = if area.width >= 36 { 2 } else { 1 };
-    let core_rows = core_count.div_ceil(per_line) as u16;
+    let mut core_rows = if is_detailed {
+        core_count.div_ceil(per_line) as u16
+    } else {
+        0
+    };
     // Cap the core block so the graph always keeps at least 2 rows.
-    let core_rows = core_rows.min(area.height.saturating_sub(4));
+    core_rows = core_rows.min(area.height.saturating_sub(4));
 
     let mut constraints = vec![Constraint::Length(1), Constraint::Min(2)];
     if core_rows > 0 {
@@ -216,17 +220,36 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
         let cell = Rect::new(col.x, col.y + row, col.width, 1);
         let c = theme.usage(usage as f64);
         let label = format!("c{:<2} ", i);
-        let pct = format!("{:>4.0}%", usage);
-        let bar_w = cell.width.saturating_sub((label.len() + pct.len()) as u16) as usize;
+        
+        let temp_str = if let Some(t) = snap.temps.get(i) {
+            format!(" {:>3.0}°C", t)
+        } else {
+            String::new()
+        };
+        
+        let pct = format!("{:>3.0}%", usage);
+        let right_label = format!("{}{}", pct, temp_str);
+        
+        let bar_w = cell.width.saturating_sub((label.len() + right_label.len()) as u16) as usize;
+        
+        let mut spans = vec![
+            Span::styled(label, Style::default().fg(theme.dim)),
+            Span::styled(
+                meter::bar(usage as f64 / 100.0, bar_w),
+                Style::default().fg(c),
+            ),
+            Span::styled(format!("{:>4}", pct), Style::default().fg(c)),
+        ];
+        
+        if let Some(t) = snap.temps.get(i) {
+            spans.push(Span::styled(
+                format!(" {:>3.0}°C", t),
+                Style::default().fg(theme.temp(*t)),
+            ));
+        }
+        
         f.render_widget(
-            Paragraph::new(Line::from(vec![
-                Span::styled(label, Style::default().fg(theme.dim)),
-                Span::styled(
-                    meter::bar(usage as f64 / 100.0, bar_w),
-                    Style::default().fg(c),
-                ),
-                Span::styled(pct, Style::default().fg(c)),
-            ])),
+            Paragraph::new(Line::from(spans)),
             cell,
         );
     }

@@ -224,7 +224,7 @@ fn io_for(st: &State, mount: &Mount) -> Option<(f64, f64, Vec<f64>, usize)> {
 }
 
 /// Monitor page: per-mount header, IO history graph, capacity meter.
-pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
+pub fn render(f: &mut Frame, area: Rect, theme: &Theme, _is_detailed: bool) {
     if area.height < 2 {
         return;
     }

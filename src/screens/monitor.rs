@@ -51,16 +51,16 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
     .split(band);
 
     let inner = panel(f, cols[0], "cpu", theme, focus(PanelId::Cpu));
-    cpu::render(f, inner, theme);
+    cpu::render(f, inner, theme, true);
 
     let col1 = Layout::vertical([
         panel_constraint(Constraint::Percentage(50), "memory"),
         panel_constraint(Constraint::Percentage(50), "disk")
     ]).split(cols[1]);
     let inner = panel(f, col1[0], "memory", theme, focus(PanelId::Memory));
-    memory::render(f, inner, theme);
+    memory::render(f, inner, theme, true);
     let inner = panel(f, col1[1], "disk", theme, focus(PanelId::Disk));
-    disk::render(f, inner, theme);
+    disk::render(f, inner, theme, true);
 
     let col2 = if show_gpu {
         Layout::vertical([
@@ -78,10 +78,10 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
         .split(cols[2])
     };
     let inner = panel(f, col2[0], "network", theme, focus(PanelId::Network));
-    network::render(f, inner, theme);
+    network::render(f, inner, theme, true);
     if show_gpu {
         let inner = panel(f, col2[1], "gpu", theme, focus(PanelId::Gpu));
-        gpu::render(f, inner, theme);
+        gpu::render(f, inner, theme, true);
     }
     let inner = panel(f, col2[2], "system", theme, focus(PanelId::System));
     system_info::render(f, inner, theme, &app.summary);
