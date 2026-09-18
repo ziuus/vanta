@@ -5,7 +5,7 @@ use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::widgets::Widget;
 
-const BLOCKS: [char; 9] = [' ', '⡀', '⣀', '⣄', '⣤', '⣦', '⣶', '⣷', '⣿'];
+const BLOCKS: [char; 9] = [' ', ' ', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
 
 /// Braille dot bits for a 2×4 cell, top→bottom, left column then right column.
 /// (U+2800 base; dots 1237 on the left, 4568 on the right.)
