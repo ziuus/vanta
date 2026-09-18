@@ -75,7 +75,7 @@ pub const SETTINGS_ITEMS: &[(SettingType, &str)] = &[
 pub fn render(f: &mut Frame, area: Rect, app: &App) {
     let theme = &app.theme;
     let bg = theme.surface;
-    let base = Style::default().bg(bg);
+    let base = Style::default().bg(bg).fg(theme.text);
     let mut lines = vec![
         Line::from(vec![
             Span::styled("   ↑ ↓ ", base.fg(theme.dim)),
