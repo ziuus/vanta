@@ -55,8 +55,9 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
 
     let col1 = Layout::vertical([
         panel_constraint(Constraint::Percentage(50), "memory"),
-        panel_constraint(Constraint::Percentage(50), "disk")
-    ]).split(cols[1]);
+        panel_constraint(Constraint::Percentage(50), "disk"),
+    ])
+    .split(cols[1]);
     let inner = panel(f, col1[0], "memory", theme, focus(PanelId::Memory));
     memory::render(f, inner, theme, true);
     let inner = panel(f, col1[1], "disk", theme, focus(PanelId::Disk));

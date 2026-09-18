@@ -369,7 +369,10 @@ fn ring_dots(pct: f64, label: &str, value: &str, col: Color, theme: &Theme) -> V
             if i < start + pad || i >= start + pad + n {
                 spans.push(span.clone());
             } else if i == start + pad {
-                spans.push(Span::styled(text.chars().take(n).collect::<String>(), style));
+                spans.push(Span::styled(
+                    text.chars().take(n).collect::<String>(),
+                    style,
+                ));
             }
         }
         line.spans = spans;
@@ -379,7 +382,13 @@ fn ring_dots(pct: f64, label: &str, value: &str, col: Color, theme: &Theme) -> V
     rows
 }
 
-fn ring_braille(pct: f64, label: &str, value: &str, col: Color, theme: &Theme) -> Vec<Line<'static>> {
+fn ring_braille(
+    pct: f64,
+    label: &str,
+    value: &str,
+    col: Color,
+    theme: &Theme,
+) -> Vec<Line<'static>> {
     let sweep = pct.clamp(0.0, 100.0) / 100.0 * 180.0;
     let h_px = H * 2;
     let mut px = vec![vec![Px::Empty; W]; h_px];
@@ -432,7 +441,10 @@ fn ring_braille(pct: f64, label: &str, value: &str, col: Color, theme: &Theme) -
             if i < start + pad || i >= start + pad + n {
                 spans.push(span.clone());
             } else if i == start + pad {
-                spans.push(Span::styled(text.chars().take(n).collect::<String>(), style));
+                spans.push(Span::styled(
+                    text.chars().take(n).collect::<String>(),
+                    style,
+                ));
             }
         }
         line.spans = spans;
@@ -474,7 +486,12 @@ fn render_dots(f: &mut Frame, area: Rect, theme: &Theme, metrics: &[(&str, f64, 
     );
 }
 
-fn render_braille(f: &mut Frame, area: Rect, theme: &Theme, metrics: &[(&str, f64, String, Color)]) {
+fn render_braille(
+    f: &mut Frame,
+    area: Rect,
+    theme: &Theme,
+    metrics: &[(&str, f64, String, Color)],
+) {
     if area.height < H as u16 {
         return render_bars(f, area, theme, metrics);
     }

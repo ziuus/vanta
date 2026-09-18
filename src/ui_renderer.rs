@@ -2,7 +2,7 @@ use crate::protocol::*;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph, Gauge, ListItem, List};
+use ratatui::widgets::{Block, Borders, Gauge, List, ListItem, Paragraph};
 use ratatui::Frame;
 
 impl From<UiColor> for Color {
@@ -55,13 +55,23 @@ impl From<UiStyle> for Style {
 pub fn render_widget(widget: &UiWidget, f: &mut Frame, area: Rect) {
     match widget {
         UiWidget::Paragraph { lines, block, wrap } => {
-            let text_lines: Vec<Line> = lines.iter().map(|l| {
-                let spans: Vec<Span> = l.spans.iter().map(|s| {
-                    Span::styled(s.content.clone(), Style::from(s.style.clone().unwrap_or_default()))
-                }).collect();
-                Line::from(spans)
-            }).collect();
-            
+            let text_lines: Vec<Line> = lines
+                .iter()
+                .map(|l| {
+                    let spans: Vec<Span> = l
+                        .spans
+                        .iter()
+                        .map(|s| {
+                            Span::styled(
+                                s.content.clone(),
+                                Style::from(s.style.clone().unwrap_or_default()),
+                            )
+                        })
+                        .collect();
+                    Line::from(spans)
+                })
+                .collect();
+
             let mut p = Paragraph::new(text_lines);
             if *wrap {
                 p = p.wrap(ratatui::widgets::Wrap { trim: true });
@@ -81,7 +91,12 @@ pub fn render_widget(widget: &UiWidget, f: &mut Frame, area: Rect) {
             }
             f.render_widget(p, area);
         }
-        UiWidget::Gauge { ratio, label, block, color } => {
+        UiWidget::Gauge {
+            ratio,
+            label,
+            block,
+            color,
+        } => {
             let mut g = Gauge::default().ratio(*ratio).use_unicode(true);
             if let Some(l) = label {
                 g = g.label(l.clone());
@@ -105,13 +120,23 @@ pub fn render_widget(widget: &UiWidget, f: &mut Frame, area: Rect) {
             f.render_widget(g, area);
         }
         UiWidget::List { items, block } => {
-            let list_items: Vec<ListItem> = items.iter().map(|l| {
-                let spans: Vec<Span> = l.spans.iter().map(|s| {
-                    Span::styled(s.content.clone(), Style::from(s.style.clone().unwrap_or_default()))
-                }).collect();
-                ListItem::new(Line::from(spans))
-            }).collect();
-            
+            let list_items: Vec<ListItem> = items
+                .iter()
+                .map(|l| {
+                    let spans: Vec<Span> = l
+                        .spans
+                        .iter()
+                        .map(|s| {
+                            Span::styled(
+                                s.content.clone(),
+                                Style::from(s.style.clone().unwrap_or_default()),
+                            )
+                        })
+                        .collect();
+                    ListItem::new(Line::from(spans))
+                })
+                .collect();
+
             let mut lst = List::new(list_items);
             if let Some(b) = block {
                 let mut blk = Block::default();
@@ -128,9 +153,14 @@ pub fn render_widget(widget: &UiWidget, f: &mut Frame, area: Rect) {
             }
             f.render_widget(lst, area);
         }
-        UiWidget::Column { children, percentages } => {
+        UiWidget::Column {
+            children,
+            percentages,
+        } => {
             let constraints = if let Some(pcts) = percentages {
-                pcts.iter().map(|p| Constraint::Percentage(*p)).collect::<Vec<_>>()
+                pcts.iter()
+                    .map(|p| Constraint::Percentage(*p))
+                    .collect::<Vec<_>>()
             } else {
                 let count = children.len();
                 if count > 0 {
@@ -139,21 +169,26 @@ pub fn render_widget(widget: &UiWidget, f: &mut Frame, area: Rect) {
                     vec![]
                 }
             };
-            
+
             let layout = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints(constraints)
                 .split(area);
-                
+
             for (i, child) in children.iter().enumerate() {
                 if i < layout.len() {
                     render_widget(child, f, layout[i]);
                 }
             }
         }
-        UiWidget::Row { children, percentages } => {
+        UiWidget::Row {
+            children,
+            percentages,
+        } => {
             let constraints = if let Some(pcts) = percentages {
-                pcts.iter().map(|p| Constraint::Percentage(*p)).collect::<Vec<_>>()
+                pcts.iter()
+                    .map(|p| Constraint::Percentage(*p))
+                    .collect::<Vec<_>>()
             } else {
                 let count = children.len();
                 if count > 0 {
@@ -162,12 +197,12 @@ pub fn render_widget(widget: &UiWidget, f: &mut Frame, area: Rect) {
                     vec![]
                 }
             };
-            
+
             let layout = Layout::default()
                 .direction(Direction::Horizontal)
                 .constraints(constraints)
                 .split(area);
-                
+
             for (i, child) in children.iter().enumerate() {
                 if i < layout.len() {
                     render_widget(child, f, layout[i]);

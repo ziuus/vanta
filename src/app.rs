@@ -265,7 +265,7 @@ impl Default for PanelStates {
             pinned_media_input: String::new(),
             status_selected: 0,
             dash_ratios: [33, 34, 33],
-dash_vertical: std::collections::HashMap::new(),
+            dash_vertical: std::collections::HashMap::new(),
             work_ratio: 25,
             process_selected_pid: None,
             process_collapsed: HashSet::new(),
@@ -548,16 +548,32 @@ impl App {
         }
 
         match key.code {
-            KeyCode::Left | KeyCode::Char('h') | KeyCode::Char('H') if key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SHIFT) => {
+            KeyCode::Left | KeyCode::Char('h') | KeyCode::Char('H')
+                if key.modifiers.intersects(
+                    KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SHIFT,
+                ) =>
+            {
                 self.resize_focused(-2)
             }
-            KeyCode::Right | KeyCode::Char('l') | KeyCode::Char('L') if key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SHIFT) => {
+            KeyCode::Right | KeyCode::Char('l') | KeyCode::Char('L')
+                if key.modifiers.intersects(
+                    KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SHIFT,
+                ) =>
+            {
                 self.resize_focused(2)
             }
-            KeyCode::Up | KeyCode::Char('k') | KeyCode::Char('K') if key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SHIFT) => {
+            KeyCode::Up | KeyCode::Char('k') | KeyCode::Char('K')
+                if key.modifiers.intersects(
+                    KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SHIFT,
+                ) =>
+            {
                 self.resize_focused_vertical(2)
             }
-            KeyCode::Down | KeyCode::Char('j') | KeyCode::Char('J') if key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SHIFT) => {
+            KeyCode::Down | KeyCode::Char('j') | KeyCode::Char('J')
+                if key.modifiers.intersects(
+                    KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SHIFT,
+                ) =>
+            {
                 self.resize_focused_vertical(-2)
             }
             KeyCode::Char('e') | KeyCode::Char('E')
@@ -629,10 +645,7 @@ impl App {
                 crate::widgets::meter::cycle_style();
                 self.config.ui.meter_style = crate::widgets::meter::style_name().to_string();
                 self.config.save();
-                self.toast(format!(
-                    "meters · {}",
-                    crate::widgets::meter::style_name()
-                ));
+                self.toast(format!("meters · {}", crate::widgets::meter::style_name()));
             }
             KeyCode::Char('+') | KeyCode::Char('=') => self.adjust_refresh(true),
             KeyCode::Char('-') | KeyCode::Char('_') => self.adjust_refresh(false),
@@ -938,7 +951,11 @@ impl App {
         if let Some(id) = self.focused_panel {
             let key = format!("{:?}", id).to_lowercase();
             let new_val = {
-                let entry = self.panel_states.dash_vertical.entry(key.clone()).or_insert(0);
+                let entry = self
+                    .panel_states
+                    .dash_vertical
+                    .entry(key.clone())
+                    .or_insert(0);
                 *entry = (*entry + delta).clamp(-30, 30);
                 *entry
             };
@@ -988,7 +1005,8 @@ impl App {
             },
             DashboardMode::Extension(ref ext_id) => {
                 let mut found_col = None;
-                let pages = &self.config.pages; {
+                let pages = &self.config.pages;
+                {
                     if let Some(page) = pages.iter().find(|p| p.name == *ext_id) {
                         let id_str = format!("{:?}", id).to_lowercase();
                         for (c_idx, c_arr) in page.layout.iter().enumerate() {
@@ -1012,7 +1030,9 @@ impl App {
                     (self.panel_states.dash_ratios[0] as i16 + delta).clamp(10, 80) as u16;
                 let rem = 100u16.saturating_sub(self.panel_states.dash_ratios[0]);
                 if self.panel_states.dash_ratios[2] > 0 {
-                    self.panel_states.dash_ratios[1] = rem.saturating_sub(self.panel_states.dash_ratios[2]).clamp(10, 80);
+                    self.panel_states.dash_ratios[1] = rem
+                        .saturating_sub(self.panel_states.dash_ratios[2])
+                        .clamp(10, 80);
                 } else {
                     self.panel_states.dash_ratios[1] = rem;
                 }
@@ -1021,7 +1041,9 @@ impl App {
                     (self.panel_states.dash_ratios[1] as i16 + delta).clamp(10, 80) as u16;
                 let rem = 100u16.saturating_sub(self.panel_states.dash_ratios[1]);
                 if self.panel_states.dash_ratios[2] > 0 {
-                    self.panel_states.dash_ratios[2] = rem.saturating_sub(self.panel_states.dash_ratios[0]).clamp(10, 80);
+                    self.panel_states.dash_ratios[2] = rem
+                        .saturating_sub(self.panel_states.dash_ratios[0])
+                        .clamp(10, 80);
                 } else {
                     self.panel_states.dash_ratios[0] = rem;
                 }
@@ -1029,7 +1051,9 @@ impl App {
                 self.panel_states.dash_ratios[2] =
                     (self.panel_states.dash_ratios[2] as i16 - delta).clamp(10, 80) as u16;
                 let rem = 100u16.saturating_sub(self.panel_states.dash_ratios[2]);
-                self.panel_states.dash_ratios[1] = rem.saturating_sub(self.panel_states.dash_ratios[0]).clamp(10, 80);
+                self.panel_states.dash_ratios[1] = rem
+                    .saturating_sub(self.panel_states.dash_ratios[0])
+                    .clamp(10, 80);
             }
         }
     }
@@ -1182,8 +1206,12 @@ impl App {
         self.custom_widgets.tick();
 
         let area = f.area();
-        
-        let is_transparent = self.config.ui.transparent.unwrap_or_else(|| !self.theme.is_light());
+
+        let is_transparent = self
+            .config
+            .ui
+            .transparent
+            .unwrap_or_else(|| !self.theme.is_light());
         if !is_transparent {
             f.render_widget(
                 ratatui::widgets::Block::default().style(Style::default().bg(self.theme.bg)),

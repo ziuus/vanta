@@ -8,9 +8,23 @@ pub const MAX_PAYLOAD_SIZE: usize = 1024 * 1024; // 1 MB limit for JSON payload
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "snake_case")]
 pub enum UiColor {
-    Reset, Black, Red, Green, Yellow, Blue, Magenta, Cyan, Gray,
-    DarkGray, LightRed, LightGreen, LightYellow, LightBlue,
-    LightMagenta, LightCyan, White,
+    Reset,
+    Black,
+    Red,
+    Green,
+    Yellow,
+    Blue,
+    Magenta,
+    Cyan,
+    Gray,
+    DarkGray,
+    LightRed,
+    LightGreen,
+    LightYellow,
+    LightBlue,
+    LightMagenta,
+    LightCyan,
+    White,
     Rgb(u8, u8, u8),
 }
 
@@ -76,11 +90,16 @@ impl UiWidget {
         self.check_limits(1, &mut spans, &mut 0)
     }
 
-    fn check_limits(&self, depth: usize, spans: &mut usize, text_len: &mut usize) -> Result<(), &'static str> {
+    fn check_limits(
+        &self,
+        depth: usize,
+        spans: &mut usize,
+        text_len: &mut usize,
+    ) -> Result<(), &'static str> {
         if depth > MAX_UI_TREE_DEPTH {
             return Err("UI tree exceeded maximum depth");
         }
-        
+
         match self {
             UiWidget::Paragraph { lines, .. } | UiWidget::List { items: lines, .. } => {
                 for line in lines {
@@ -105,7 +124,7 @@ impl UiWidget {
                 }
             }
         }
-        
+
         Ok(())
     }
 }

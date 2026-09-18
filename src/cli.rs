@@ -1,11 +1,12 @@
 use clap::{Parser, Subcommand};
 use serde::Deserialize;
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::Read;
 use std::path::PathBuf;
 
-const REGISTRY_URL: &str = "https://raw.githubusercontent.com/ziuus/vanta-integrations/main/registry.json";
+const REGISTRY_URL: &str =
+    "https://raw.githubusercontent.com/ziuus/vanta-integrations/main/registry.json";
 
 #[derive(Parser)]
 #[command(name = "vanta", version = env!("CARGO_PKG_VERSION"), about = "Aesthetic Rust TUI system dashboard")]
@@ -17,27 +18,17 @@ pub struct Cli {
 #[derive(Subcommand)]
 pub enum Commands {
     /// Search for available extensions in the community registry
-    Search {
-        query: Option<String>,
-    },
+    Search { query: Option<String> },
     /// Install an extension from the registry
-    Install {
-        id: String,
-    },
+    Install { id: String },
     /// Enable an installed extension
-    Enable {
-        id: String,
-    },
+    Enable { id: String },
     /// Disable an installed extension
-    Disable {
-        id: String,
-    },
+    Disable { id: String },
     /// List installed extensions
     List,
     /// Remove an installed extension
-    Remove {
-        id: String,
-    },
+    Remove { id: String },
 }
 
 #[derive(Deserialize, Debug)]
@@ -99,22 +90,25 @@ fn search(query: Option<String>) {
     };
 
     println!("\nVanta Extensions (API v{})\n", registry.api_version);
-    
+
     let mut found = 0;
     for ext in registry.extensions {
         let matches = match &query {
             Some(q) => ext.id.contains(q) || ext.name.contains(q) || ext.description.contains(q),
             None => true,
         };
-        
+
         if matches {
             println!("  {:<12} {}", ext.id, ext.name);
             println!("               {}", ext.description);
-            println!("               v{} (API v{}) by {}\n", ext.version, ext.api_version, ext.author);
+            println!(
+                "               v{} (API v{}) by {}\n",
+                ext.version, ext.api_version, ext.author
+            );
             found += 1;
         }
     }
-    
+
     if found == 0 {
         println!("No extensions found matching your query.");
     }
@@ -143,7 +137,7 @@ fn install(id: String) {
         eprintln!("  Your Vanta supports API 0.9");
         return;
     }
-    
+
     println!("Installing '{}' v{}...", ext.name, ext.version);
     println!("  Permissions requested:");
     println!("    UI             ✓");
@@ -151,7 +145,7 @@ fn install(id: String) {
     println!("    Network        ✗");
     println!("    Filesystem     ✗");
     println!("    Processes      ✗\n");
-    
+
     // Download
     println!("Downloading {}...", ext.wasm_url);
     let res = match ureq::get(&ext.wasm_url).call() {
@@ -161,19 +155,23 @@ fn install(id: String) {
             return;
         }
     };
-    
+
     let mut buf = Vec::new();
     if let Err(e) = res.into_body().into_reader().read_to_end(&mut buf) {
         eprintln!("Failed to read artifact: {}", e);
         return;
     }
     println!("✓ Downloaded {}.wasm", ext.id);
-    
+
     // Verify
     let mut hasher = Sha256::new();
     hasher.update(&buf);
-    let hash: String = hasher.finalize().iter().map(|b| format!("{:02x}", b)).collect();
-    
+    let hash: String = hasher
+        .finalize()
+        .iter()
+        .map(|b| format!("{:02x}", b))
+        .collect();
+
     if hash != ext.sha256 {
         eprintln!("✗ Security Error: Artifact hash mismatch!");
         eprintln!("  Expected: {}", ext.sha256);
@@ -181,31 +179,34 @@ fn install(id: String) {
         return;
     }
     println!("✓ Verified SHA-256 checksum");
-    
+
     // Install atomically
     let ext_dir = get_extensions_dir();
     let wasm_path = ext_dir.join(format!("{}.wasm", ext.id));
     let tmp_path = ext_dir.join(format!("{}.wasm.tmp", ext.id));
-    
+
     if let Err(e) = fs::write(&tmp_path, buf) {
         eprintln!("Failed to write extension to disk: {}", e);
         return;
     }
-    
+
     if let Err(e) = fs::rename(&tmp_path, &wasm_path) {
         eprintln!("Failed to atomically install extension: {}", e);
         let _ = fs::remove_file(&tmp_path);
         return;
     }
-    
+
     println!("✓ Installed to {}", wasm_path.display());
-    println!("\nYou can enable it by adding '{}' to the 'enabled' array in your config.toml", ext.id);
+    println!(
+        "\nYou can enable it by adding '{}' to the 'enabled' array in your config.toml",
+        ext.id
+    );
 }
 
 fn list() {
     let ext_dir = get_extensions_dir();
     println!("Installed extensions in {}:\n", ext_dir.display());
-    
+
     let mut found = 0;
     if let Ok(entries) = fs::read_dir(ext_dir) {
         for entry in entries.flatten() {
@@ -217,7 +218,7 @@ fn list() {
             }
         }
     }
-    
+
     if found == 0 {
         println!("  No extensions installed.");
     }
@@ -226,7 +227,7 @@ fn list() {
 fn remove(id: String) {
     let ext_dir = get_extensions_dir();
     let wasm_path = ext_dir.join(format!("{}.wasm", id));
-    
+
     if wasm_path.exists() {
         if let Err(e) = fs::remove_file(&wasm_path) {
             eprintln!("Failed to remove extension: {}", e);
@@ -258,19 +259,19 @@ fn enable(id: String) {
             default_config.to_string()
         }
     };
-    
+
     if content.contains(&format!("\"{}\"", id)) || content.contains(&format!("'{}'", id)) {
         println!("Extension '{}' is already enabled.", id);
         return;
     }
-    
+
     if let Some(idx) = content.find("enabled = [") {
         let mut new_content = String::new();
         let (before, after) = content.split_at(idx + "enabled = [".len());
         new_content.push_str(before);
         new_content.push_str(&format!("\"{}\", ", id));
         new_content.push_str(after);
-        
+
         fs::write(&path, new_content).unwrap();
         println!("✓ Enabled '{}' in config.toml", id);
     } else {
@@ -293,10 +294,10 @@ fn disable(id: String) {
         Ok(c) => c,
         Err(_) => return eprintln!("Could not read config.toml"),
     };
-    
+
     let target1 = format!("\"{}\", ", id);
     let target2 = format!("\"{}\"", id);
-    
+
     if content.contains(&target1) {
         let new_content = content.replace(&target1, "");
         fs::write(&path, new_content).unwrap();

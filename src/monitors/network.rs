@@ -9,8 +9,8 @@ use ratatui::Frame;
 
 use crate::monitors::history::History;
 use crate::theme::Theme;
-use crate::widgets::meter;
 use crate::widgets::block_graph::BlockGraph;
+use crate::widgets::meter;
 
 const HIST: usize = 240;
 
@@ -113,8 +113,18 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, _is_detailed: bool) {
         )
     };
 
-    let split = Layout::vertical([Constraint::Length(1), Constraint::Length(1), Constraint::Min(0)]).split(area);
-    let peak = rx_h.iter().chain(tx_h.iter()).copied().fold(0.0, f64::max).max(1.0);
+    let split = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Length(1),
+        Constraint::Min(0),
+    ])
+    .split(area);
+    let peak = rx_h
+        .iter()
+        .chain(tx_h.iter())
+        .copied()
+        .fold(0.0, f64::max)
+        .max(1.0);
 
     let mk_line = |arrow: &str, rate: f64, peak: f64, color, total| {
         let mut head = Line::from(vec![
@@ -137,15 +147,41 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, _is_detailed: bool) {
         head
     };
 
-    f.render_widget(Paragraph::new(mk_line("↓", snap.rx_kbps, peak, theme.accent, snap.rx_total)), split[0]);
-    f.render_widget(Paragraph::new(mk_line("↑", snap.tx_kbps, peak, theme.secondary, snap.tx_total)), split[1]);
+    f.render_widget(
+        Paragraph::new(mk_line(
+            "↓",
+            snap.rx_kbps,
+            peak,
+            theme.accent,
+            snap.rx_total,
+        )),
+        split[0],
+    );
+    f.render_widget(
+        Paragraph::new(mk_line(
+            "↑",
+            snap.tx_kbps,
+            peak,
+            theme.secondary,
+            snap.tx_total,
+        )),
+        split[1],
+    );
 
     if split[2].height > 0 {
         let rx_cur = rx_h.last().copied().unwrap_or(0.0);
-        let rx_dyn = if peak > 0.0 { theme.usage(rx_cur / peak * 100.0) } else { theme.accent };
+        let rx_dyn = if peak > 0.0 {
+            theme.usage(rx_cur / peak * 100.0)
+        } else {
+            theme.accent
+        };
         let tx_cur = tx_h.last().copied().unwrap_or(0.0);
-        let tx_dyn = if peak > 0.0 { theme.usage(tx_cur / peak * 100.0) } else { theme.secondary };
-        
+        let tx_dyn = if peak > 0.0 {
+            theme.usage(tx_cur / peak * 100.0)
+        } else {
+            theme.secondary
+        };
+
         f.render_widget(
             BlockGraph::new(&rx_h)
                 .data2(&tx_h)

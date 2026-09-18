@@ -21,7 +21,6 @@ fn restore_terminal() {
     let _ = io::stdout().flush();
 }
 
-
 fn main() -> io::Result<()> {
     vanta::logger::init();
     log::info!(target: "core", "Vanta started (v{})", env!("CARGO_PKG_VERSION"));
@@ -58,14 +57,17 @@ fn main() -> io::Result<()> {
     );
 
     // Load WASM extensions
-    if let Some(mut ext_dir) = directories::ProjectDirs::from("", "", "vanta").map(|p| p.config_dir().to_path_buf()) {
+    if let Some(mut ext_dir) =
+        directories::ProjectDirs::from("", "", "vanta").map(|p| p.config_dir().to_path_buf())
+    {
         ext_dir.push("extensions");
         if let Ok(entries) = std::fs::read_dir(&ext_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.extension().and_then(|s| s.to_str()) == Some("wasm") {
                     if let Ok(ext) = vanta::extension::wasm::WasmExtension::new(path) {
-                        app.ext_manager.register(Box::new(ext), app.config.extensions.as_ref());
+                        app.ext_manager
+                            .register(Box::new(ext), app.config.extensions.as_ref());
                     }
                 }
             }

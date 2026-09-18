@@ -331,7 +331,9 @@ pub fn render_storage(f: &mut Frame, area: Rect, theme: &Theme) {
                 String::new()
             };
             let bar_w = (area.width as usize)
-                .saturating_sub(label.chars().count() + pct_s.chars().count() + size.chars().count())
+                .saturating_sub(
+                    label.chars().count() + pct_s.chars().count() + size.chars().count(),
+                )
                 .max(4);
             let (on, off) = meter::track(pct / 100.0, bar_w);
             Line::from(vec![

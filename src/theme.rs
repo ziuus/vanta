@@ -1,14 +1,10 @@
 #![allow(dead_code)]
 use ratatui::style::Color;
+use serde::Deserialize;
 use std::collections::HashMap;
-use std::sync::LazyLock;
 use std::fs;
 use std::path::PathBuf;
-use serde::Deserialize;
-
-
-
-
+use std::sync::LazyLock;
 
 pub const BUILTIN_THEMES: [&str; 8] = [
     "dark",
@@ -75,7 +71,7 @@ static CUSTOM_THEMES: LazyLock<HashMap<String, Theme>> = LazyLock::new(|| {
     };
     dir.push("vanta");
     dir.push("themes");
-    
+
     if let Ok(entries) = fs::read_dir(dir) {
         for entry in entries.flatten() {
             let path = entry.path();
@@ -235,7 +231,9 @@ impl Theme {
     pub fn is_light(&self) -> bool {
         // A simple heuristic for truecolor: if background RGB average > 128, it's light.
         // Wait, we know the exact light themes! But a heuristic handles custom themes too.
-        let Color::Rgb(r, g, b) = self.bg else { return false };
+        let Color::Rgb(r, g, b) = self.bg else {
+            return false;
+        };
         (r as u16 + g as u16 + b as u16) / 3 > 128
     }
 

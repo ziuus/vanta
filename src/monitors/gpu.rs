@@ -274,8 +274,8 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, _is_detailed: bool) {
         let pct = used / total * 100.0;
         let stats = format!("{:.0}/{:.0} MiB", used, total);
         let pct_s = format!("{:>3.0}%", pct);
-        let bar_w =
-            (chunks[2].width as usize).saturating_sub(5 + stats.chars().count() + 2 + pct_s.chars().count() + 1);
+        let bar_w = (chunks[2].width as usize)
+            .saturating_sub(5 + stats.chars().count() + 2 + pct_s.chars().count() + 1);
         let (on, off) = meter::track(pct / 100.0, bar_w);
         f.render_widget(
             Paragraph::new(Line::from(vec![

@@ -7,7 +7,7 @@ use toml::Value;
 use crate::theme::Theme;
 
 /// Metadata for a Vanta Extension.
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtensionMetadata {

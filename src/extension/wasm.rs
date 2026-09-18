@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use crate::extension::{Component, Extension, ExtensionMetadata};
-use crate::protocol::{UiWidget};
+use crate::protocol::UiWidget;
 use crate::theme::Theme;
 use crate::ui_renderer;
 
@@ -28,11 +28,14 @@ impl WasmExtension {
         // Call metadata function to get extension info
         let metadata_bytes = plugin.call::<(), Vec<u8>>("metadata", ())?;
         let metadata: ExtensionMetadata = serde_json::from_slice(&metadata_bytes)?;
-        
+
         if !metadata.api_version.starts_with("0.9") {
-            return Err(extism::Error::msg(format!("Unsupported extension API version: {}", metadata.api_version)));
+            return Err(extism::Error::msg(format!(
+                "Unsupported extension API version: {}",
+                metadata.api_version
+            )));
         }
-        
+
         // Call widgets function to get list of widget IDs
         let widgets_bytes = plugin.call::<(), Vec<u8>>("widgets", ())?;
         let widgets: Vec<String> = serde_json::from_slice(&widgets_bytes)?;
@@ -51,12 +54,15 @@ impl Extension for WasmExtension {
     }
 
     fn components(&self) -> Vec<Box<dyn Component>> {
-        self.widgets.iter().map(|id| {
-            Box::new(WasmComponent {
-                id: id.clone(),
-                plugin: Arc::clone(&self.plugin),
-            }) as Box<dyn Component>
-        }).collect()
+        self.widgets
+            .iter()
+            .map(|id| {
+                Box::new(WasmComponent {
+                    id: id.clone(),
+                    plugin: Arc::clone(&self.plugin),
+                }) as Box<dyn Component>
+            })
+            .collect()
     }
 }
 
@@ -78,7 +84,7 @@ impl Component for WasmComponent {
                 if bytes.len() > crate::protocol::MAX_PAYLOAD_SIZE {
                     return; // silently drop oversized payloads for now, or render an error block
                 }
-                
+
                 if let Ok(ui_widget) = serde_json::from_slice::<UiWidget>(&bytes) {
                     if ui_widget.validate().is_ok() {
                         ui_renderer::render_widget(&ui_widget, f, area);

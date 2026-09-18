@@ -52,7 +52,6 @@ pub fn bar(frac: f64, width: usize) -> String {
         .collect()
 }
 
-
 /// Track-style bar: heavy line for the filled part, light for the rest.
 /// Reads well in tight rows where a solid block would be too loud.
 pub fn track(frac: f64, width: usize) -> (String, String) {

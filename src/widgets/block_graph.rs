@@ -161,7 +161,7 @@ impl<'a> BlockGraph<'a> {
         }
     }
 
-        fn render_blocks(&self, area: Rect, buf: &mut Buffer) {
+    fn render_blocks(&self, area: Rect, buf: &mut Buffer) {
         let cols = area.width as usize;
         let span = (self.max - self.min).max(f64::EPSILON);
         let steps = area.height as usize * 8;
@@ -178,13 +178,15 @@ impl<'a> BlockGraph<'a> {
             let t2 = ((v2 - self.min) / span).clamp(0.0, 1.0);
             let lit2 = (t2 * steps as f64).round() as usize;
             let filled_cells2 = (lit2 as f64 / 8.0).max(f64::EPSILON);
-            
-            if lit1 == 0 && lit2 == 0 { continue; }
+
+            if lit1 == 0 && lit2 == 0 {
+                continue;
+            }
 
             for row in 0..area.height as usize {
                 let from_bottom = area.height as usize - 1 - row;
                 let cell_sub_y_base = from_bottom * 8; // bottom of this cell
-                
+
                 let (ch, color) = if is_dual {
                     let mut is_bottom = false;
                     // top half goes up from center
@@ -196,15 +198,18 @@ impl<'a> BlockGraph<'a> {
                         // bottom half goes down from center
                         // cell_sub_y_base + 7 is the top of this cell
                         let bottom_lit = lit2 / 2;
-                        let dist_from_center = (center_y as usize).saturating_sub(cell_sub_y_base + 8);
+                        let dist_from_center =
+                            (center_y as usize).saturating_sub(cell_sub_y_base + 8);
                         is_bottom = true;
                         bottom_lit.saturating_sub(dist_from_center).min(8)
                     };
-                    if level == 0 { continue; }
-                    
+                    if level == 0 {
+                        continue;
+                    }
+
                     let cell_center = (from_bottom as f64 + 0.5) * 8.0;
                     let dist_from_center_cells = (cell_center - center_y).abs() / 8.0;
-                    
+
                     if is_bottom {
                         let cf = dist_from_center_cells / (filled_cells2 / 2.0).max(f64::EPSILON);
                         (BLOCKS[level], self.cell_color2(t2, cf))
@@ -214,16 +219,23 @@ impl<'a> BlockGraph<'a> {
                     }
                 } else if self.mirrored {
                     let half_lit = lit1 / 2;
-                    let dist_from_center = ((cell_sub_y_base as f64 + 4.0) - center_y).abs() as usize;
-                    let level = half_lit.saturating_sub(dist_from_center.saturating_sub(4)).min(8);
-                    if level == 0 { continue; }
+                    let dist_from_center =
+                        ((cell_sub_y_base as f64 + 4.0) - center_y).abs() as usize;
+                    let level = half_lit
+                        .saturating_sub(dist_from_center.saturating_sub(4))
+                        .min(8);
+                    if level == 0 {
+                        continue;
+                    }
                     let cell_center = (from_bottom as f64 + 0.5) * 8.0;
                     let dist_from_center_cells = (cell_center - center_y).abs() / 8.0;
                     let cf = dist_from_center_cells / (filled_cells1 / 2.0).max(f64::EPSILON);
                     (BLOCKS[level], self.cell_color(t1, cf))
                 } else {
                     let level = lit1.saturating_sub(from_bottom * 8).min(8);
-                    if level == 0 { continue; }
+                    if level == 0 {
+                        continue;
+                    }
                     let cf = (from_bottom as f64 + 0.5) / filled_cells1;
                     (BLOCKS[level], self.cell_color(t1, cf))
                 };
@@ -241,36 +253,40 @@ impl<'a> BlockGraph<'a> {
         let sub_w = cols * 2; // two dot-columns per cell
         let sub_h = area.height as usize * 4; // four dot-rows per cell
         let span = (self.max - self.min).max(f64::EPSILON);
-        
+
         let center_y = sub_h as f64 / 2.0;
         let is_dual = self.data2.is_some();
 
-        let lit: Vec<usize> = (0..sub_w).map(|sx| {
-            self.sample_at(sx, sub_w).map_or(0, |v| {
-                let t = ((v - self.min) / span).clamp(0.0, 1.0);
-                (t * sub_h as f64).round() as usize
+        let lit: Vec<usize> = (0..sub_w)
+            .map(|sx| {
+                self.sample_at(sx, sub_w).map_or(0, |v| {
+                    let t = ((v - self.min) / span).clamp(0.0, 1.0);
+                    (t * sub_h as f64).round() as usize
+                })
             })
-        }).collect();
-        
-        let lit2: Vec<usize> = (0..sub_w).map(|sx| {
-            self.sample_at2(sx, sub_w).map_or(0, |v| {
-                let t = ((v - self.min) / span).clamp(0.0, 1.0);
-                (t * sub_h as f64).round() as usize
+            .collect();
+
+        let lit2: Vec<usize> = (0..sub_w)
+            .map(|sx| {
+                self.sample_at2(sx, sub_w).map_or(0, |v| {
+                    let t = ((v - self.min) / span).clamp(0.0, 1.0);
+                    (t * sub_h as f64).round() as usize
+                })
             })
-        }).collect();
+            .collect();
 
         for cx in 0..cols {
             let (lx, rx) = (cx * 2, cx * 2 + 1);
             let colmax = lit[lx].max(lit[rx]);
             let colmax2 = lit2[lx].max(lit2[rx]);
-            
+
             if colmax == 0 && colmax2 == 0 {
                 continue;
             }
-            
+
             let t = colmax as f64 / sub_h as f64;
             let filled_cells = (colmax as f64 / 4.0).max(f64::EPSILON);
-            
+
             let t2 = colmax2 as f64 / sub_h as f64;
             let filled_cells2 = (colmax2 as f64 / 4.0).max(f64::EPSILON);
 
@@ -278,62 +294,92 @@ impl<'a> BlockGraph<'a> {
                 let from_bottom_cell = area.height as usize - 1 - cy;
                 let mut bits = 0u8;
                 let mut is_bottom_half = false;
-                
+
                 for k in 0..4 {
                     // k=0 is the top dot-row of the cell.
                     let sub_from_bottom = from_bottom_cell * 4 + (3 - k);
                     let sub_y = sub_from_bottom as f64;
-                    
+
                     if is_dual {
                         // Top half (data) goes up from center
                         if sub_y >= center_y {
                             let lx_h = lit[lx] as f64 / 2.0;
-                            if sub_y - center_y < lx_h { bits |= BRAILLE_LEFT[k]; }
+                            if sub_y - center_y < lx_h {
+                                bits |= BRAILLE_LEFT[k];
+                            }
                             let rx_h = lit[rx] as f64 / 2.0;
-                            if sub_y - center_y < rx_h { bits |= BRAILLE_RIGHT[k]; }
+                            if sub_y - center_y < rx_h {
+                                bits |= BRAILLE_RIGHT[k];
+                            }
                         } else {
                             // Bottom half (data2) goes down from center
                             let lx_h = lit2[lx] as f64 / 2.0;
-                            if center_y - sub_y <= lx_h { bits |= BRAILLE_LEFT[k]; is_bottom_half = true; }
+                            if center_y - sub_y <= lx_h {
+                                bits |= BRAILLE_LEFT[k];
+                                is_bottom_half = true;
+                            }
                             let rx_h = lit2[rx] as f64 / 2.0;
-                            if center_y - sub_y <= rx_h { bits |= BRAILLE_RIGHT[k]; is_bottom_half = true; }
+                            if center_y - sub_y <= rx_h {
+                                bits |= BRAILLE_RIGHT[k];
+                                is_bottom_half = true;
+                            }
                         }
                     } else if self.mirrored {
                         let lx_half = lit[lx] as f64 / 2.0;
-                        if (sub_y - center_y).abs() <= lx_half { bits |= BRAILLE_LEFT[k]; }
+                        if (sub_y - center_y).abs() <= lx_half {
+                            bits |= BRAILLE_LEFT[k];
+                        }
                         let rx_half = lit[rx] as f64 / 2.0;
-                        if (sub_y - center_y).abs() <= rx_half { bits |= BRAILLE_RIGHT[k]; }
+                        if (sub_y - center_y).abs() <= rx_half {
+                            bits |= BRAILLE_RIGHT[k];
+                        }
                     } else {
-                        if lit[lx] > sub_from_bottom { bits |= BRAILLE_LEFT[k]; }
-                        if lit[rx] > sub_from_bottom { bits |= BRAILLE_RIGHT[k]; }
+                        if lit[lx] > sub_from_bottom {
+                            bits |= BRAILLE_LEFT[k];
+                        }
+                        if lit[rx] > sub_from_bottom {
+                            bits |= BRAILLE_RIGHT[k];
+                        }
                     }
                 }
-                
+
                 if bits == 0 {
                     continue;
                 }
-                
+
                 let cell_center = (from_bottom_cell as f64 + 0.5) * 4.0;
-                
+
                 let (color, ch) = if is_dual {
                     let dist_from_center_cells = (cell_center - center_y).abs() / 4.0;
                     if is_bottom_half {
                         let max_dist = (filled_cells2 / 2.0).max(f64::EPSILON);
-                        (self.cell_color2(t2, dist_from_center_cells / max_dist), char::from_u32(0x2800 + bits as u32).unwrap_or(' '))
+                        (
+                            self.cell_color2(t2, dist_from_center_cells / max_dist),
+                            char::from_u32(0x2800 + bits as u32).unwrap_or(' '),
+                        )
                     } else {
                         let max_dist = (filled_cells / 2.0).max(f64::EPSILON);
-                        (self.cell_color(t, dist_from_center_cells / max_dist), char::from_u32(0x2800 + bits as u32).unwrap_or(' '))
+                        (
+                            self.cell_color(t, dist_from_center_cells / max_dist),
+                            char::from_u32(0x2800 + bits as u32).unwrap_or(' '),
+                        )
                     }
                 } else if self.mirrored {
                     let dist_from_center_cells = (cell_center - center_y).abs() / 4.0;
                     let max_dist = (filled_cells / 2.0).max(f64::EPSILON);
                     let cf = dist_from_center_cells / max_dist;
-                    (self.cell_color(t, cf), char::from_u32(0x2800 + bits as u32).unwrap_or(' '))
+                    (
+                        self.cell_color(t, cf),
+                        char::from_u32(0x2800 + bits as u32).unwrap_or(' '),
+                    )
                 } else {
                     let cf = (from_bottom_cell as f64 + 0.5) / filled_cells;
-                    (self.cell_color(t, cf), char::from_u32(0x2800 + bits as u32).unwrap_or(' '))
+                    (
+                        self.cell_color(t, cf),
+                        char::from_u32(0x2800 + bits as u32).unwrap_or(' '),
+                    )
                 };
-                
+
                 let (px, py) = (area.left() + cx as u16, area.top() + cy as u16);
                 if let Some(cell) = buf.cell_mut((px, py)) {
                     cell.set_char(ch);

@@ -110,7 +110,18 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
         let val_str = match stype {
             SettingType::DashboardPreset => app.config.dashboard.preset.clone(),
             SettingType::Theme => app.config.ui.theme.clone(),
-            SettingType::Transparent => { let c = app.config.ui.transparent.unwrap_or_else(|| !app.theme.is_light()); if c { "on".to_string() } else { "off".to_string() } },
+            SettingType::Transparent => {
+                let c = app
+                    .config
+                    .ui
+                    .transparent
+                    .unwrap_or_else(|| !app.theme.is_light());
+                if c {
+                    "on".to_string()
+                } else {
+                    "off".to_string()
+                }
+            }
             SettingType::GaugeStyle => app.config.ui.gauge_style.clone(),
             SettingType::GraphStyle => app.config.ui.graph_style.clone(),
             SettingType::MeterStyle => app.config.ui.meter_style.clone(),
@@ -303,7 +314,11 @@ fn change_setting(app: &mut App, forward: bool) {
             app.cycle_theme();
         }
         SettingType::Transparent => {
-            let current = app.config.ui.transparent.unwrap_or_else(|| !app.theme.is_light());
+            let current = app
+                .config
+                .ui
+                .transparent
+                .unwrap_or_else(|| !app.theme.is_light());
             app.config.ui.transparent = Some(!current);
             app.config.save();
         }

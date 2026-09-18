@@ -8,8 +8,8 @@ use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
 use crate::monitors::history::History;
-    use crate::theme::Theme;
-    use crate::widgets::meter;
+use crate::theme::Theme;
+use crate::widgets::meter;
 
 #[derive(Clone, Default)]
 pub struct CpuSnapshot {
@@ -48,16 +48,20 @@ pub fn sample(sys: &sysinfo::System) {
     let mut user_pct = 0.0;
     let mut sys_pct = 0.0;
     let mut iowait_pct = 0.0;
-    
+
     if let Ok(stat) = fs::read_to_string("/proc/stat") {
         if let Some(line) = stat.lines().find(|l| l.starts_with("cpu ")) {
-            let p: Vec<f64> = line.split_whitespace().skip(1).filter_map(|s| s.parse().ok()).collect();
+            let p: Vec<f64> = line
+                .split_whitespace()
+                .skip(1)
+                .filter_map(|s| s.parse().ok())
+                .collect();
             if p.len() >= 8 {
                 let user = p[0] + p[1];
                 let sys_val = p[2] + p[5] + p[6];
                 let iowait = p[4];
                 let total = p.iter().sum::<f64>();
-                
+
                 let mut prev = PREV_STAT.lock().unwrap();
                 if let Some((p_user, p_sys, p_iowait, p_total)) = *prev {
                     let d_total = total - p_total;
@@ -152,14 +156,24 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, is_detailed: bool) {
     let chunks = Layout::vertical(constraints).split(area);
 
     let color = theme.usage(snap.usage as f64);
-    let mut header = vec![
-        Span::styled(format!("{:>3.0}%", snap.usage), Style::default().fg(color)),
-    ];
+    let mut header = vec![Span::styled(
+        format!("{:>3.0}%", snap.usage),
+        Style::default().fg(color),
+    )];
 
     if snap.user_pct > 0.5 || snap.sys_pct > 0.5 || snap.iowait_pct > 0.5 {
-        header.push(Span::styled(format!("  u{:.0}%", snap.user_pct), Style::default().fg(theme.secondary)));
-        header.push(Span::styled(format!(" s{:.0}%", snap.sys_pct), Style::default().fg(theme.yellow)));
-        header.push(Span::styled(format!(" w{:.0}%", snap.iowait_pct), Style::default().fg(theme.red)));
+        header.push(Span::styled(
+            format!("  u{:.0}%", snap.user_pct),
+            Style::default().fg(theme.secondary),
+        ));
+        header.push(Span::styled(
+            format!(" s{:.0}%", snap.sys_pct),
+            Style::default().fg(theme.yellow),
+        ));
+        header.push(Span::styled(
+            format!(" w{:.0}%", snap.iowait_pct),
+            Style::default().fg(theme.red),
+        ));
     }
 
     header.push(Span::styled(
@@ -194,8 +208,8 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, is_detailed: bool) {
 
     let _points = chunks[1].width as usize; // blockgraph handles its own sub_w
     let hist_usage = HISTORY_USAGE.lock().unwrap().recent(1000);
-    
-    // We force braille style for the mirrored CPU graph by temporarily setting it, 
+
+    // We force braille style for the mirrored CPU graph by temporarily setting it,
     // or wait, blockgraph respects the global setting.
     // Let's assume the user has braille style selected, or block style works too.
     f.render_widget(
@@ -220,25 +234,26 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, is_detailed: bool) {
         let cell = Rect::new(col.x, col.y + row, col.width, 1);
         let c = theme.usage(usage as f64);
         let label = format!("c{:<2} ", i);
-        
+
         let temp_str = if let Some(t) = snap.temps.get(i) {
             format!(" {:>3.0}°C", t)
         } else {
             String::new()
         };
-        
+
         let pct = format!("{:>3.0}%", usage);
         let right_label = format!("{}{}", pct, temp_str);
-        
+
         let right_label_chars = right_label.chars().count() as u16;
         let label_chars = label.chars().count() as u16;
-        
+
         let core_chunks = Layout::horizontal([
             Constraint::Length(label_chars),
             Constraint::Min(0),
             Constraint::Length(right_label_chars),
-        ]).split(cell);
-        
+        ])
+        .split(cell);
+
         let bar_w = core_chunks[1].width as usize;
 
         // 1. Left Label
@@ -246,7 +261,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, is_detailed: bool) {
             Paragraph::new(Span::styled(label, Style::default().fg(theme.dim))),
             core_chunks[0],
         );
-        
+
         // 2. Bar
         f.render_widget(
             Paragraph::new(Span::styled(
@@ -255,18 +270,16 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, is_detailed: bool) {
             )),
             core_chunks[1],
         );
-        
+
         // 3. Right Label (pct + temp)
-        let mut right_spans = vec![
-            Span::styled(format!("{:>4}", pct), Style::default().fg(c)),
-        ];
+        let mut right_spans = vec![Span::styled(format!("{:>4}", pct), Style::default().fg(c))];
         if let Some(t) = snap.temps.get(i) {
             right_spans.push(Span::styled(
                 format!(" {:>3.0}°C", t),
                 Style::default().fg(theme.temp(*t)),
             ));
         }
-        
+
         f.render_widget(
             Paragraph::new(Line::from(right_spans)).alignment(ratatui::layout::Alignment::Right),
             core_chunks[2],

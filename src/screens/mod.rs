@@ -1,6 +1,6 @@
-pub mod debug_logs;
 pub mod aesthetic;
 pub mod dashboard;
+pub mod debug_logs;
 pub mod help;
 pub mod monitor;
 pub mod settings;

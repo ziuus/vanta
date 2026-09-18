@@ -92,17 +92,22 @@ pub fn render_layout(f: &mut Frame, area: Rect, app: &mut App, layout: &[Vec<Str
 
         let has_flex = active_panels.iter().any(|p| is_flex_panel(p));
         let num_panels = active_panels.len();
-        
+
         let mut flex_adj_total = 0;
         for p in active_panels.iter() {
             if is_flex_panel(p) {
                 if let Some(id) = crate::app::PanelId::from_name(p, &app.config) {
                     let key = format!("{:?}", id).to_lowercase();
-                    flex_adj_total += app.panel_states.dash_vertical.get(&key).copied().unwrap_or(0);
+                    flex_adj_total += app
+                        .panel_states
+                        .dash_vertical
+                        .get(&key)
+                        .copied()
+                        .unwrap_or(0);
                 }
             }
         }
-        
+
         // Distribute -flex_adj_total to rigid components
         let mut flex_remainder = -flex_adj_total;
 
@@ -113,19 +118,31 @@ pub fn render_layout(f: &mut Frame, area: Rect, app: &mut App, layout: &[Vec<Str
                 let mut adj = 0;
                 if let Some(id) = crate::app::PanelId::from_name(p, &app.config) {
                     let key = format!("{:?}", id).to_lowercase();
-                    adj = app.panel_states.dash_vertical.get(&key).copied().unwrap_or(0);
+                    adj = app
+                        .panel_states
+                        .dash_vertical
+                        .get(&key)
+                        .copied()
+                        .unwrap_or(0);
                 }
                 if !is_flex_panel(p) && flex_remainder != 0 {
                     // Try to give this rigid component 2 or -2 units of the remainder, or whatever is left
-                    let chunk = if flex_remainder > 0 { 
-                        flex_remainder.min(2) 
-                    } else { 
-                        flex_remainder.max(-2) 
+                    let chunk = if flex_remainder > 0 {
+                        flex_remainder.min(2)
+                    } else {
+                        flex_remainder.max(-2)
                     };
                     adj += chunk;
                     flex_remainder -= chunk;
                 }
-                panel_constraint(p, i == num_panels - 1, has_flex, mounts, main_area.height, adj)
+                panel_constraint(
+                    p,
+                    i == num_panels - 1,
+                    has_flex,
+                    mounts,
+                    main_area.height,
+                    adj,
+                )
             })
             .collect();
 
@@ -173,9 +190,7 @@ fn panel_constraint(
     total_height: u16,
     adjustment: i16,
 ) -> Constraint {
-    let apply = |base: u16| -> u16 {
-        (base as i16 + adjustment).max(3) as u16
-    };
+    let apply = |base: u16| -> u16 { (base as i16 + adjustment).max(3) as u16 };
 
     if is_flex_panel(name) {
         if name.eq_ignore_ascii_case("cpu") {

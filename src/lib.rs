@@ -1,13 +1,12 @@
-
 #![allow(dead_code)]
-pub mod logger;
-pub mod protocol;
-pub mod ui_renderer;
 pub mod app;
 pub mod config;
 pub mod extension;
+pub mod logger;
+pub mod protocol;
 pub mod screens;
 pub mod theme;
+pub mod ui_renderer;
 
 pub mod custom;
 pub mod mode;
