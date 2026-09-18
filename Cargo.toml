@@ -40,7 +40,3 @@ strip = true
 [dev-dependencies]
 ratatui = "0.29"
 
-[[bin]]
-name = "test_ratatui"
-path = "test_ratatui.rs"
-
