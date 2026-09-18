@@ -1,110 +1,79 @@
-# Vanta Extension & Customization Guide
+# Vanta Extensions & Customization Guide
 
-Vanta allows you to customize your terminal dashboard experience either without writing code (via `config.toml`) or by building reusable Rust extensions.
-
----
-
-## 1. Zero-Code Customization (For Users)
-
-You can customize your dashboard layout or create entirely new pages directly in `~/.config/vanta/config.toml`.
-
-### A. Customizing the Main Dashboard Grid
-Rearrange the layout by specifying columns and widget IDs in `[dashboard.layout]`:
-
-```toml
-[dashboard]
-layout = [
-    ["system", "cpu", "memory", "network"],
-    ["clock", "processes"]
-]
-```
-
-### B. Creating Custom Pages
-Add `[[pages]]` to create dedicated tab views with custom layouts. They automatically appear in the top navigation bar with hotkeys (`1`, `2`, `3`, etc.):
-
-```toml
-[[pages]]
-name = "DevOps View"
-layout = [
-    ["system", "network"],
-    ["processes", "server_ping"]
-]
-
-[[pages]]
-name = "Media Focus"
-layout = [
-    ["pinned_media", "video"],
-    ["media", "clock"]
-]
-```
+Vanta supports two ways to extend its UI:
+1. **WASM Extensions (Recommended for Community Plugins):** No need to clone or rebuild Vanta. Build a standalone WebAssembly plugin, drop the `.wasm` file into `~/.config/vanta/extensions/`, and run `vanta`.
+2. **Native Widgets (For Core Development):** Clone the repo and develop internal widgets directly in Rust with `cargo run`.
 
 ---
 
-## 2. Building Rust Extensions (For Developers)
+## 1. WASM Extensions (Zero-Rebuild Workflow)
 
-Extensions allow developers to build reusable widgets (`Component`) and full-screen views (`Page`) in Rust.
+WASM extensions run safely inside Vanta's sandboxed WebAssembly runtime (Extism / Wasmtime).
 
-### A. Extension Traits Overview (`vanta::extension`)
+### How to Test / Develop a WASM Extension Locally
 
-1. **`Component`**: A single UI box (e.g. `server_ping`).
-   ```rust
-   pub trait Component: Send + Sync {
-       fn id(&self) -> &'static str; // Unique identifier used in config layout
-       fn render(&mut self, f: &mut Frame, area: Rect, theme: &Theme);
-   }
+1. **Build the WASM binary:**
+   Inside your plugin crate (e.g., `vanta-integrations/crypto_coin`):
+   ```bash
+   cargo build --target wasm32-wasip1 --release
    ```
 
-2. **`Page`**: A full-screen view (e.g. `SecurityPage`).
-   ```rust
-   pub trait Page: Send + Sync {
-       fn id(&self) -> &'static str;
-       fn title(&self) -> &'static str; // Navigation title
-       fn render(&mut self, f: &mut Frame, area: Rect, theme: &Theme);
-   }
+2. **Place in the Vanta extensions directory:**
+   Copy the output `.wasm` file into `~/.config/vanta/extensions/`:
+   ```bash
+   mkdir -p ~/.config/vanta/extensions/
+   cp target/wasm32-wasip1/release/my_widget.wasm ~/.config/vanta/extensions/
    ```
 
-3. **`Extension`**: Bundles metadata, pages, and components together.
-   ```rust
-   pub trait Extension: Send + Sync {
-       fn metadata(&self) -> ExtensionMetadata;
-       fn init(&mut self, config: Option<&toml::Value>) {}
-       fn pages(&self) -> Vec<Box<dyn Page>> { vec![] }
-       fn components(&self) -> Vec<Box<dyn Component>> { vec![] }
-       fn shutdown(&mut self) {}
-   }
-   ```
-
-### B. Creating an Extension Crate
-1. Create a new Rust library crate.
-2. Add `vanta` as a dependency in your `Cargo.toml`:
+3. **Enable it in `~/.config/vanta/config.toml`:**
    ```toml
-   [dependencies]
-   vanta = { git = "https://github.com/ziuus/vanta" }
-   ratatui = "0.29"
+   [extensions]
+   enabled = ["my_widget"]
+
+   [dashboard]
+   layout = [
+       ["system", "cpu", "memory"],
+       ["my_widget", "processes"]
+   ]
    ```
-3. Implement the `Extension` and `Component`/`Page` traits in `src/lib.rs`.
+
+4. **Run Vanta:**
+   ```bash
+   vanta
+   ```
+   Vanta scans `~/.config/vanta/extensions/` at startup and mounts the extension. When you make code changes to your plugin, just re-run step 1 & 2 and restart Vanta.
 
 ---
 
-## 3. Registering & Using Extensions
+## 2. Installing from Registry
 
-### A. Register in Core (`src/main.rs`)
-To include an extension in a Vanta build:
-```rust
-app.ext_manager.register(
-    Box::new(my_extension_crate::MyExtension),
-    app.config.extensions.as_ref()
-);
+Published community extensions can be installed directly with the CLI:
+
+```bash
+vanta ext search
+vanta ext install crypto_coin
 ```
 
-### B. Enable in Config (`config.toml`)
-Extensions are **disabled by default**. Users must explicitly enable them:
-```toml
-[extensions]
-enabled = ["my_ext_id"]
+---
 
-[extensions.my_ext_id]
-custom_setting = "value"
-```
+## 3. Native Widget Development (Core Contributors)
 
-Once enabled, components exported by the extension (e.g. `server_ping`) can be placed directly into any layout grid in `config.toml`.
+If you are developing a built-in monitor or widget for Vanta itself:
+
+1. **Clone the repo:**
+   ```bash
+   git clone https://github.com/ziuus/vanta.git
+   cd vanta
+   ```
+2. **Add your widget:**
+   Create `src/widgets/my_widget.rs` and expose `render(f: &mut Frame, area: Rect, theme: &Theme)`.
+3. **Register in `src/app.rs` or `src/screens/`:**
+   Add your widget identifier to the layout dispatcher.
+4. **Test immediately:**
+   ```bash
+   cargo run --bin vanta
+   ```
+   Or with release optimizations:
+   ```bash
+   cargo run --release
+   ```
