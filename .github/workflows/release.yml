@@ -35,7 +35,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          registry-url: https://registry.npmjs.org
+          registry-url: 'https://registry.npmjs.org'
+          scope: '@ziuus'
 
       # Cargo.toml is the single source of truth for the version; install.js
       # builds the release download URL from it, so the two must not drift.
