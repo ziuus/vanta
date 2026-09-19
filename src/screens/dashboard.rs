@@ -569,7 +569,9 @@ fn render_dashboard_panel(
             if !matched {
                 for ext in &app.ext_manager.extensions {
                     for mut comp in ext.components() {
-                        if comp.id().eq_ignore_ascii_case(custom_id) {
+                        if comp.id().eq_ignore_ascii_case(custom_id)
+                            || ext.metadata().id.eq_ignore_ascii_case(custom_id)
+                        {
                             comp.render(f, area, theme);
                             break;
                         }

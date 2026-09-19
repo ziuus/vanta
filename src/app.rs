@@ -167,11 +167,17 @@ impl PanelId {
             "video" | "donut" => w.video.then_some(PanelId::Video),
             "notes" | "writer" | "obsidian" => Some(PanelId::WriterNotes),
             "files" => Some(PanelId::Files),
-            custom_id => cfg
-                .custom_widgets
-                .iter()
-                .position(|cw| cw.enabled && cw.id.eq_ignore_ascii_case(custom_id))
-                .map(PanelId::Custom),
+            custom_id => {
+                if let Some(pos) = cfg
+                    .custom_widgets
+                    .iter()
+                    .position(|cw| cw.enabled && cw.id.eq_ignore_ascii_case(custom_id))
+                {
+                    Some(PanelId::Custom(pos))
+                } else {
+                    Some(PanelId::Custom(999))
+                }
+            }
         }
     }
 
