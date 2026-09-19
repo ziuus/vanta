@@ -3,6 +3,7 @@ use ratatui::Frame;
 
 use crate::app::{App, PanelId};
 use crate::screens::{panel, panel_full, too_small};
+use crate::theme::Theme;
 use crate::widgets::{calendar, clock, matrix, music_viz, pinned_media, video};
 
 const MIN: (u16, u16) = (70, 24);
@@ -68,8 +69,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
             .split(rows[1]);
             let inner = panel(f, mid[0], "matrix", theme, focus(PanelId::Matrix));
             matrix::render(f, inner, theme);
-            let inner = panel(f, mid[1], "donut", theme, focus(PanelId::Video));
-            video::render(f, inner, theme, app.frame);
+            render_animation(f, mid[1], app, theme, focus(PanelId::Video));
             let inner = panel(f, mid[2], "matrix", theme, false);
             matrix::render(f, inner, theme);
         }
@@ -83,8 +83,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
             .split(rows[1]);
             let inner = panel(f, mid[0], "pinned media", theme, focus(PanelId::Media));
             pinned_media::render(f, inner, theme, &app.config.ui.pinned_media_path, app.frame);
-            let inner = panel(f, mid[1], "donut", theme, focus(PanelId::Video));
-            video::render(f, inner, theme, app.frame);
+            render_animation(f, mid[1], app, theme, focus(PanelId::Video));
             let inner = panel(f, mid[2], "matrix", theme, focus(PanelId::Matrix));
             matrix::render(f, inner, theme);
         }
@@ -101,8 +100,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
             let mid = Layout::horizontal([Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)])
                 .spacing(1)
                 .split(rows[1]);
-            let inner = panel(f, mid[0], "donut", theme, focus(PanelId::Video));
-            video::render(f, inner, theme, app.frame);
+            render_animation(f, mid[0], app, theme, focus(PanelId::Video));
             let inner = panel(f, mid[1], "pinned media", theme, focus(PanelId::Media));
             pinned_media::render(f, inner, theme, &app.config.ui.pinned_media_path, app.frame);
         }
@@ -115,8 +113,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
             matrix::render(f, inner, theme);
         }
         (false, _, false) => {
-            let inner = panel(f, rows[1], "donut", theme, focus(PanelId::Video));
-            video::render(f, inner, theme, app.frame);
+            render_animation(f, rows[1], app, theme, focus(PanelId::Video));
         }
     }
 
@@ -124,4 +121,20 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
         let inner = panel(f, rows[2], "visualizer", theme, focus(PanelId::Visualizer));
         music_viz::render(f, inner, theme, app.frame);
     }
+}
+
+fn render_animation(f: &mut Frame, area: Rect, app: &App, theme: &Theme, focused: bool) {
+    for ext in &app.ext_manager.extensions {
+        for mut comp in ext.components() {
+            if comp.id().eq_ignore_ascii_case("coin")
+                || comp.id().eq_ignore_ascii_case("3d")
+                || ext.metadata().id.eq_ignore_ascii_case("crypto_coin")
+            {
+                comp.render(f, area, theme);
+                return;
+            }
+        }
+    }
+    let inner = panel(f, area, "donut", theme, focused);
+    video::render(f, inner, theme, app.frame);
 }

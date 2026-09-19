@@ -301,7 +301,7 @@ pub struct App {
 impl App {
     pub fn new(config: Config) -> Self {
         let theme = Theme::from_name(&config.ui.theme);
-        let mode = DashboardMode::Monitor;
+        let mode = DashboardMode::from_str(&config.ui.startup_mode);
         let sampler_interval = monitors::start(Duration::from_secs_f64(config.ui.refresh_rate));
         music_viz::set_style(&config.ui.visualizer);
         crate::widgets::gauge::set_style(&config.ui.gauge_style);
