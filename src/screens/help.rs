@@ -55,7 +55,10 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, config: &Config) {
         key("q", "quit"),
         blank.clone(),
         head("3d & animation"),
-        key("o", "pause / resume motion    O    mode (spin/tumble/wobble/swing)"),
+        key(
+            "o",
+            "pause / resume motion    O    mode (spin/tumble/wobble/swing)",
+        ),
         key("[ ]", "speed slower / faster"),
         blank.clone(),
         head("media (any page)"),

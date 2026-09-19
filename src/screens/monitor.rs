@@ -22,7 +22,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
         let adj = *app.panel_states.dash_vertical.get(id).unwrap_or(&0);
         let apply = |v: u16| -> u16 {
             if adj < 0 {
-                v.saturating_sub(adj.abs() as u16)
+                v.saturating_sub(adj.unsigned_abs())
             } else {
                 v.saturating_add(adj as u16)
             }

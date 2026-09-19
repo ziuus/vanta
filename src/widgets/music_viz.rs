@@ -284,10 +284,8 @@ fn resample_max(src: &[f32], dst_len: usize) -> Vec<f32> {
             let t0 = i as f64 / dst_len as f64;
             let t1 = (i + 1) as f64 / dst_len as f64;
             // Map through log scale to a source index range.
-            let s0 = ((log_min + t0 * (log_max - log_min)).exp() - 1.0)
-                .round() as usize;
-            let s1 = ((log_min + t1 * (log_max - log_min)).exp() - 1.0)
-                .round() as usize;
+            let s0 = ((log_min + t0 * (log_max - log_min)).exp() - 1.0).round() as usize;
+            let s1 = ((log_min + t1 * (log_max - log_min)).exp() - 1.0).round() as usize;
             let start = s0.min(src_len - 1);
             let end = (s1 + 1).min(src_len);
             let end = end.max(start + 1);
@@ -632,7 +630,7 @@ fn draw_braille(
     // Each braille char covers 2 amplitude columns and 4 dot rows.
     // dot_rows = rows * 4, braille_cols = ceil(cols / 2)
     let dot_rows = rows * 4;
-    let braille_cols = (cols + 1) / 2;
+    let braille_cols = cols.div_ceil(2);
 
     // Normalise heights to [0..dot_rows].
     let norm: Vec<usize> = heights

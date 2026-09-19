@@ -143,7 +143,7 @@ pub fn save_logs(app: &mut App) {
 
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
     let path = format!("{}/vanta-logs-{}.txt", home, target_name);
-    if let Ok(_) = std::fs::write(&path, out) {
+    if std::fs::write(&path, out).is_ok() {
         log::info!(target: "core", "Saved {} logs to {}", filtered.len(), path);
     }
 }

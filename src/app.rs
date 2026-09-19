@@ -656,7 +656,11 @@ impl App {
             KeyCode::Char('o') => {
                 self.config.ui.motion_enabled = !self.config.ui.motion_enabled;
                 self.config.save();
-                let status = if self.config.ui.motion_enabled { "resumed" } else { "paused" };
+                let status = if self.config.ui.motion_enabled {
+                    "resumed"
+                } else {
+                    "paused"
+                };
                 self.toast(format!("motion · {}", status));
             }
             KeyCode::Char('O') => {
