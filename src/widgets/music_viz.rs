@@ -23,8 +23,8 @@ static LAST_SPAWN: Mutex<Option<std::time::Instant>> = Mutex::new(None);
 
 // ── Visualizer style ──
 // 0 = bars (bottom-up), 1 = mirror (center-out), 2 = wave (midline),
-// 3 = peaks (bars with falling caps).
-const STYLE_COUNT: usize = 4;
+// 3 = peaks (bars with falling caps), 4 = braille (high-res dot matrix).
+const STYLE_COUNT: usize = 5;
 /// Per-column peak hold for the "peaks" style, in normalised 0..1 units.
 static PEAK_CAPS: Mutex<Vec<f32>> = Mutex::new(Vec::new());
 static VIZ_STYLE: AtomicUsize = AtomicUsize::new(0);
@@ -41,6 +41,7 @@ pub fn set_style(name: &str) {
         "mirror" => 1,
         "wave" => 2,
         "peaks" => 3,
+        "braille" => 4,
         _ => 0,
     };
     VIZ_STYLE.store(idx, Ordering::Relaxed);
@@ -190,6 +191,7 @@ pub fn style_name() -> &'static str {
         1 => "mirror",
         2 => "wave",
         3 => "peaks",
+        4 => "braille",
         _ => "bars",
     }
 }
@@ -263,22 +265,31 @@ fn read_cava_bars() -> Vec<f32> {
     CAVA_BARS.lock().unwrap_or_else(|e| e.into_inner()).clone()
 }
 
-// ── Spatial resample: max-fold preserves peak shapes when a narrow panel has
-// fewer columns than cava has bars. cava's bars are already neighbour-smoothed
-// (monstercat), so the fold stays visually continuous. ──
+// ── Spatial resample: logarithmic frequency spacing so bass, mid, and treble
+// are evenly distributed across the panel width. Linear mapping clusters all
+// energy into the left third (bass-heavy) leaving a dead gap on the right.
+// Log spacing mirrors how human hearing works and how cava looks standalone. ──
 fn resample_max(src: &[f32], dst_len: usize) -> Vec<f32> {
     if src.is_empty() || dst_len == 0 {
         return vec![0.0f32; dst_len];
     }
     let src_len = src.len();
-    if src_len == 0 {
-        return vec![0.0f32; dst_len];
-    }
+    // Map each output column to a logarithmically-spaced input range.
+    // log_min is slightly above 0 so log(0) is avoided; log_max = log(src_len).
+    let log_min = 1.0f64;
+    let log_max = (src_len as f64 + 1.0).ln();
     (0..dst_len)
         .map(|i| {
-            let start = (i as f64 * src_len as f64 / dst_len as f64) as usize;
-            let end = ((i + 1) as f64 * src_len as f64 / dst_len as f64) as usize;
-            let end = end.min(src_len);
+            // Fraction [0..1] along the output.
+            let t0 = i as f64 / dst_len as f64;
+            let t1 = (i + 1) as f64 / dst_len as f64;
+            // Map through log scale to a source index range.
+            let s0 = ((log_min + t0 * (log_max - log_min)).exp() - 1.0)
+                .round() as usize;
+            let s1 = ((log_min + t1 * (log_max - log_min)).exp() - 1.0)
+                .round() as usize;
+            let start = s0.min(src_len - 1);
+            let end = (s1 + 1).min(src_len);
             let end = end.max(start + 1);
             src[start..end].iter().copied().fold(0.0f32, f32::max)
         })
@@ -396,6 +407,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, _tick: u64) {
         1 => draw_mirror(&heights, norm_peak, term_cols, term_rows, theme, dim),
         2 => draw_wave(&heights, norm_peak, term_cols, term_rows, theme, dim),
         3 => draw_peaks(&heights, norm_peak, term_cols, term_rows, theme, dim),
+        4 => draw_braille(&heights, norm_peak, term_cols, term_rows, theme, dim),
         _ => draw_bars(&heights, norm_peak, term_cols, term_rows, theme, dim),
     };
 
@@ -592,6 +604,103 @@ fn draw_peaks(
                 },
                 style,
             ));
+        }
+        lines.push(Line::from(spans));
+    }
+    lines
+}
+
+/// Braille dot-matrix: each terminal cell holds a 2×4 braille dot grid, giving
+/// twice the horizontal and four times the vertical resolution of block chars.
+///
+/// Layout:  col pairs → one braille char per two amplitude columns
+///          rows packed 4 per terminal row (bottom 4 bits = left col, top 4 = right)
+///
+/// Unicode braille block: U+2800..U+28FF
+/// Dot positions (bit indices in the Unicode braille table):
+///   bit 0 = row 0 left,  bit 3 = row 3 left
+///   bit 4 = row 0 right, bit 7 = row 3 right
+///   rows are ordered top→bottom.
+fn draw_braille(
+    heights: &[f32],
+    norm_peak: f32,
+    cols: usize,
+    rows: usize,
+    theme: &Theme,
+    dim: bool,
+) -> Vec<Line<'static>> {
+    // Each braille char covers 2 amplitude columns and 4 dot rows.
+    // dot_rows = rows * 4, braille_cols = ceil(cols / 2)
+    let dot_rows = rows * 4;
+    let braille_cols = (cols + 1) / 2;
+
+    // Normalise heights to [0..dot_rows].
+    let norm: Vec<usize> = heights
+        .iter()
+        .map(|&h| ((h / norm_peak).min(1.0) * dot_rows as f32).round() as usize)
+        .collect();
+
+    // Braille bit layout (Unicode braille, standard ordering):
+    // dot:  1 4    bit: 0 3
+    //       2 5         1 4
+    //       3 6         2 5
+    //       7 8         6 7
+    // Left column uses bits 0,1,2,6; right uses bits 3,4,5,7.
+    // Row from bottom → bit index mapping (bottom-up rendering):
+    const LEFT_BITS: [u8; 4] = [6, 2, 1, 0]; // dot rows 0(bottom)..3(top) left col
+    const RIGHT_BITS: [u8; 4] = [7, 5, 4, 3]; // same for right col
+
+    let color = if dim { theme.dim } else { theme.accent };
+    let top_color = if dim { theme.dim } else { theme.secondary };
+
+    let mut lines: Vec<Line> = Vec::with_capacity(rows);
+
+    for term_row in (0..rows).rev() {
+        let mut spans: Vec<Span<'static>> = Vec::with_capacity(braille_cols);
+        for bc in 0..braille_cols {
+            let left_col = bc * 2;
+            let right_col = bc * 2 + 1;
+
+            let left_h = if left_col < norm.len() {
+                norm[left_col]
+            } else {
+                0
+            };
+            let right_h = if right_col < norm.len() {
+                norm[right_col]
+            } else {
+                0
+            };
+
+            let mut bits: u8 = 0;
+            // Fill dots bottom-up within this terminal row.
+            for dot in 0..4usize {
+                // dot 0 = bottom-most dot row of this cell
+                let dot_row_abs = term_row * 4 + dot; // absolute dot row from bottom
+                if left_h > dot_row_abs {
+                    bits |= 1 << LEFT_BITS[dot];
+                }
+                if right_h > dot_row_abs {
+                    bits |= 1 << RIGHT_BITS[dot];
+                }
+            }
+
+            let ch = if bits == 0 {
+                ' '
+            } else {
+                char::from_u32(0x2800 | bits as u32).unwrap_or(' ')
+            };
+
+            // Top portion of each bar → secondary color for gradient feel.
+            let max_h = left_h.max(right_h);
+            let cell_mid = term_row * 4 + 2;
+            let c = if max_h >= cell_mid && !dim {
+                top_color
+            } else {
+                color
+            };
+
+            spans.push(Span::styled(ch.to_string(), Style::default().fg(c)));
         }
         lines.push(Line::from(spans));
     }
