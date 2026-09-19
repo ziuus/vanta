@@ -534,7 +534,15 @@ fn render_dashboard_panel(
         }
         "video" | "donut" => {
             let inner = panel(f, area, "video", theme, focus(PanelId::Video));
-            crate::widgets::video::render(f, inner, theme, app.frame);
+            crate::widgets::video::render_with_motion(
+                f,
+                inner,
+                theme,
+                app.frame,
+                app.config.ui.motion_enabled,
+                app.config.ui.motion_speed,
+                &app.config.ui.motion_mode,
+            );
         }
         "notes" | "writer" | "obsidian" => {
             crate::screens::workspace::render_notes(f, area, app);
@@ -573,8 +581,12 @@ fn render_dashboard_panel(
                             || ext.metadata().id.eq_ignore_ascii_case(custom_id)
                         {
                             comp.render(f, area, theme);
+                            matched = true;
                             break;
                         }
+                    }
+                    if matched {
+                        break;
                     }
                 }
             }

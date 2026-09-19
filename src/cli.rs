@@ -27,6 +27,8 @@ pub enum Commands {
     Disable { id: String },
     /// List installed extensions
     List,
+    /// Update installed extensions from the registry (specify an ID or update all)
+    Update { id: Option<String> },
     /// Remove an installed extension
     Remove { id: String },
 }
@@ -66,6 +68,7 @@ pub fn handle_cli(cli: Cli) -> bool {
             Commands::Enable { id } => enable(id),
             Commands::Disable { id } => disable(id),
             Commands::List => list(),
+            Commands::Update { id } => update(id),
             Commands::Remove { id } => remove(id),
         }
         return true;
@@ -132,12 +135,6 @@ fn install(id: String) {
         }
     };
 
-    if !ext.api_version.starts_with("0.9") {
-        eprintln!("✗ '{}' requires Vanta UI API {}", ext.id, ext.api_version);
-        eprintln!("  Your Vanta supports API 0.9");
-        return;
-    }
-
     println!("Installing '{}' v{}...", ext.name, ext.version);
     println!("  Permissions requested:");
     println!("    UI             ✓");
@@ -146,21 +143,37 @@ fn install(id: String) {
     println!("    Filesystem     ✗");
     println!("    Processes      ✗\n");
 
+    match download_and_install(&ext) {
+        Ok(path) => {
+            println!("✓ Installed to {}", path.display());
+            println!(
+                "\nYou can enable it by adding '{}' to the 'enabled' array in your config.toml",
+                ext.id
+            );
+        }
+        Err(e) => eprintln!("✗ {}", e),
+    }
+}
+
+fn download_and_install(ext: &RegistryExtension) -> Result<PathBuf, String> {
+    if !ext.api_version.starts_with("0.9") {
+        return Err(format!(
+            "'{}' requires Vanta UI API {}, but your Vanta supports API 0.9",
+            ext.id, ext.api_version
+        ));
+    }
+
     // Download
     println!("Downloading {}...", ext.wasm_url);
-    let res = match ureq::get(&ext.wasm_url).call() {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("Failed to download extension artifact: {}", e);
-            return;
-        }
-    };
+    let res = ureq::get(&ext.wasm_url)
+        .call()
+        .map_err(|e| format!("Failed to download extension artifact: {}", e))?;
 
     let mut buf = Vec::new();
-    if let Err(e) = res.into_body().into_reader().read_to_end(&mut buf) {
-        eprintln!("Failed to read artifact: {}", e);
-        return;
-    }
+    res.into_body()
+        .into_reader()
+        .read_to_end(&mut buf)
+        .map_err(|e| format!("Failed to read artifact: {}", e))?;
     println!("✓ Downloaded {}.wasm", ext.id);
 
     // Verify
@@ -173,10 +186,10 @@ fn install(id: String) {
         .collect();
 
     if hash != ext.sha256 {
-        eprintln!("✗ Security Error: Artifact hash mismatch!");
-        eprintln!("  Expected: {}", ext.sha256);
-        eprintln!("  Got:      {}", hash);
-        return;
+        return Err(format!(
+            "Security Error: Artifact hash mismatch!\n  Expected: {}\n  Got:      {}",
+            ext.sha256, hash
+        ));
     }
     println!("✓ Verified SHA-256 checksum");
 
@@ -185,22 +198,74 @@ fn install(id: String) {
     let wasm_path = ext_dir.join(format!("{}.wasm", ext.id));
     let tmp_path = ext_dir.join(format!("{}.wasm.tmp", ext.id));
 
-    if let Err(e) = fs::write(&tmp_path, buf) {
-        eprintln!("Failed to write extension to disk: {}", e);
-        return;
-    }
+    fs::write(&tmp_path, buf).map_err(|e| format!("Failed to write extension to disk: {}", e))?;
 
     if let Err(e) = fs::rename(&tmp_path, &wasm_path) {
-        eprintln!("Failed to atomically install extension: {}", e);
         let _ = fs::remove_file(&tmp_path);
-        return;
+        return Err(format!("Failed to atomically install extension: {}", e));
     }
 
-    println!("✓ Installed to {}", wasm_path.display());
-    println!(
-        "\nYou can enable it by adding '{}' to the 'enabled' array in your config.toml",
-        ext.id
-    );
+    Ok(wasm_path)
+}
+
+fn update(id: Option<String>) {
+    println!("Fetching registry...");
+    let registry = match fetch_registry() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Failed to fetch registry: {}", e);
+            return;
+        }
+    };
+
+    let ext_dir = get_extensions_dir();
+    let to_update: Vec<String> = match id {
+        Some(single_id) => {
+            let path = ext_dir.join(format!("{}.wasm", single_id));
+            if !path.exists() {
+                eprintln!("Extension '{}' is not installed.", single_id);
+                return;
+            }
+            vec![single_id]
+        }
+        None => {
+            let mut installed = Vec::new();
+            if let Ok(entries) = fs::read_dir(&ext_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.extension().and_then(|s| s.to_str()) == Some("wasm") {
+                        if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                            installed.push(stem.to_string());
+                        }
+                    }
+                }
+            }
+            if installed.is_empty() {
+                println!("No installed extensions found to update.");
+                return;
+            }
+            installed
+        }
+    };
+
+    println!("Checking updates for {} extension(s)...\n", to_update.len());
+    let mut updated = 0;
+    for ext_id in to_update {
+        if let Some(ext) = registry.extensions.iter().find(|e| e.id == ext_id) {
+            println!("Updating '{}' (v{})...", ext.name, ext.version);
+            match download_and_install(ext) {
+                Ok(_) => {
+                    println!("✓ Successfully updated '{}' to v{}\n", ext.id, ext.version);
+                    updated += 1;
+                }
+                Err(e) => eprintln!("✗ Failed to update '{}': {}\n", ext.id, e),
+            }
+        } else {
+            eprintln!("⚠ Extension '{}' not found in registry (skipped)\n", ext_id);
+        }
+    }
+
+    println!("Completed: {} extension(s) updated.", updated);
 }
 
 fn list() {

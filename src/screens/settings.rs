@@ -27,6 +27,9 @@ pub enum SettingType {
     GaugeStyle,
     GraphStyle,
     MeterStyle,
+    MotionEnabled,
+    MotionMode,
+    MotionSpeed,
     Visualizer,
     RefreshRate,
     Fps,
@@ -53,6 +56,9 @@ pub const SETTINGS_ITEMS: &[(SettingType, &str)] = &[
     (SettingType::GaugeStyle, "Gauge Style"),
     (SettingType::GraphStyle, "Graph Style"),
     (SettingType::MeterStyle, "Meter Style"),
+    (SettingType::MotionEnabled, "Motion"),
+    (SettingType::MotionMode, "Motion Mode"),
+    (SettingType::MotionSpeed, "Motion Speed"),
     (SettingType::Visualizer, "Visualizer"),
     (SettingType::ClockFont, "Clock Font"),
     (SettingType::ClockStyle, "Clock Style"),
@@ -125,6 +131,15 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
             SettingType::GaugeStyle => app.config.ui.gauge_style.clone(),
             SettingType::GraphStyle => app.config.ui.graph_style.clone(),
             SettingType::MeterStyle => app.config.ui.meter_style.clone(),
+            SettingType::MotionEnabled => {
+                if app.config.ui.motion_enabled {
+                    "enabled".to_string()
+                } else {
+                    "paused".to_string()
+                }
+            }
+            SettingType::MotionMode => app.config.ui.motion_mode.clone(),
+            SettingType::MotionSpeed => format!("{:.2}x", app.config.ui.motion_speed),
             SettingType::Visualizer => app.config.ui.visualizer.clone(),
             SettingType::ClockFont => app.config.ui.clock_font.clone(),
             SettingType::ClockStyle => app.config.ui.clock_style.clone(),
@@ -333,6 +348,35 @@ fn change_setting(app: &mut App, forward: bool) {
         SettingType::MeterStyle => {
             crate::widgets::meter::cycle_style();
             app.config.ui.meter_style = crate::widgets::meter::style_name().to_string();
+        }
+        SettingType::MotionEnabled => {
+            app.config.ui.motion_enabled = !app.config.ui.motion_enabled;
+        }
+        SettingType::MotionMode => {
+            let modes = ["spin", "tumble", "wobble", "swing"];
+            let pos = modes
+                .iter()
+                .position(|&x| x == app.config.ui.motion_mode)
+                .unwrap_or(0);
+            let next = if forward {
+                modes[(pos + 1) % modes.len()]
+            } else {
+                modes[(pos + modes.len() - 1) % modes.len()]
+            };
+            app.config.ui.motion_mode = next.to_string();
+        }
+        SettingType::MotionSpeed => {
+            let speeds = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0];
+            let pos = speeds
+                .iter()
+                .position(|&x| (x - app.config.ui.motion_speed).abs() < 0.1)
+                .unwrap_or(3);
+            let next = if forward {
+                speeds[(pos + 1).min(speeds.len() - 1)]
+            } else {
+                speeds[pos.saturating_sub(1)]
+            };
+            app.config.ui.motion_speed = next;
         }
         SettingType::Visualizer => {
             crate::widgets::music_viz::cycle_style();

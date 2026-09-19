@@ -137,14 +137,36 @@ pub struct UiConfig {
     pub timezones: Vec<String>,
     /// Visualizer style: bars | mirror | wave | peaks.
     pub visualizer: String,
-    /// Gauge style: arc | bars | vertical.
+    /// Gauge style: arc | bars | vertical | dots | braille.
     pub gauge_style: String,
     /// History graph style: block | braille.
     pub graph_style: String,
-    /// Transparent background
+    /// Meter style: block | braille | dots | ascii.
     #[serde(default)]
     pub meter_style: String,
+    /// Motion enabled for 3D/animations (true | false)
+    #[serde(default = "default_motion_enabled")]
+    pub motion_enabled: bool,
+    /// Motion speed multiplier (0.25 to 3.0)
+    #[serde(default = "default_motion_speed")]
+    pub motion_speed: f32,
+    /// Motion mode: spin | tumble | wobble | swing
+    #[serde(default = "default_motion_mode")]
+    pub motion_mode: String,
+    /// Transparent background
     pub transparent: Option<bool>,
+}
+
+fn default_motion_enabled() -> bool {
+    true
+}
+
+fn default_motion_speed() -> f32 {
+    1.0
+}
+
+fn default_motion_mode() -> String {
+    "spin".to_string()
 }
 
 impl Default for UiConfig {
@@ -168,6 +190,9 @@ impl Default for UiConfig {
             gauge_style: "arc".to_string(),
             graph_style: "block".to_string(),
             meter_style: "block".to_string(),
+            motion_enabled: true,
+            motion_speed: 1.0,
+            motion_mode: "spin".to_string(),
             transparent: None,
         }
     }

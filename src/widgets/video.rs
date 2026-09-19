@@ -20,7 +20,20 @@ fn shade(theme: &Theme, t: f32) -> Color {
 
 /// Render a rotating 3D torus (donut) as an ASCII "video" demo.
 #[allow(non_snake_case)]
-pub fn render(f: &mut Frame, area: Rect, theme: &Theme, _tick: u64) {
+pub fn render(f: &mut Frame, area: Rect, theme: &Theme, tick: u64) {
+    render_with_motion(f, area, theme, tick, true, 1.0, "tumble");
+}
+
+#[allow(non_snake_case)]
+pub fn render_with_motion(
+    f: &mut Frame,
+    area: Rect,
+    theme: &Theme,
+    tick: u64,
+    motion_enabled: bool,
+    motion_speed: f32,
+    motion_mode: &str,
+) {
     if area.width < 10 || area.height < 5 {
         return;
     }
@@ -32,9 +45,24 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, _tick: u64) {
     let mut b_buffer = vec![' '; width * height];
     let mut c_buffer = vec![theme.accent; width * height];
 
-    let now = (_tick as f64) / 30.0;
-    let A = (now * 1.2) as f32; // X rotation speed
-    let B = (now * 0.8) as f32; // Y rotation speed
+    let now = if motion_enabled {
+        (tick as f64 / 30.0) * (motion_speed.max(0.0) as f64)
+    } else {
+        1.25 // Frozen angle
+    };
+
+    let (A, B) = match motion_mode {
+        "spin" => (0.4f32, (now * 1.6) as f32),
+        "wobble" => (
+            (0.55 + 0.25 * (now * 2.0).sin()) as f32,
+            (now * 2.2) as f32,
+        ),
+        "swing" => (
+            (0.35 + 0.1 * (now * 1.5).cos()) as f32,
+            (0.85 * (now * 1.5).sin()) as f32,
+        ),
+        _ /* tumble */ => ((now * 1.2) as f32, (now * 0.8) as f32),
+    };
 
     let (sinA, cosA) = A.sin_cos();
     let (sinB, cosB) = B.sin_cos();

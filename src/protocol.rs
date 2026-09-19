@@ -26,6 +26,8 @@ pub enum UiColor {
     LightCyan,
     White,
     Rgb(u8, u8, u8),
+    #[serde(untagged)]
+    Hex(String),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]

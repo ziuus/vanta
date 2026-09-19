@@ -653,6 +653,48 @@ impl App {
                 self.config.save();
                 self.toast(format!("meters · {}", crate::widgets::meter::style_name()));
             }
+            KeyCode::Char('o') => {
+                self.config.ui.motion_enabled = !self.config.ui.motion_enabled;
+                self.config.save();
+                let status = if self.config.ui.motion_enabled { "resumed" } else { "paused" };
+                self.toast(format!("motion · {}", status));
+            }
+            KeyCode::Char('O') => {
+                let modes = ["spin", "tumble", "wobble", "swing"];
+                let pos = modes
+                    .iter()
+                    .position(|&x| x == self.config.ui.motion_mode)
+                    .unwrap_or(0);
+                let next = modes[(pos + 1) % modes.len()];
+                self.config.ui.motion_mode = next.to_string();
+                self.config.save();
+                self.toast(format!("motion mode · {}", next));
+            }
+            KeyCode::Char('[') => {
+                let speeds = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0];
+                let current = self.config.ui.motion_speed;
+                let next = speeds
+                    .iter()
+                    .copied()
+                    .rev()
+                    .find(|&s| s < current - 0.05)
+                    .unwrap_or(0.25);
+                self.config.ui.motion_speed = next;
+                self.config.save();
+                self.toast(format!("motion speed · {:.2}x", next));
+            }
+            KeyCode::Char(']') => {
+                let speeds = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0];
+                let current = self.config.ui.motion_speed;
+                let next = speeds
+                    .iter()
+                    .copied()
+                    .find(|&s| s > current + 0.05)
+                    .unwrap_or(3.0);
+                self.config.ui.motion_speed = next;
+                self.config.save();
+                self.toast(format!("motion speed · {:.2}x", next));
+            }
             KeyCode::Char('+') | KeyCode::Char('=') => self.adjust_refresh(true),
             KeyCode::Char('-') | KeyCode::Char('_') => self.adjust_refresh(false),
             KeyCode::Tab => self.cycle_focus(true),

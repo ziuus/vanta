@@ -126,15 +126,18 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
 fn render_animation(f: &mut Frame, area: Rect, app: &App, theme: &Theme, focused: bool) {
     for ext in &app.ext_manager.extensions {
         for mut comp in ext.components() {
-            if comp.id().eq_ignore_ascii_case("coin")
-                || comp.id().eq_ignore_ascii_case("3d")
-                || ext.metadata().id.eq_ignore_ascii_case("crypto_coin")
-            {
-                comp.render(f, area, theme);
-                return;
-            }
+            comp.render(f, area, theme);
+            return;
         }
     }
     let inner = panel(f, area, "donut", theme, focused);
-    video::render(f, inner, theme, app.frame);
+    video::render_with_motion(
+        f,
+        inner,
+        theme,
+        app.frame,
+        app.config.ui.motion_enabled,
+        app.config.ui.motion_speed,
+        &app.config.ui.motion_mode,
+    );
 }
