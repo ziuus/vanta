@@ -37,9 +37,23 @@ function download(url, hops = 0) {
           res.resume();
           return reject(new Error(`HTTP ${statusCode} for ${url}`));
         }
+        const total = parseInt(headers['content-length'] || '0', 10);
+        let downloaded = 0;
         const chunks = [];
-        res.on('data', (c) => chunks.push(c));
-        res.on('end', () => resolve(Buffer.concat(chunks)));
+        res.on('data', (c) => {
+          chunks.push(c);
+          downloaded += c.length;
+          if (total > 0 && process.stderr.isTTY) {
+            const pct = Math.round((downloaded / total) * 100);
+            const mb = (downloaded / (1024 * 1024)).toFixed(1);
+            const totMb = (total / (1024 * 1024)).toFixed(1);
+            process.stderr.write(`\rvanta: downloading... ${pct}% (${mb}/${totMb} MB)`);
+          }
+        });
+        res.on('end', () => {
+          if (process.stderr.isTTY) process.stderr.write('\n');
+          resolve(Buffer.concat(chunks));
+        });
         res.on('error', reject);
       })
       .on('error', reject);
