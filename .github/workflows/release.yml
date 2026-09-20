@@ -35,13 +35,18 @@ jobs:
     needs: binary
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org'
-          scope: '@ziuus'
+
+      - name: Upgrade npm
+        run: npm install -g npm@latest
 
       - name: download binary artifact
         uses: actions/download-artifact@v4
@@ -52,13 +57,6 @@ jobs:
       - name: sync version to tag
         run: node npm/sync-version.js "${GITHUB_REF_NAME#v}"
 
-      - name: publish
+      - name: publish via trusted publishing (OIDC)
         working-directory: npm
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "::warning::NPM_TOKEN secret is not set — skipping npm publish"
-            exit 0
-          fi
-          npm publish --access public
+        run: npm publish --access public --provenance
