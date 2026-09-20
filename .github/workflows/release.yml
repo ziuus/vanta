@@ -57,6 +57,8 @@ jobs:
       - name: sync version to tag
         run: node npm/sync-version.js "${GITHUB_REF_NAME#v}"
 
-      - name: publish via trusted publishing (OIDC)
+      - name: publish to npm
         working-directory: npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish --access public --provenance
