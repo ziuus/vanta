@@ -1,3 +1,4 @@
+pub mod host_api;
 pub mod wasm;
 use crossterm::event::KeyEvent;
 use ratatui::layout::Rect;
