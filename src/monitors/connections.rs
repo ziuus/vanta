@@ -94,17 +94,46 @@ pub struct Connection {
     pub process_name: Option<String>,
 }
 
-// ── Public API ────────────────────────────────────────────────────────────────
+use std::sync::{LazyLock, Mutex};
 
-/// Return all TCP + TCP6 connections visible to the current user.
-///
-/// Processes owned by other users appear with `pid = None`.
-/// Never panics; returns an empty `Vec` if `/proc/net/tcp` is absent.
-pub fn snapshot() -> Vec<Connection> {
+// ── Background cache ──────────────────────────────────────────────────────────
+
+/// Snapshot populated by the background sampler thread. Reading this from
+/// `host_api.rs` is O(clone) rather than O(fd-walk), so it fits inside the
+/// 10 ms render-widget timeout.
+static CACHE: LazyLock<Mutex<Vec<Connection>>> =
+    LazyLock::new(|| Mutex::new(Vec::new()));
+
+/// Refresh the connection cache. Called by `monitors::sample_all` on every
+/// sampler tick (typically every 400–1000 ms).
+pub fn sample() {
     let inode_to_pid = build_inode_map();
     let mut out = Vec::new();
-    parse_into("/proc/net/tcp", "tcp", false, &inode_to_pid, &mut out);
-    parse_into("/proc/net/tcp6", "tcp6", true, &inode_to_pid, &mut out);
+    parse_into("/proc/net/tcp",  "tcp",  false, &inode_to_pid, &mut out);
+    parse_into("/proc/net/tcp6", "tcp6", true,  &inode_to_pid, &mut out);
+    if let Ok(mut g) = CACHE.lock() {
+        *g = out;
+    }
+}
+
+/// Return a snapshot of the last connection table read by the background
+/// sampler.  This is cheap (a Vec clone) and safe to call from the host
+/// function context.
+///
+/// Falls back to a live scan only if the cache has never been populated
+/// (first call before the first sampler tick).
+pub fn snapshot() -> Vec<Connection> {
+    // Prefer the background cache — hot path.
+    if let Ok(g) = CACHE.lock() {
+        if !g.is_empty() {
+            return g.clone();
+        }
+    }
+    // Cold start: sampler hasn't ticked yet. Do a live scan once.
+    let inode_to_pid = build_inode_map();
+    let mut out = Vec::new();
+    parse_into("/proc/net/tcp",  "tcp",  false, &inode_to_pid, &mut out);
+    parse_into("/proc/net/tcp6", "tcp6", true,  &inode_to_pid, &mut out);
     out
 }
 

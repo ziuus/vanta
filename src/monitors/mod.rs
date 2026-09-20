@@ -83,6 +83,7 @@ fn sample_all(sys: &mut sysinfo::System) {
     disk::sample();
     step("disk", &mut marks);
     processes::sample(sys.total_memory());
+    connections::sample();
     step("procs", &mut marks);
     crate::widgets::media::sample();
     step("media", &mut marks);
