@@ -20,6 +20,11 @@ jobs:
       - run: cargo build --release --locked
       - name: package
         run: tar -czf vanta-x86_64-unknown-linux-gnu.tar.gz -C target/release vanta
+      - name: upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vanta-binary
+          path: target/release/vanta
       - uses: softprops/action-gh-release@v2
         with:
           files: vanta-x86_64-unknown-linux-gnu.tar.gz
@@ -38,16 +43,15 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
           scope: '@ziuus'
 
-      # Cargo.toml is the single source of truth for the version; install.js
-      # builds the release download URL from it, so the two must not drift.
-      # Same script the manual `npm run release` path uses, and it fails the job
-      # if the tag disagrees with Cargo.toml.
+      - name: download binary artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: vanta-binary
+          path: target/release
+
       - name: sync version to tag
         run: node npm/sync-version.js "${GITHUB_REF_NAME#v}"
 
-      # npm always ships README/LICENSE; npm/package.json's prepack script
-      # copies them in and rewrites the relative image paths so the screenshots
-      # resolve on npmjs.com too. Manual publishes get the same treatment.
       - name: publish
         working-directory: npm
         env:
