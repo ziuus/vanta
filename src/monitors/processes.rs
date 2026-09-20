@@ -299,6 +299,26 @@ pub fn top_by_cpu(n: usize) -> Vec<ProcInfo> {
     v.into_iter().take(n).cloned().collect()
 }
 
+/// Top `n` processes by total I/O throughput (read_bps + write_bps).
+pub fn top_by_io(n: usize) -> Vec<ProcInfo> {
+    let st = STATE.lock().unwrap();
+    let mut v: Vec<&ProcInfo> = st.snapshot.iter().collect();
+    v.sort_by(|a, b| {
+        let a_io = a.read_bps + a.write_bps;
+        let b_io = b.read_bps + b.write_bps;
+        b_io.total_cmp(&a_io).then(b.mem_kb.cmp(&a.mem_kb))
+    });
+    v.into_iter().take(n).cloned().collect()
+}
+
+/// Full process snapshot, unsorted.  Used by the `process_tree` host API topic
+/// where extensions decide their own ordering.  Capped at 512 to keep the JSON
+/// payload within reason on a busy system.
+pub fn snapshot_all() -> Vec<ProcInfo> {
+    let st = STATE.lock().unwrap();
+    st.snapshot.iter().take(512).cloned().collect()
+}
+
 fn cmp(a: &ProcInfo, b: &ProcInfo, by: SortField, asc: bool) -> std::cmp::Ordering {
     let o = match by {
         SortField::Mem => a.mem_kb.cmp(&b.mem_kb),

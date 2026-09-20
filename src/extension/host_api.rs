@@ -31,7 +31,7 @@ use crate::monitors;
 
 /// Version of the telemetry wire format. Bump the minor when adding topics or
 /// fields, the major only for a breaking change.
-pub const TELEMETRY_API_VERSION: &str = "1.0";
+pub const TELEMETRY_API_VERSION: &str = "1.1";
 
 /// Topics this host can answer. Keep in sync with `dispatch`.
 const TOPICS: &[&str] = &[
@@ -44,6 +44,9 @@ const TOPICS: &[&str] = &[
     "disk",
     "gpu",
     "processes",
+    "io",
+    "connections",
+    "process_tree",
 ];
 
 /// Telemetry the host does *not* collect. Reported so extensions can render an
@@ -53,10 +56,6 @@ const UNAVAILABLE: &[(&str, &str)] = &[
     (
         "network.interfaces",
         "host aggregates /proc/net/dev across interfaces; no per-interface data",
-    ),
-    (
-        "network.connections",
-        "no socket/connection table is collected",
     ),
     ("containers", "no container runtime integration in host"),
     ("git", "no repository state is collected"),
@@ -223,6 +222,88 @@ fn dispatch(topic: &str, args: &Value) -> Option<Value> {
                     .collect::<Vec<_>>(),
             })
         }
+
+        // ── New topics (API v1.1) ──────────────────────────────────────────
+
+        "io" => {
+            // Per-process I/O throughput.  `read_bps` / `write_bps` are
+            // bytes-per-second averages computed by the process sampler from
+            // `/proc/<pid>/io` between consecutive sample windows.
+            // `limit` trims the list; ordering is total-io descending.
+            let limit = args
+                .get("limit")
+                .and_then(Value::as_u64)
+                .unwrap_or(25)
+                .clamp(1, 200) as usize;
+            let procs = monitors::processes::top_by_io(limit);
+            let total_read: f64 = procs.iter().map(|p| p.read_bps).sum();
+            let total_write: f64 = procs.iter().map(|p| p.write_bps).sum();
+            json!({
+                "returned_by": "io_desc",
+                "total_read_bps": total_read,
+                "total_write_bps": total_write,
+                "processes": procs.iter().map(|p| json!({
+                    "pid": p.pid,
+                    "name": p.name,
+                    "read_bps": p.read_bps,
+                    "write_bps": p.write_bps,
+                    "total_bps": p.read_bps + p.write_bps,
+                    "cpu_pct": p.cpu_pct,
+                    "mem_kb": p.mem_kb,
+                })).collect::<Vec<_>>(),
+            })
+        }
+
+        "connections" => {
+            // TCP + TCP6 socket table with process attribution.
+            // PIDs owned by other users surface with pid/process_name = null.
+            let conns = monitors::connections::snapshot();
+            // Tally states for the summary field.
+            let established = conns.iter()
+                .filter(|c| c.state == monitors::connections::ConnState::Established)
+                .count();
+            let listen = conns.iter()
+                .filter(|c| c.state == monitors::connections::ConnState::Listen)
+                .count();
+            let time_wait = conns.iter()
+                .filter(|c| c.state == monitors::connections::ConnState::TimeWait)
+                .count();
+            json!({
+                "total": conns.len(),
+                "established": established,
+                "listen": listen,
+                "time_wait": time_wait,
+                "connections": conns.iter().map(|c| json!({
+                    "protocol": c.protocol,
+                    "local_addr": c.local_addr,
+                    "remote_addr": c.remote_addr,
+                    "state": c.state.as_str(),
+                    "pid": c.pid,
+                    "process_name": c.process_name,
+                })).collect::<Vec<_>>(),
+            })
+        }
+
+        "process_tree" => {
+            // Full process list with PID + PPID so extensions can build their
+            // own tree.  Ordered by PID ascending (stable, predictable).
+            // Extensions that need a specific ordering should sort client-side.
+            let mut procs = monitors::processes::snapshot_all();
+            procs.sort_by_key(|p| p.pid);
+            json!({
+                "total": procs.len(),
+                "processes": procs.iter().map(|p| json!({
+                    "pid": p.pid,
+                    "ppid": p.ppid,
+                    "name": p.name,
+                    "command": p.cmdline,
+                    "state": p.state.to_string(),
+                    "threads": p.threads,
+                    "uid": p.uid,
+                })).collect::<Vec<_>>(),
+            })
+        }
+
         _ => return None,
     })
 }
@@ -287,5 +368,105 @@ mod tests {
         assert!(data("network")["rx_total_bytes"].is_u64());
         assert!(data("disk")["mounts"].is_array());
         assert!(data("gpu")["present"].is_boolean());
+    }
+
+    // ── v1.1 topics ───────────────────────────────────────────────────────────
+
+    #[test]
+    fn capabilities_lists_v1_1_topics() {
+        let d = data(r#"{"topic":"capabilities"}"#);
+        assert_eq!(d["telemetry_api"], json!(TELEMETRY_API_VERSION));
+        let topics = d["topics"].as_array().unwrap();
+        for expected in ["io", "connections", "process_tree"] {
+            assert!(
+                topics.iter().any(|t| t == expected),
+                "topic '{expected}' missing from capabilities"
+            );
+        }
+        // network.connections should no longer be listed as unavailable
+        let unavail: Vec<String> = d["unavailable"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|u| u["topic"].as_str().unwrap_or("").to_string())
+            .collect();
+        assert!(
+            !unavail.iter().any(|u| u == "network.connections"),
+            "network.connections should be promoted from unavailable now"
+        );
+    }
+
+    #[test]
+    fn io_topic_has_expected_shape() {
+        let d = data(r#"{"topic":"io"}"#);
+        assert_eq!(d["returned_by"], json!("io_desc"));
+        assert!(d["total_read_bps"].is_f64() || d["total_read_bps"].is_u64());
+        assert!(d["total_write_bps"].is_f64() || d["total_write_bps"].is_u64());
+        assert!(d["processes"].is_array());
+        // If any process row is present, validate its fields.
+        if let Some(p) = d["processes"].as_array().unwrap().first() {
+            assert!(p["pid"].is_u64(), "pid must be integer");
+            assert!(p["name"].is_string(), "name must be string");
+            assert!(p["read_bps"].is_f64() || p["read_bps"].is_u64());
+            assert!(p["write_bps"].is_f64() || p["write_bps"].is_u64());
+            assert!(p["total_bps"].is_f64() || p["total_bps"].is_u64());
+        }
+    }
+
+    #[test]
+    fn io_limit_is_clamped() {
+        let d = data(r#"{"topic":"io","limit":100000}"#);
+        assert!(d["processes"].as_array().unwrap().len() <= 200);
+    }
+
+    #[test]
+    fn connections_topic_has_expected_shape() {
+        let d = data(r#"{"topic":"connections"}"#);
+        assert!(d["total"].is_u64(), "total must be u64");
+        assert!(d["established"].is_u64());
+        assert!(d["listen"].is_u64());
+        assert!(d["time_wait"].is_u64());
+        assert!(d["connections"].is_array());
+        // Validate shape of each row — empty list is also valid (CI containers).
+        for conn in d["connections"].as_array().unwrap() {
+            let proto = conn["protocol"].as_str().unwrap_or("");
+            assert!(proto == "tcp" || proto == "tcp6", "unexpected protocol: {proto}");
+            assert!(conn["local_addr"].is_string());
+            assert!(conn["remote_addr"].is_string());
+            assert!(conn["state"].is_string());
+            // pid and process_name are nullable (other users' sockets)
+            assert!(conn["pid"].is_u64() || conn["pid"].is_null());
+            assert!(conn["process_name"].is_string() || conn["process_name"].is_null());
+        }
+    }
+
+    #[test]
+    fn process_tree_topic_has_expected_shape() {
+        let d = data(r#"{"topic":"process_tree"}"#);
+        assert!(d["total"].is_u64(), "total must be u64");
+        assert!(d["processes"].is_array());
+        if let Some(p) = d["processes"].as_array().unwrap().first() {
+            assert!(p["pid"].is_u64());
+            assert!(p["ppid"].is_u64());
+            assert!(p["name"].is_string());
+            assert!(p["command"].is_string());
+            assert!(p["state"].is_string());
+            assert!(p["threads"].is_u64());
+            assert!(p["uid"].is_u64());
+        }
+    }
+
+    #[test]
+    fn process_tree_is_sorted_by_pid() {
+        let procs = data(r#"{"topic":"process_tree"}"#);
+        let pids: Vec<u64> = procs["processes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| p["pid"].as_u64().unwrap_or(0))
+            .collect();
+        let mut sorted = pids.clone();
+        sorted.sort_unstable();
+        assert_eq!(pids, sorted, "process_tree must be sorted by pid asc");
     }
 }
