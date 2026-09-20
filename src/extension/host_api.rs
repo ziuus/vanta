@@ -47,6 +47,7 @@ const TOPICS: &[&str] = &[
     "io",
     "connections",
     "process_tree",
+    "services",
 ];
 
 /// Telemetry the host does *not* collect. Reported so extensions can render an
@@ -300,6 +301,21 @@ fn dispatch(topic: &str, args: &Value) -> Option<Value> {
                     "state": p.state.to_string(),
                     "threads": p.threads,
                     "uid": p.uid,
+                })).collect::<Vec<_>>(),
+            })
+        }
+
+        "services" => {
+            let srvs = monitors::services::snapshot();
+            json!({
+                "total": srvs.len(),
+                "services": srvs.iter().map(|s| json!({
+                    "name": s.name,
+                    "load_state": s.load_state,
+                    "active_state": s.active_state,
+                    "sub_state": s.sub_state,
+                    "pid": s.pid,
+                    "start_ts": s.start_ts,
                 })).collect::<Vec<_>>(),
             })
         }

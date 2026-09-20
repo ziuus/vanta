@@ -10,6 +10,7 @@ pub mod network;
 pub mod news;
 pub mod obsidian;
 pub mod processes;
+pub mod services;
 pub mod system_info;
 pub mod tasks;
 pub mod weather;
@@ -80,6 +81,8 @@ fn sample_all(sys: &mut sysinfo::System) {
     step("gpu", &mut marks);
     network::sample();
     step("net", &mut marks);
+    services::sample();
+    step("services", &mut marks);
     disk::sample();
     step("disk", &mut marks);
     processes::sample(sys.total_memory());
