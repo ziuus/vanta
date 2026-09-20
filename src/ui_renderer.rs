@@ -2,7 +2,7 @@ use crate::protocol::*;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Gauge, List, ListItem, Paragraph};
+use ratatui::widgets::{BorderType, Block, Borders, Gauge, List, ListItem, Paragraph};
 use ratatui::Frame;
 
 impl From<UiColor> for Color {
@@ -90,7 +90,7 @@ pub fn render_widget(widget: &UiWidget, f: &mut Frame, area: Rect) {
             if let Some(b) = block {
                 let mut blk = Block::default();
                 if b.bordered {
-                    blk = blk.borders(Borders::ALL);
+                    blk = blk.borders(Borders::ALL).border_type(BorderType::Rounded);
                 }
                 if let Some(ref title) = b.title {
                     blk = blk.title(title.clone());
@@ -118,7 +118,7 @@ pub fn render_widget(widget: &UiWidget, f: &mut Frame, area: Rect) {
             if let Some(b) = block {
                 let mut blk = Block::default();
                 if b.bordered {
-                    blk = blk.borders(Borders::ALL);
+                    blk = blk.borders(Borders::ALL).border_type(BorderType::Rounded);
                 }
                 if let Some(ref title) = b.title {
                     blk = blk.title(title.clone());
@@ -152,7 +152,7 @@ pub fn render_widget(widget: &UiWidget, f: &mut Frame, area: Rect) {
             if let Some(b) = block {
                 let mut blk = Block::default();
                 if b.bordered {
-                    blk = blk.borders(Borders::ALL);
+                    blk = blk.borders(Borders::ALL).border_type(BorderType::Rounded);
                 }
                 if let Some(ref title) = b.title {
                     blk = blk.title(title.clone());

@@ -19,8 +19,27 @@ fn main() {
         .call::<(), Vec<u8>>("metadata", ())
         .expect("metadata");
     println!("metadata: {}", String::from_utf8_lossy(&meta));
-    match plugin.call::<&str, Vec<u8>>("render_widget", "probe") {
-        Ok(b) => println!("render:\n{}", String::from_utf8_lossy(&b)),
-        Err(e) => println!("render ERR: {e}"),
+    let widgets = plugin
+        .call::<(), Vec<u8>>("widgets", ())
+        .map(|b| serde_json::from_slice::<Vec<String>>(&b).unwrap_or_default())
+        .unwrap_or_default();
+    println!("widgets: {widgets:?}");
+
+    // Render each widget twice: the second pass proves cached state and
+    // history survive across host calls.
+    for pass in 1..=2 {
+        for w in &widgets {
+            let t = std::time::Instant::now();
+            match plugin.call::<&str, Vec<u8>>("render_widget", w.as_str()) {
+                Ok(b) => println!(
+                    "\n--- {w} (pass {pass}, {:?}, {} bytes)\n{}",
+                    t.elapsed(),
+                    b.len(),
+                    String::from_utf8_lossy(&b)
+                ),
+                Err(e) => println!("\n--- {w} ERR: {e}"),
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(1100));
     }
 }
