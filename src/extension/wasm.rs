@@ -22,7 +22,16 @@ impl WasmExtension {
         log::info!(target: "extension", "Loading WASM extension from {:?}", path);
         let wasm = Wasm::file(&path);
         // Set a strict 10ms timeout on execution so WASM plugins cannot stall the Vanta render loop
-        let manifest = Manifest::new([wasm]).with_timeout(std::time::Duration::from_millis(10));
+        let manifest = Manifest::new([wasm])
+            .with_allowed_hosts(
+                vec![
+                    "api.binance.com".to_string(),
+                    "api.coingecko.com".to_string(),
+                    "api.alternative.me".to_string(),
+                ]
+                .into_iter(),
+            )
+            .with_timeout(std::time::Duration::from_millis(10));
         // Host functions give the sandbox read-only access to telemetry the
         // sampler thread already collects; see extension::host_api.
         let mut plugin = Plugin::new(&manifest, crate::extension::host_api::functions(), true)?;

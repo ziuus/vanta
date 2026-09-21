@@ -106,6 +106,10 @@ fn answer(request: &str) -> String {
 
 fn dispatch(topic: &str, args: &Value) -> Option<Value> {
     Some(match topic {
+        "crypto" => {
+            let s = monitors::crypto::snapshot();
+            json!(s)
+        }
         "capabilities" => json!({
             "telemetry_api": TELEMETRY_API_VERSION,
             "host_version": env!("CARGO_PKG_VERSION"),
