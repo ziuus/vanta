@@ -127,6 +127,128 @@ fn dispatch(topic: &str, args: &Value) -> Option<Value> {
             }
             return None;
         }
+        "media" => {
+            let s = crate::widgets::media::snapshot_json();
+            s
+        }
+        "media_control" => {
+            if let Some(action) = args.get("action").and_then(|v| v.as_str()) {
+                let a = match action {
+                    "play_pause" => Some(crate::widgets::media::Action::PlayPause),
+                    "next" => Some(crate::widgets::media::Action::Next),
+                    "previous" => Some(crate::widgets::media::Action::Previous),
+                    "volume_up" => Some(crate::widgets::media::Action::VolumeUp),
+                    "volume_down" => Some(crate::widgets::media::Action::VolumeDown),
+                    _ => None,
+                };
+                if let Some(a) = a {
+                    crate::widgets::media::control(a);
+                    return Some(serde_json::json!({ "status": "ok" }));
+                }
+            }
+            return None;
+        }
+        "fs_list" => {
+            let path_str = args.get("path").and_then(|v| v.as_str()).unwrap_or(".");
+            let path = std::path::PathBuf::from(path_str);
+            let mut items = Vec::new();
+            if let Ok(entries) = std::fs::read_dir(&path) {
+                for entry in entries.flatten() {
+                    if let Ok(meta) = entry.metadata() {
+                        items.push(serde_json::json!({
+                            "name": entry.file_name().to_string_lossy(),
+                            "path": entry.path().to_string_lossy(),
+                            "is_dir": meta.is_dir(),
+                            "is_symlink": meta.file_type().is_symlink(),
+                            "size": meta.len(),
+                            "modified": meta.modified().unwrap_or(std::time::SystemTime::UNIX_EPOCH).duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap_or_default().as_secs()
+                        }));
+                    }
+                }
+            }
+
+            items.sort_by(|a, b| {
+                let a_dir = a["is_dir"].as_bool().unwrap_or(false);
+                let b_dir = b["is_dir"].as_bool().unwrap_or(false);
+                if a_dir != b_dir {
+                    b_dir.cmp(&a_dir)
+                } else {
+                    let a_name = a["name"].as_str().unwrap_or("");
+                    let b_name = b["name"].as_str().unwrap_or("");
+                    a_name.to_lowercase().cmp(&b_name.to_lowercase())
+                }
+            });
+
+            let parent = path.parent().map(|p| p.to_string_lossy().to_string());
+
+            serde_json::json!({
+                "current_dir": std::fs::canonicalize(&path).unwrap_or(path.clone()).to_string_lossy(),
+                "parent": parent,
+                "items": items
+            })
+        }
+        "fs_action" => {
+            let action = args.get("action").and_then(|v| v.as_str()).unwrap_or("");
+            let id = format!(
+                "{}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                    .unwrap()
+                    .as_millis()
+            );
+            match action {
+                "copy" => {
+                    let src = args
+                        .get("source")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let dest = args
+                        .get("dest")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    crate::monitors::fs_tasks::start_copy(id.clone(), src, dest);
+                    serde_json::json!({ "status": "started", "id": id })
+                }
+                "search" => {
+                    let dir = args
+                        .get("source")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let query = args
+                        .get("dest")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    crate::monitors::fs_tasks::start_search(id.clone(), dir, query);
+                    serde_json::json!({ "status": "started", "id": id })
+                }
+                "trash" => {
+                    let src = args
+                        .get("source")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    crate::monitors::fs_tasks::start_trash(id.clone(), src);
+                    serde_json::json!({ "status": "started", "id": id })
+                }
+                "rename" => {
+                    let src = args.get("source").and_then(|v| v.as_str()).unwrap_or("");
+                    let dest = args.get("dest").and_then(|v| v.as_str()).unwrap_or("");
+                    match std::fs::rename(src, dest) {
+                        Ok(_) => serde_json::json!({ "status": "ok" }),
+                        Err(e) => serde_json::json!({ "status": "error", "error": e.to_string() }),
+                    }
+                }
+                _ => serde_json::json!({ "status": "error", "error": "unknown action" }),
+            }
+        }
+        "fs_ops" => {
+            let snap = crate::monitors::fs_tasks::snapshot();
+            serde_json::json!(snap)
+        }
         "crypto" => {
             let s = monitors::crypto::snapshot();
             json!(s)
