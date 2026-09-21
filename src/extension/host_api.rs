@@ -148,6 +148,17 @@ fn dispatch(topic: &str, args: &Value) -> Option<Value> {
             }
             return None;
         }
+                "state_get" => {
+            let key = args.get("key").and_then(|v| v.as_str()).unwrap_or("");
+            let val = crate::monitors::state_store::get(key);
+            serde_json::json!({ "value": val })
+        }
+        "state_set" => {
+            let key = args.get("key").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let val = args.get("value").cloned().unwrap_or(serde_json::Value::Null);
+            crate::monitors::state_store::set(key, val);
+            serde_json::json!({ "status": "ok" })
+        }
         "fs_list" => {
             let path_str = args.get("path").and_then(|v| v.as_str()).unwrap_or(".");
             let path = std::path::PathBuf::from(path_str);

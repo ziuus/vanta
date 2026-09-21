@@ -4,6 +4,7 @@ pub mod cpu;
 pub mod crypto;
 pub mod disk;
 pub mod files;
+pub mod state_store;
 pub mod fs_tasks;
 pub mod gpu;
 pub mod history;
