@@ -105,4 +105,36 @@ impl Component for WasmComponent {
             Err(_e) => {}
         }
     }
+
+    fn handle_key(&mut self, key: crossterm::event::KeyEvent) -> bool {
+        let mut plugin = self.plugin.lock().unwrap();
+        if !plugin.function_exists("handle_key") {
+            return false;
+        }
+
+        let key_str = match key.code {
+            crossterm::event::KeyCode::Char(c) => c.to_string(),
+            crossterm::event::KeyCode::Left => "left".to_string(),
+            crossterm::event::KeyCode::Right => "right".to_string(),
+            crossterm::event::KeyCode::Up => "up".to_string(),
+            crossterm::event::KeyCode::Down => "down".to_string(),
+            crossterm::event::KeyCode::Enter => "enter".to_string(),
+            crossterm::event::KeyCode::Esc => "esc".to_string(),
+            _ => return false,
+        };
+
+        let payload = serde_json::json!({
+            "widget": self.id,
+            "key": key_str
+        });
+
+        if let Ok(bytes) =
+            plugin.call::<&str, Vec<u8>>("handle_key", &serde_json::to_string(&payload).unwrap())
+        {
+            if let Ok(handled) = serde_json::from_slice::<bool>(&bytes) {
+                return handled;
+            }
+        }
+        false
+    }
 }

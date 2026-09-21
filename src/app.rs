@@ -396,6 +396,16 @@ impl App {
     // ── Input ─────────────────────────────────────────────────
 
     pub fn handle_key(&mut self, key: KeyEvent) {
+        if matches!(self.mode, DashboardMode::Extension(_)) {
+            for ext in &self.ext_manager.extensions {
+                for mut comp in ext.components() {
+                    if comp.handle_key(key) {
+                        return;
+                    }
+                }
+            }
+        }
+
         let ps = &mut self.panel_states;
 
         // Text entry captures everything first.

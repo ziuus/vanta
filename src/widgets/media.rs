@@ -1,3 +1,4 @@
+use serde_json::json;
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
@@ -45,6 +46,7 @@ pub struct Track {
 struct State {
     conn: Option<Connection>,
     track: Option<Track>,
+    all_tracks: Vec<Track>,
     /// When `track.position_us` was read, so the bar can advance smoothly
     /// between samples while playing.
     stamp: Instant,
@@ -55,6 +57,7 @@ static STATE: LazyLock<Mutex<State>> = LazyLock::new(|| {
     Mutex::new(State {
         conn: None,
         track: None,
+        all_tracks: Vec::new(),
         stamp: Instant::now(),
         art: None,
     })
@@ -184,23 +187,22 @@ pub fn sample() {
         }
     };
     let mut best: Option<Track> = None;
+    let mut all_tracks = Vec::new();
     for p in players {
         if let Some(t) = read_track(conn, &p) {
+            all_tracks.push(t.clone());
             let better = match &best {
                 None => true,
                 Some(b) => t.status == Status::Playing && b.status != Status::Playing,
             };
             if better {
-                let playing = t.status == Status::Playing;
-                best = Some(t);
-                if playing {
-                    break;
-                }
+                best = Some(t.clone());
             }
         }
     }
     let mut st = STATE.lock().unwrap();
     st.track = best;
+    st.all_tracks = all_tracks;
     st.stamp = Instant::now();
     st.conn = Some(conn_owned);
 }
@@ -394,4 +396,39 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
     if text_h >= 2 {
         f.render_widget(Paragraph::new(progress_line), rows[1]);
     }
+}
+
+pub fn snapshot_json() -> serde_json::Value {
+    let st = STATE.lock().unwrap();
+    let elapsed = st.stamp.elapsed().as_micros() as i64;
+
+    let mut players_json = Vec::new();
+    for t in &st.all_tracks {
+        let pos = if t.status == Status::Playing {
+            (t.position_us + elapsed).min(t.length_us.max(t.position_us))
+        } else {
+            t.position_us
+        };
+        players_json.push(serde_json::json!({
+            "player": t.player,
+            "bus_name": t.bus_name,
+            "status": match t.status {
+                Status::Playing => "Playing",
+                Status::Paused => "Paused",
+                Status::Stopped => "Stopped",
+            },
+            "title": t.title,
+            "artist": t.artist,
+            "album": t.album,
+            "length_ms": t.length_us / 1000,
+            "position_ms": pos / 1000,
+            "volume": t.volume,
+            "art_url": t.art_url,
+        }));
+    }
+
+    serde_json::json!({
+        "players": players_json,
+        "active": st.track.as_ref().map(|t| t.bus_name.clone())
+    })
 }

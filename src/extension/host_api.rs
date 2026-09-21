@@ -106,6 +106,27 @@ fn answer(request: &str) -> String {
 
 fn dispatch(topic: &str, args: &Value) -> Option<Value> {
     Some(match topic {
+        "media" => {
+            let s = crate::widgets::media::snapshot_json();
+            s
+        }
+        "media_control" => {
+            if let Some(action) = args.get("action").and_then(|v| v.as_str()) {
+                let a = match action {
+                    "play_pause" => Some(crate::widgets::media::Action::PlayPause),
+                    "next" => Some(crate::widgets::media::Action::Next),
+                    "previous" => Some(crate::widgets::media::Action::Previous),
+                    "volume_up" => Some(crate::widgets::media::Action::VolumeUp),
+                    "volume_down" => Some(crate::widgets::media::Action::VolumeDown),
+                    _ => None,
+                };
+                if let Some(a) = a {
+                    crate::widgets::media::control(a);
+                    return Some(serde_json::json!({ "status": "ok" }));
+                }
+            }
+            return None;
+        }
         "crypto" => {
             let s = monitors::crypto::snapshot();
             json!(s)
