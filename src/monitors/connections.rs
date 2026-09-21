@@ -94,46 +94,48 @@ pub struct Connection {
     pub process_name: Option<String>,
 }
 
-use std::sync::{LazyLock, Mutex};
+use std::sync::{LazyLock, RwLock};
 
 // ── Background cache ──────────────────────────────────────────────────────────
 
-/// Snapshot populated by the background sampler thread. Reading this from
-/// `host_api.rs` is O(clone) rather than O(fd-walk), so it fits inside the
-/// 10 ms render-widget timeout.
-static CACHE: LazyLock<Mutex<Vec<Connection>>> =
-    LazyLock::new(|| Mutex::new(Vec::new()));
+/// Snapshot populated by the background sampler thread.
+/// Uses an RwLock so that many concurrent reads (host API calls) never block
+/// each other, and the write (sample()) only holds the lock for the swap
+/// of an already-built Vec — a sub-microsecond operation.
+static CACHE: LazyLock<RwLock<Vec<Connection>>> = LazyLock::new(|| RwLock::new(Vec::new()));
 
 /// Refresh the connection cache. Called by `monitors::sample_all` on every
 /// sampler tick (typically every 400–1000 ms).
+///
+/// The expensive work (inode walk + procfs parse) happens *outside* the lock.
+/// The lock is held only during the final Vec swap.
 pub fn sample() {
     let inode_to_pid = build_inode_map();
     let mut out = Vec::new();
-    parse_into("/proc/net/tcp",  "tcp",  false, &inode_to_pid, &mut out);
-    parse_into("/proc/net/tcp6", "tcp6", true,  &inode_to_pid, &mut out);
-    if let Ok(mut g) = CACHE.lock() {
+    parse_into("/proc/net/tcp", "tcp", false, &inode_to_pid, &mut out);
+    parse_into("/proc/net/tcp6", "tcp6", true, &inode_to_pid, &mut out);
+    if let Ok(mut g) = CACHE.write() {
         *g = out;
     }
 }
 
 /// Return a snapshot of the last connection table read by the background
-/// sampler.  This is cheap (a Vec clone) and safe to call from the host
-/// function context.
+/// sampler. This is cheap (a Vec clone) and never blocks the render thread:
+/// read-locks are concurrent, and the write-lock is held for < 1 µs.
 ///
-/// Falls back to a live scan only if the cache has never been populated
-/// (first call before the first sampler tick).
+/// Falls back to a live scan only on first call before the sampler ticks.
 pub fn snapshot() -> Vec<Connection> {
-    // Prefer the background cache — hot path.
-    if let Ok(g) = CACHE.lock() {
+    // Hot path: read from cache.
+    if let Ok(g) = CACHE.read() {
         if !g.is_empty() {
             return g.clone();
         }
     }
-    // Cold start: sampler hasn't ticked yet. Do a live scan once.
+    // Cold start only.
     let inode_to_pid = build_inode_map();
     let mut out = Vec::new();
-    parse_into("/proc/net/tcp",  "tcp",  false, &inode_to_pid, &mut out);
-    parse_into("/proc/net/tcp6", "tcp6", true,  &inode_to_pid, &mut out);
+    parse_into("/proc/net/tcp", "tcp", false, &inode_to_pid, &mut out);
+    parse_into("/proc/net/tcp6", "tcp6", true, &inode_to_pid, &mut out);
     out
 }
 
@@ -162,8 +164,7 @@ fn build_inode_map() -> HashMap<u64, u32> {
             };
             let t = target.to_string_lossy();
             // Symlink target looks like `socket:[12345678]`
-            if let Some(inode_str) = t.strip_prefix("socket:[").and_then(|s| s.strip_suffix(']'))
-            {
+            if let Some(inode_str) = t.strip_prefix("socket:[").and_then(|s| s.strip_suffix(']')) {
                 if let Ok(inode) = inode_str.parse::<u64>() {
                     map.insert(inode, pid);
                 }

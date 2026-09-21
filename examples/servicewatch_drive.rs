@@ -24,14 +24,19 @@ fn main() {
         let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
         format!("{home}/.config/vanta/extensions/servicewatch.wasm")
     });
-    let iters: u32 = std::env::args().nth(2).and_then(|s| s.parse().ok()).unwrap_or(6);
+    let iters: u32 = std::env::args()
+        .nth(2)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(6);
 
     println!("ServiceWatch drive — loading: {path}");
     let _sampler = vanta::monitors::start(std::time::Duration::from_millis(500));
     std::thread::sleep(std::time::Duration::from_millis(1100));
 
-    let manifest = Manifest::new([Wasm::file(&path)]).with_timeout(std::time::Duration::from_millis(10));
-    let mut plugin = Plugin::new(&manifest, vanta::extension::host_api::functions(), true).expect("plugin");
+    let manifest =
+        Manifest::new([Wasm::file(&path)]).with_timeout(std::time::Duration::from_millis(10));
+    let mut plugin =
+        Plugin::new(&manifest, vanta::extension::host_api::functions(), true).expect("plugin");
 
     let render = |p: &mut Plugin, id: &str| -> (String, std::time::Duration) {
         let t = std::time::Instant::now();
@@ -67,16 +72,23 @@ fn main() {
     for w in &widgets {
         let (out, _) = render(&mut plugin, w);
         println!("\n--- {w}");
-        for l in out.lines() { println!("  {l}"); }
+        for l in out.lines() {
+            println!("  {l}");
+        }
     }
 
     let bench = 300u32;
     let t = std::time::Instant::now();
-    for _ in 0..bench { let _ = render(&mut plugin, "servicewatch"); }
+    for _ in 0..bench {
+        let _ = render(&mut plugin, "servicewatch");
+    }
     let avg = t.elapsed() / bench;
     println!("\nper-render avg ({bench}x servicewatch): {avg:?}");
 
     let budget_ms: u128 = if cfg!(debug_assertions) { 50 } else { 10 };
-    assert!(avg.as_millis() < budget_ms, "avg {avg:?} exceeds {budget_ms}ms budget");
+    assert!(
+        avg.as_millis() < budget_ms,
+        "avg {avg:?} exceeds {budget_ms}ms budget"
+    );
     println!("\n✓ ServiceWatch validated");
 }

@@ -225,7 +225,6 @@ fn dispatch(topic: &str, args: &Value) -> Option<Value> {
         }
 
         // ── New topics (API v1.1) ──────────────────────────────────────────
-
         "io" => {
             // Per-process I/O throughput.  `read_bps` / `write_bps` are
             // bytes-per-second averages computed by the process sampler from
@@ -260,13 +259,16 @@ fn dispatch(topic: &str, args: &Value) -> Option<Value> {
             // PIDs owned by other users surface with pid/process_name = null.
             let conns = monitors::connections::snapshot();
             // Tally states for the summary field.
-            let established = conns.iter()
+            let established = conns
+                .iter()
                 .filter(|c| c.state == monitors::connections::ConnState::Established)
                 .count();
-            let listen = conns.iter()
+            let listen = conns
+                .iter()
                 .filter(|c| c.state == monitors::connections::ConnState::Listen)
                 .count();
-            let time_wait = conns.iter()
+            let time_wait = conns
+                .iter()
                 .filter(|c| c.state == monitors::connections::ConnState::TimeWait)
                 .count();
             json!({
@@ -446,7 +448,10 @@ mod tests {
         // Validate shape of each row — empty list is also valid (CI containers).
         for conn in d["connections"].as_array().unwrap() {
             let proto = conn["protocol"].as_str().unwrap_or("");
-            assert!(proto == "tcp" || proto == "tcp6", "unexpected protocol: {proto}");
+            assert!(
+                proto == "tcp" || proto == "tcp6",
+                "unexpected protocol: {proto}"
+            );
             assert!(conn["local_addr"].is_string());
             assert!(conn["remote_addr"].is_string());
             assert!(conn["state"].is_string());

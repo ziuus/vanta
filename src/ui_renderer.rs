@@ -2,7 +2,7 @@ use crate::protocol::*;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{BorderType, Block, Borders, Gauge, List, ListItem, Paragraph};
+use ratatui::widgets::{Block, BorderType, Borders, Gauge, List, ListItem, Paragraph};
 use ratatui::Frame;
 
 impl From<UiColor> for Color {

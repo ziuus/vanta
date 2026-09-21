@@ -32,12 +32,10 @@ fn text(b: &[u8]) -> String {
 }
 
 fn main() {
-    let path = std::env::args()
-        .nth(1)
-        .unwrap_or_else(|| {
-            let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
-            format!("{home}/.config/vanta/extensions/iowatch.wasm")
-        });
+    let path = std::env::args().nth(1).unwrap_or_else(|| {
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
+        format!("{home}/.config/vanta/extensions/iowatch.wasm")
+    });
 
     let iters: u32 = std::env::args()
         .nth(2)
@@ -51,8 +49,8 @@ fn main() {
     // Two sample windows so the io topic has rate data before the first render.
     std::thread::sleep(std::time::Duration::from_millis(1100));
 
-    let manifest = Manifest::new([Wasm::file(&path)])
-        .with_timeout(std::time::Duration::from_millis(10));
+    let manifest =
+        Manifest::new([Wasm::file(&path)]).with_timeout(std::time::Duration::from_millis(10));
     let mut plugin =
         Plugin::new(&manifest, vanta::extension::host_api::functions(), true).expect("plugin");
 
@@ -76,7 +74,11 @@ fn main() {
             timings.push(dur);
             println!("--- {w}  ({dur:?})");
             // Print first 6 non-empty lines only to keep output readable.
-            let printed: Vec<&str> = out.lines().filter(|l| !l.trim().is_empty()).take(6).collect();
+            let printed: Vec<&str> = out
+                .lines()
+                .filter(|l| !l.trim().is_empty())
+                .take(6)
+                .collect();
             for l in &printed {
                 println!("  {l}");
             }

@@ -1,4 +1,6 @@
-//! Runtime validation for the ProcTrace extension.
+//! Runtime validation for the PortWatch extension.
+//!
+//! Usage: cargo run --example portwatch_drive [<wasm_path>] [<iters>]
 use extism::{Manifest, Plugin, Wasm};
 
 fn text(b: &[u8]) -> String {
@@ -22,14 +24,14 @@ fn text(b: &[u8]) -> String {
 fn main() {
     let path = std::env::args().nth(1).unwrap_or_else(|| {
         let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
-        format!("{home}/.config/vanta/extensions/proctrace.wasm")
+        format!("{home}/.config/vanta/extensions/portwatch.wasm")
     });
     let iters: u32 = std::env::args()
         .nth(2)
         .and_then(|s| s.parse().ok())
         .unwrap_or(6);
 
-    println!("ProcTrace drive — loading: {path}");
+    println!("PortWatch drive — loading: {path}");
     let _sampler = vanta::monitors::start(std::time::Duration::from_millis(500));
     std::thread::sleep(std::time::Duration::from_millis(1100));
 
@@ -47,24 +49,17 @@ fn main() {
         (out, t.elapsed())
     };
 
-    let pid_to_test = std::process::id(); // Self PID
-
-    let widgets = vec![
-        "proctrace".to_string(),
-        "proctrace_activity".to_string(),
-        format!("proctrace_ancestry_{}", pid_to_test),
-        format!("proctrace_descendants_{}", pid_to_test),
-    ];
+    const WIDGETS: &[&str] = &["portwatch", "port_listeners", "port_activity"];
 
     for i in 0..iters {
         println!("\n===== iteration {}/{iters}", i + 1);
-        for w in &widgets {
+        for &w in WIDGETS {
             let (out, dur) = render(&mut plugin, w);
             println!("--- {w}  ({dur:?})");
             if out.starts_with("ERR") {
                 eprintln!("  ⚠ {w}: {out}");
             } else {
-                for l in out.lines().filter(|l| !l.trim().is_empty()).take(12) {
+                for l in out.lines().filter(|l| !l.trim().is_empty()).take(8) {
                     println!("  {l}");
                 }
             }
@@ -73,7 +68,7 @@ fn main() {
     }
 
     println!("\n===== FINAL OUTPUT");
-    for w in &widgets {
+    for &w in WIDGETS {
         let (out, _) = render(&mut plugin, w);
         println!("\n--- {w}");
         for l in out.lines() {
@@ -84,15 +79,18 @@ fn main() {
     let bench = 300u32;
     let t = std::time::Instant::now();
     for _ in 0..bench {
-        let _ = render(&mut plugin, "proctrace");
+        let _ = render(&mut plugin, "portwatch");
     }
     let avg = t.elapsed() / bench;
-    println!("\nper-render avg ({bench}x proctrace): {avg:?}");
+    println!("\nper-render avg ({bench}x portwatch): {avg:?}");
 
+    // The 10 ms budget is enforced by the real Vanta host at runtime.
+    // In release mode we assert < 10 ms; in debug builds the threshold is 50 ms
+    // (unoptimised WASM + host is measurably slower).
     let budget_ms: u128 = if cfg!(debug_assertions) { 50 } else { 10 };
     assert!(
         avg.as_millis() < budget_ms,
         "avg {avg:?} exceeds {budget_ms}ms budget"
     );
-    println!("\n✓ ProcTrace validated");
+    println!("\n✓ PortWatch validated");
 }
