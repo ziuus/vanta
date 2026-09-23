@@ -91,7 +91,10 @@ fn get_extensions_dir() -> PathBuf {
 pub fn handle_cli(cli: Cli) -> bool {
     if let Some(cmd) = cli.command {
         match cmd {
-            Commands::Browse { filter, interactive } => {
+            Commands::Browse {
+                filter,
+                interactive,
+            } => {
                 if interactive {
                     let _ = crate::cli_menu::run_menu_installer();
                 } else {
@@ -210,7 +213,10 @@ fn browse(filter: Option<String>) {
     if total_shown == 0 {
         println!("No extensions found matching your filter.");
     } else {
-        println!("Shown {} extension(s). Use `vanta install <id>` to install any extension.", total_shown);
+        println!(
+            "Shown {} extension(s). Use `vanta install <id>` to install any extension.",
+            total_shown
+        );
     }
 }
 
