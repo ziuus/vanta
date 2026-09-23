@@ -47,9 +47,10 @@ fn main() -> io::Result<()> {
 
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
+    execute!(stdout, EnterAlternateScreen, crossterm::cursor::Hide)?;
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout))?;
     terminal.clear()?;
+    terminal.hide_cursor()?;
 
     let mut app = App::new(config);
     app.ext_manager.register(

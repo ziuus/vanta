@@ -7,7 +7,7 @@ fn main() {
         .nth(1)
         .expect("usage: probe_host <file.wasm>");
     let manifest =
-        Manifest::new([Wasm::file(&path)]).with_timeout(std::time::Duration::from_millis(10));
+        Manifest::new([Wasm::file(&path)]).with_timeout(std::time::Duration::from_millis(250));
     // Start the real sampler so telemetry queries return live values, exactly
     // as they do inside the running app.
     let _sampler = vanta::monitors::start(std::time::Duration::from_millis(250));
