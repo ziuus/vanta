@@ -21,6 +21,10 @@ use sha2::{Digest, Sha256};
 const REGISTRY_URL: &str =
     "https://raw.githubusercontent.com/ziuus/vanta-integrations/main/registry.json";
 
+fn default_ext_type() -> String {
+    "component".to_string()
+}
+
 #[derive(serde::Deserialize, Debug, Clone)]
 pub struct RegistryExtension {
     pub id: String,
@@ -29,8 +33,16 @@ pub struct RegistryExtension {
     pub version: String,
     pub api_version: String,
     pub author: String,
+    #[serde(default)]
     pub wasm_url: String,
+    #[serde(default)]
     pub sha256: String,
+    #[serde(default = "default_ext_type", alias = "type", alias = "kind")]
+    pub ext_type: String,
+    #[serde(default)]
+    pub components: Vec<String>,
+    #[serde(default)]
+    pub layout: Vec<Vec<String>>,
 }
 
 #[derive(serde::Deserialize, Debug)]
@@ -61,6 +73,66 @@ fn get_extensions_dir() -> PathBuf {
     dir.push("extensions");
     let _ = fs::create_dir_all(&dir);
     dir
+}
+
+fn get_config_path() -> PathBuf {
+    directories::ProjectDirs::from("", "", "vanta")
+        .map(|p| p.config_dir().join("config.toml"))
+        .unwrap_or_else(|| PathBuf::from("config.toml"))
+}
+
+pub fn add_page_to_config(
+    name: &str,
+    layout: &[Vec<String>],
+    components: &[String],
+) -> Result<(), String> {
+    let path = get_config_path();
+    let content = match fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => {
+            if let Some(parent) = path.parent() {
+                let _ = fs::create_dir_all(parent);
+            }
+            let default_config = "[extensions]\nenabled = []\n";
+            let _ = fs::write(&path, default_config);
+            default_config.to_string()
+        }
+    };
+
+    let mut new_content = content;
+
+    // 1. Enable components in [extensions.enabled]
+    for comp in components {
+        if !new_content.contains(&format!("\"{}\"", comp))
+            && !new_content.contains(&format!("'{}'", comp))
+        {
+            if let Some(idx) = new_content.find("enabled = [") {
+                let insert_at = idx + "enabled = [".len();
+                let (before, after) = new_content.split_at(insert_at);
+                new_content = format!("{}\"{}\", {}", before, comp, after);
+            } else {
+                if !new_content.contains("[extensions]") {
+                    new_content.push_str("\n[extensions]\n");
+                }
+                new_content.push_str(&format!("enabled = [\"{}\"]\n", comp));
+            }
+        }
+    }
+
+    // 2. Add [[pages]] if not already present
+    if !new_content.contains(&format!("name = \"{}\"", name)) {
+        if !new_content.ends_with('\n') {
+            new_content.push('\n');
+        }
+        let layout_str = serde_json::to_string(layout).unwrap_or_else(|_| "[]".to_string());
+        new_content.push_str(&format!(
+            "\n[[pages]]\nname = \"{}\"\nlayout = {}\n",
+            name, layout_str
+        ));
+    }
+
+    fs::write(&path, new_content).map_err(|e| format!("Failed to write config.toml: {}", e))?;
+    Ok(())
 }
 
 fn download_and_install_ext(ext: &RegistryExtension) -> Result<PathBuf, String> {
@@ -109,6 +181,27 @@ fn download_and_install_ext(ext: &RegistryExtension) -> Result<PathBuf, String> 
     Ok(wasm_path)
 }
 
+pub fn install_page_ext(
+    ext: &RegistryExtension,
+    all_extensions: &[RegistryExtension],
+) -> Result<String, String> {
+    let mut installed_count = 0;
+    for comp_id in &ext.components {
+        if let Some(comp_ext) = all_extensions.iter().find(|e| e.id == *comp_id) {
+            download_and_install_ext(comp_ext)?;
+            installed_count += 1;
+        } else {
+            return Err(format!("Component '{}' missing from registry", comp_id));
+        }
+    }
+
+    add_page_to_config(&ext.name, &ext.layout, &ext.components)?;
+    Ok(format!(
+        "Installed page '{}' with {} components",
+        ext.name, installed_count
+    ))
+}
+
 pub fn run_menu_installer() -> io::Result<()> {
     println!("Fetching Vanta extensions registry...");
     let res = match ureq::get(REGISTRY_URL).call() {
@@ -133,6 +226,8 @@ pub fn run_menu_installer() -> io::Result<()> {
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout_handle))?;
 
     let categories = [
+        "📑 Pages",
+        "🧩 Components",
         "All",
         "Observability",
         "Crypto",
@@ -155,12 +250,11 @@ pub fn run_menu_installer() -> io::Result<()> {
         let filtered_extensions: Vec<&RegistryExtension> = registry
             .extensions
             .iter()
-            .filter(|e| {
-                if current_category == "All" {
-                    true
-                } else {
-                    get_category(&e.id) == current_category
-                }
+            .filter(|e| match current_category {
+                "📑 Pages" => e.ext_type == "page",
+                "🧩 Components" => e.ext_type == "component",
+                "All" => true,
+                _ => get_category(&e.id) == current_category,
             })
             .collect();
 
@@ -190,14 +284,23 @@ pub fn run_menu_installer() -> io::Result<()> {
             let tab_titles: Vec<Line> = categories
                 .iter()
                 .map(|t| {
-                    let count = if *t == "All" {
-                        registry.extensions.len()
-                    } else {
-                        registry
+                    let count = match *t {
+                        "📑 Pages" => registry
+                            .extensions
+                            .iter()
+                            .filter(|e| e.ext_type == "page")
+                            .count(),
+                        "🧩 Components" => registry
+                            .extensions
+                            .iter()
+                            .filter(|e| e.ext_type == "component")
+                            .count(),
+                        "All" => registry.extensions.len(),
+                        _ => registry
                             .extensions
                             .iter()
                             .filter(|e| get_category(&e.id) == *t)
-                            .count()
+                            .count(),
                     };
                     Line::from(format!(" {} ({}) ", t, count))
                 })
@@ -209,7 +312,7 @@ pub fn run_menu_installer() -> io::Result<()> {
                         .borders(Borders::ALL)
                         .border_type(BorderType::Rounded)
                         .border_style(Style::default().fg(Color::Cyan))
-                        .title(" 🧩 VANTA EXTENSION INSTALLER "),
+                        .title(" 🧩 VANTA EXTENSION & WORKSPACE INSTALLER "),
                 )
                 .select(active_cat_idx)
                 .style(Style::default().fg(Color::DarkGray))
@@ -231,12 +334,24 @@ pub fn run_menu_installer() -> io::Result<()> {
             let items: Vec<ListItem> = filtered_extensions
                 .iter()
                 .map(|ext| {
-                    let is_installed = ext_dir.join(format!("{}.wasm", ext.id)).exists();
+                    let is_page = ext.ext_type == "page";
+                    let is_installed = if is_page {
+                        !ext.components.is_empty()
+                            && ext
+                                .components
+                                .iter()
+                                .all(|c| ext_dir.join(format!("{}.wasm", c)).exists())
+                    } else {
+                        ext_dir.join(format!("{}.wasm", ext.id)).exists()
+                    };
+
                     let (badge, badge_color) = if is_installed {
                         ("✓", Color::Green)
                     } else {
                         (" ", Color::DarkGray)
                     };
+
+                    let type_prefix = if is_page { "📑 " } else { "🧩 " };
 
                     let content = Line::from(vec![
                         Span::styled(
@@ -244,6 +359,10 @@ pub fn run_menu_installer() -> io::Result<()> {
                             Style::default()
                                 .fg(badge_color)
                                 .add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled(
+                            type_prefix,
+                            Style::default().fg(if is_page { Color::Yellow } else { Color::Cyan }),
                         ),
                         Span::styled(
                             format!("{:<20} ", ext.id),
@@ -255,16 +374,14 @@ pub fn run_menu_installer() -> io::Result<()> {
                 })
                 .collect();
 
+            let list_title = format!(" {} ({}) ", current_category, filtered_extensions.len());
             let list_widget = List::new(items)
                 .block(
                     Block::default()
                         .borders(Borders::ALL)
                         .border_type(BorderType::Rounded)
                         .border_style(Style::default().fg(Color::White))
-                        .title(format!(
-                            " Available Extensions ({}) ",
-                            filtered_extensions.len()
-                        )),
+                        .title(list_title),
                 )
                 .highlight_style(
                     Style::default()
@@ -281,8 +398,74 @@ pub fn run_menu_installer() -> io::Result<()> {
                 .and_then(|idx| filtered_extensions.get(idx).copied());
 
             let details_widget = if let Some(ext) = selected_ext {
-                let is_installed = ext_dir.join(format!("{}.wasm", ext.id)).exists();
-                let status_line = if is_installed {
+                let is_page = ext.ext_type == "page";
+                let is_installed = if is_page {
+                    !ext.components.is_empty()
+                        && ext
+                            .components
+                            .iter()
+                            .all(|c| ext_dir.join(format!("{}.wasm", c)).exists())
+                } else {
+                    ext_dir.join(format!("{}.wasm", ext.id)).exists()
+                };
+
+                let status_line = if is_page {
+                    let installed_comps = ext
+                        .components
+                        .iter()
+                        .filter(|c| ext_dir.join(format!("{}.wasm", c)).exists())
+                        .count();
+
+                    if is_installed {
+                        Line::from(vec![
+                            Span::styled(
+                                "Status: ",
+                                Style::default()
+                                    .fg(Color::White)
+                                    .add_modifier(Modifier::BOLD),
+                            ),
+                            Span::styled(
+                                format!(
+                                    "● FULLY INSTALLED ({}/{} components)",
+                                    installed_comps,
+                                    ext.components.len()
+                                ),
+                                Style::default()
+                                    .fg(Color::Green)
+                                    .add_modifier(Modifier::BOLD),
+                            ),
+                        ])
+                    } else if installed_comps > 0 {
+                        Line::from(vec![
+                            Span::styled(
+                                "Status: ",
+                                Style::default()
+                                    .fg(Color::White)
+                                    .add_modifier(Modifier::BOLD),
+                            ),
+                            Span::styled(
+                                format!(
+                                    "◐ PARTIALLY INSTALLED ({}/{} components)",
+                                    installed_comps,
+                                    ext.components.len()
+                                ),
+                                Style::default()
+                                    .fg(Color::Yellow)
+                                    .add_modifier(Modifier::BOLD),
+                            ),
+                        ])
+                    } else {
+                        Line::from(vec![
+                            Span::styled(
+                                "Status: ",
+                                Style::default()
+                                    .fg(Color::White)
+                                    .add_modifier(Modifier::BOLD),
+                            ),
+                            Span::styled("○ NOT INSTALLED", Style::default().fg(Color::DarkGray)),
+                        ])
+                    }
+                } else if is_installed {
                     Line::from(vec![
                         Span::styled(
                             "Status: ",
@@ -313,7 +496,22 @@ pub fn run_menu_installer() -> io::Result<()> {
                     ])
                 };
 
-                let action_line = if is_installed {
+                let action_line = if is_page {
+                    Line::from(vec![
+                        Span::styled(
+                            "Action: ",
+                            Style::default()
+                                .fg(Color::White)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled(
+                            "Press [Enter] to install full workspace page & configure config.toml",
+                            Style::default()
+                                .fg(Color::Cyan)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                    ])
+                } else if is_installed {
                     Line::from(vec![
                         Span::styled(
                             "Action: ",
@@ -335,7 +533,7 @@ pub fn run_menu_installer() -> io::Result<()> {
                                 .add_modifier(Modifier::BOLD),
                         ),
                         Span::styled(
-                            "Press [Enter] or [i] to install this extension",
+                            "Press [Enter] or [i] to install this component",
                             Style::default()
                                 .fg(Color::Green)
                                 .add_modifier(Modifier::BOLD),
@@ -343,8 +541,12 @@ pub fn run_menu_installer() -> io::Result<()> {
                     ])
                 };
 
-                let lines = vec![
+                let mut lines = vec![
                     Line::from(vec![
+                        Span::styled(
+                            if is_page { "📑 " } else { "🧩 " },
+                            Style::default().fg(Color::Yellow),
+                        ),
                         Span::styled(
                             format!("{} ", ext.name),
                             Style::default()
@@ -354,6 +556,19 @@ pub fn run_menu_installer() -> io::Result<()> {
                         Span::styled(
                             format!("(v{})", ext.version),
                             Style::default().fg(Color::DarkGray),
+                        ),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("Type:     ", Style::default().fg(Color::DarkGray)),
+                        Span::styled(
+                            if is_page {
+                                "Page Workspace (Full Multi-Panel Layout)"
+                            } else {
+                                "Component Widget (Modular)"
+                            },
+                            Style::default()
+                                .fg(if is_page { Color::Yellow } else { Color::Green })
+                                .add_modifier(Modifier::BOLD),
                         ),
                     ]),
                     Line::from(vec![
@@ -373,13 +588,6 @@ pub fn run_menu_installer() -> io::Result<()> {
                         Span::styled("Author:   ", Style::default().fg(Color::DarkGray)),
                         Span::styled(&ext.author, Style::default().fg(Color::White)),
                     ]),
-                    Line::from(vec![
-                        Span::styled("API Spec: ", Style::default().fg(Color::DarkGray)),
-                        Span::styled(
-                            format!("v{}", ext.api_version),
-                            Style::default().fg(Color::White),
-                        ),
-                    ]),
                     Line::from(""),
                     Line::from(vec![Span::styled(
                         "Description:",
@@ -392,9 +600,32 @@ pub fn run_menu_installer() -> io::Result<()> {
                         Style::default().fg(Color::LightCyan),
                     )),
                     Line::from(""),
-                    status_line,
-                    action_line,
                 ];
+
+                if is_page && !ext.components.is_empty() {
+                    lines.push(Line::from(vec![Span::styled(
+                        "Bundled Component Extensions:",
+                        Style::default()
+                            .fg(Color::White)
+                            .add_modifier(Modifier::BOLD),
+                    )]));
+                    for comp in &ext.components {
+                        let comp_inst = ext_dir.join(format!("{}.wasm", comp)).exists();
+                        let (c_badge, c_color) = if comp_inst {
+                            ("✓", Color::Green)
+                        } else {
+                            ("○", Color::DarkGray)
+                        };
+                        lines.push(Line::from(vec![
+                            Span::styled(format!("  [{}] ", c_badge), Style::default().fg(c_color)),
+                            Span::styled(comp, Style::default().fg(Color::White)),
+                        ]));
+                    }
+                    lines.push(Line::from(""));
+                }
+
+                lines.push(status_line);
+                lines.push(action_line);
 
                 Paragraph::new(lines)
                     .block(
@@ -402,15 +633,19 @@ pub fn run_menu_installer() -> io::Result<()> {
                             .borders(Borders::ALL)
                             .border_type(BorderType::Rounded)
                             .border_style(Style::default().fg(Color::White))
-                            .title(" Extension Details "),
+                            .title(if is_page {
+                                " Page Workspace Details "
+                            } else {
+                                " Component Details "
+                            }),
                     )
                     .wrap(Wrap { trim: true })
             } else {
-                Paragraph::new("No extension selected.").block(
+                Paragraph::new("No item selected.").block(
                     Block::default()
                         .borders(Borders::ALL)
                         .border_type(BorderType::Rounded)
-                        .title(" Extension Details "),
+                        .title(" Details "),
                 )
             };
             f.render_widget(details_widget, body_chunks[1]);
@@ -429,7 +664,7 @@ pub fn run_menu_installer() -> io::Result<()> {
                     ),
                     Span::raw(" "),
                     Span::styled(
-                        " [Tab] Category ",
+                        " [Tab] Switch Category ",
                         Style::default().fg(Color::White).bg(Color::DarkGray),
                     ),
                     Span::raw(" "),
@@ -476,8 +711,7 @@ pub fn run_menu_installer() -> io::Result<()> {
                         KeyCode::Tab | KeyCode::Right | KeyCode::Char('l') => {
                             active_cat_idx = (active_cat_idx + 1) % categories.len();
                             list_state.select(Some(0));
-                            status_msg =
-                                format!("Filtered by category: {}", categories[active_cat_idx]);
+                            status_msg = format!("Filtered by: {}", categories[active_cat_idx]);
                             status_color = Color::Cyan;
                         }
                         KeyCode::BackTab | KeyCode::Left | KeyCode::Char('h') => {
@@ -487,26 +721,41 @@ pub fn run_menu_installer() -> io::Result<()> {
                                 active_cat_idx -= 1;
                             }
                             list_state.select(Some(0));
-                            status_msg =
-                                format!("Filtered by category: {}", categories[active_cat_idx]);
+                            status_msg = format!("Filtered by: {}", categories[active_cat_idx]);
                             status_color = Color::Cyan;
                         }
                         KeyCode::Enter | KeyCode::Char('i') | KeyCode::Char(' ') => {
                             if let Some(selected_idx) = list_state.selected() {
                                 if let Some(ext) = filtered_extensions.get(selected_idx) {
-                                    match download_and_install_ext(ext) {
-                                        Ok(path) => {
-                                            status_msg = format!(
-                                                "✓ Installed '{}' to {}",
-                                                ext.id,
-                                                path.display()
-                                            );
-                                            status_color = Color::Green;
+                                    if ext.ext_type == "page" {
+                                        match install_page_ext(ext, &registry.extensions) {
+                                            Ok(msg) => {
+                                                status_msg = format!("✓ {}", msg);
+                                                status_color = Color::Green;
+                                            }
+                                            Err(e) => {
+                                                status_msg =
+                                                    format!("✗ Failed to install page: {}", e);
+                                                status_color = Color::Red;
+                                            }
                                         }
-                                        Err(e) => {
-                                            status_msg =
-                                                format!("✗ Failed to install '{}': {}", ext.id, e);
-                                            status_color = Color::Red;
+                                    } else {
+                                        match download_and_install_ext(ext) {
+                                            Ok(path) => {
+                                                status_msg = format!(
+                                                    "✓ Installed '{}' to {}",
+                                                    ext.id,
+                                                    path.display()
+                                                );
+                                                status_color = Color::Green;
+                                            }
+                                            Err(e) => {
+                                                status_msg = format!(
+                                                    "✗ Failed to install '{}': {}",
+                                                    ext.id, e
+                                                );
+                                                status_color = Color::Red;
+                                            }
                                         }
                                     }
                                 }
@@ -515,28 +764,45 @@ pub fn run_menu_installer() -> io::Result<()> {
                         KeyCode::Char('u') | KeyCode::Delete | KeyCode::Backspace => {
                             if let Some(selected_idx) = list_state.selected() {
                                 if let Some(ext) = filtered_extensions.get(selected_idx) {
-                                    let ext_file = ext_dir.join(format!("{}.wasm", ext.id));
-                                    if ext_file.exists() {
-                                        match fs::remove_file(&ext_file) {
-                                            Ok(_) => {
-                                                status_msg = format!(
-                                                    "✓ Uninstalled '{}' ({})",
-                                                    ext.id,
-                                                    ext_file.display()
-                                                );
-                                                status_color = Color::Yellow;
-                                            }
-                                            Err(e) => {
-                                                status_msg = format!(
-                                                    "✗ Failed to remove '{}': {}",
-                                                    ext.id, e
-                                                );
-                                                status_color = Color::Red;
+                                    if ext.ext_type == "page" {
+                                        let mut removed_count = 0;
+                                        for comp in &ext.components {
+                                            let comp_file = ext_dir.join(format!("{}.wasm", comp));
+                                            if comp_file.exists()
+                                                && fs::remove_file(&comp_file).is_ok()
+                                            {
+                                                removed_count += 1;
                                             }
                                         }
+                                        status_msg = format!(
+                                            "✓ Uninstalled page '{}' (removed {} components)",
+                                            ext.name, removed_count
+                                        );
+                                        status_color = Color::Yellow;
                                     } else {
-                                        status_msg = format!("'{}' is not installed.", ext.id);
-                                        status_color = Color::DarkGray;
+                                        let ext_file = ext_dir.join(format!("{}.wasm", ext.id));
+                                        if ext_file.exists() {
+                                            match fs::remove_file(&ext_file) {
+                                                Ok(_) => {
+                                                    status_msg = format!(
+                                                        "✓ Uninstalled '{}' ({})",
+                                                        ext.id,
+                                                        ext_file.display()
+                                                    );
+                                                    status_color = Color::Yellow;
+                                                }
+                                                Err(e) => {
+                                                    status_msg = format!(
+                                                        "✗ Failed to remove '{}': {}",
+                                                        ext.id, e
+                                                    );
+                                                    status_color = Color::Red;
+                                                }
+                                            }
+                                        } else {
+                                            status_msg = format!("'{}' is not installed.", ext.id);
+                                            status_color = Color::DarkGray;
+                                        }
                                     }
                                 }
                             }

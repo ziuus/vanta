@@ -67,17 +67,7 @@ struct Registry {
     extensions: Vec<RegistryExtension>,
 }
 
-#[derive(Deserialize, Debug)]
-struct RegistryExtension {
-    id: String,
-    name: String,
-    description: String,
-    version: String,
-    api_version: String,
-    author: String,
-    wasm_url: String,
-    sha256: String,
-}
+use crate::cli_menu::RegistryExtension;
 
 fn get_extensions_dir() -> PathBuf {
     let mut dir = directories::ProjectDirs::from("", "", "vanta")
@@ -155,58 +145,129 @@ fn browse(filter: Option<String>) {
     let ext_dir = get_extensions_dir();
     let filter_lower = filter.as_ref().map(|f| f.to_lowercase());
 
+    let (pages, components): (Vec<_>, Vec<_>) = registry
+        .extensions
+        .into_iter()
+        .partition(|e| e.ext_type == "page");
+
+    let show_pages = match &filter_lower {
+        Some(f) if f == "page" || f == "pages" => true,
+        Some(f) if f == "component" || f == "components" || f == "widget" || f == "widgets" => {
+            false
+        }
+        _ => true,
+    };
+
+    let show_components = !matches!(&filter_lower, Some(f) if f == "page" || f == "pages");
+
     println!("\n╔════════════════════════════════════════════════════════════════════╗");
     println!("║                   VANTA EXTENSION DIRECTORY                        ║");
     println!("╚════════════════════════════════════════════════════════════════════╝\n");
 
-    let categories = [
-        "CryptoPulse & Market Visualizers",
-        "FileSpace Terminal File Manager",
-        "MediaDeck Audio Workstation",
-        "Deep Observability & Sentry",
-        "Security & Vulnerability Monitor",
-    ];
-
     let mut total_shown = 0;
 
-    for cat in categories {
-        let cat_extensions: Vec<_> = registry
-            .extensions
+    // 1. PAGE EXTENSIONS
+    if show_pages && !pages.is_empty() {
+        let matching_pages: Vec<_> = pages
             .iter()
-            .filter(|e| get_category(&e.id) == cat)
             .filter(|e| {
                 if let Some(ref f) = filter_lower {
-                    cat.to_lowercase().contains(f)
-                        || e.id.to_lowercase().contains(f)
-                        || e.name.to_lowercase().contains(f)
-                        || e.description.to_lowercase().contains(f)
+                    if f == "page" || f == "pages" {
+                        true
+                    } else {
+                        e.id.to_lowercase().contains(f)
+                            || e.name.to_lowercase().contains(f)
+                            || e.description.to_lowercase().contains(f)
+                    }
                 } else {
                     true
                 }
             })
             .collect();
 
-        if cat_extensions.is_empty() {
-            continue;
-        }
+        if !matching_pages.is_empty() {
+            println!("📑 PAGE WORKSPACES (Full multi-panel workspaces)\n");
+            for page in matching_pages {
+                let all_installed = !page.components.is_empty()
+                    && page
+                        .components
+                        .iter()
+                        .all(|c| ext_dir.join(format!("{}.wasm", c)).exists());
+                let status_badge = if all_installed {
+                    "\x1b[32m[installed]\x1b[0m"
+                } else {
+                    "\x1b[90m[available]\x1b[0m"
+                };
 
-        println!("━━━ {} ━━━", cat);
-
-        for ext in cat_extensions {
-            let is_installed = ext_dir.join(format!("{}.wasm", ext.id)).exists();
-            let status_badge = if is_installed {
-                "\x1b[32m[installed]\x1b[0m"
-            } else {
-                "\x1b[90m[available]\x1b[0m"
-            };
-
-            println!("  {:<24} {:<24} {}", ext.id, ext.name, status_badge);
-            println!("    {}", ext.description);
-            if !is_installed {
-                println!("    \x1b[36m→ Install: vanta install {}\x1b[0m", ext.id);
+                println!("  {:<24} {:<24} {}", page.id, page.name, status_badge);
+                println!("    {}", page.description);
+                println!("    Bundled components: {}", page.components.join(", "));
+                if !all_installed {
+                    println!(
+                        "    \x1b[36m→ Install workspace: vanta install {}\x1b[0m",
+                        page.id
+                    );
+                }
+                println!();
+                total_shown += 1;
             }
-            println!();
-            total_shown += 1;
+        }
+    }
+
+    // 2. COMPONENT EXTENSIONS
+    if show_components && !components.is_empty() {
+        println!("🧩 COMPONENT EXTENSIONS (Modular building blocks)\n");
+        let categories = [
+            "CryptoPulse & Market Visualizers",
+            "FileSpace Terminal File Manager",
+            "MediaDeck Audio Workstation",
+            "Deep Observability & Sentry",
+            "Security & Vulnerability Monitor",
+        ];
+
+        for cat in categories {
+            let cat_extensions: Vec<_> = components
+                .iter()
+                .filter(|e| get_category(&e.id) == cat)
+                .filter(|e| {
+                    if let Some(ref f) = filter_lower {
+                        if f == "component" || f == "components" || f == "widget" || f == "widgets"
+                        {
+                            true
+                        } else {
+                            cat.to_lowercase().contains(f)
+                                || e.id.to_lowercase().contains(f)
+                                || e.name.to_lowercase().contains(f)
+                                || e.description.to_lowercase().contains(f)
+                        }
+                    } else {
+                        true
+                    }
+                })
+                .collect();
+
+            if cat_extensions.is_empty() {
+                continue;
+            }
+
+            println!("━━━ {} ━━━", cat);
+
+            for ext in cat_extensions {
+                let is_installed = ext_dir.join(format!("{}.wasm", ext.id)).exists();
+                let status_badge = if is_installed {
+                    "\x1b[32m[installed]\x1b[0m"
+                } else {
+                    "\x1b[90m[available]\x1b[0m"
+                };
+
+                println!("  {:<24} {:<24} {}", ext.id, ext.name, status_badge);
+                println!("    {}", ext.description);
+                if !is_installed {
+                    println!("    \x1b[36m→ Install: vanta install {}\x1b[0m", ext.id);
+                }
+                println!();
+                total_shown += 1;
+            }
         }
     }
 
@@ -214,9 +275,10 @@ fn browse(filter: Option<String>) {
         println!("No extensions found matching your filter.");
     } else {
         println!(
-            "Shown {} extension(s). Use `vanta install <id>` to install any extension.",
+            "Shown {} item(s). Use `vanta install <id>` to install any extension or workspace.",
             total_shown
         );
+        println!("Tip: Run `vanta browse pages` or `vanta browse components` to view separately.");
     }
 }
 
@@ -240,7 +302,12 @@ fn search(query: Option<String>) {
         };
 
         if matches {
-            println!("  {:<12} {}", ext.id, ext.name);
+            let type_tag = if ext.ext_type == "page" {
+                "[PAGE]"
+            } else {
+                "[COMPONENT]"
+            };
+            println!("  {:<12} {:<24} {}", ext.id, ext.name, type_tag);
             println!("               {}", ext.description);
             println!(
                 "               v{} (API v{}) by {}\n",
@@ -265,15 +332,36 @@ fn install(id: String) {
         }
     };
 
-    let ext = match registry.extensions.into_iter().find(|e| e.id == id) {
-        Some(e) => e,
+    let ext = match registry.extensions.iter().find(|e| e.id == id) {
+        Some(e) => e.clone(),
         None => {
             eprintln!("Extension '{}' not found in the registry.", id);
             return;
         }
     };
 
-    println!("Installing '{}' v{}...", ext.name, ext.version);
+    if ext.ext_type == "page" {
+        println!(
+            "Installing page workspace '{}' (v{})...",
+            ext.name, ext.version
+        );
+        println!(
+            "Bundled component extensions: {}\n",
+            ext.components.join(", ")
+        );
+
+        match crate::cli_menu::install_page_ext(&ext, &registry.extensions) {
+            Ok(msg) => {
+                println!("✓ {}", msg);
+                println!("✓ Configured '{}' in ~/.config/vanta/config.toml", ext.name);
+                println!("\nLaunch Vanta and press Tab to navigate to the new workspace!");
+            }
+            Err(e) => eprintln!("✗ Failed to install page workspace: {}", e),
+        }
+        return;
+    }
+
+    println!("Installing component '{}' v{}...", ext.name, ext.version);
     println!("  Permissions requested:");
     println!("    UI             ✓");
     println!("    Configuration  ✓");
