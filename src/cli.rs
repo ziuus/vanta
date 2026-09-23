@@ -26,15 +26,23 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Browse community extensions categorized by workspace with install status
+    /// Browse community extensions categorized by workspace (interactive with -i)
     Browse {
         /// Optional category or keyword filter
         filter: Option<String>,
+        /// Open interactive terminal menu browser and installer
+        #[arg(short = 'i', long = "interactive")]
+        interactive: bool,
     },
+    /// Interactive menu installer to browse, install, and manage extensions
+    Menu,
     /// Search for available extensions in the community registry
     Search { query: Option<String> },
-    /// Install an extension from the registry
-    Install { id: String },
+    /// Install an extension from the registry (launches menu if no ID given)
+    Install {
+        /// Optional extension ID to install. If omitted, launches menu installer
+        id: Option<String>,
+    },
     /// Enable an installed extension
     Enable { id: String },
     /// Disable an installed extension
@@ -83,9 +91,23 @@ fn get_extensions_dir() -> PathBuf {
 pub fn handle_cli(cli: Cli) -> bool {
     if let Some(cmd) = cli.command {
         match cmd {
-            Commands::Browse { filter } => browse(filter),
+            Commands::Browse { filter, interactive } => {
+                if interactive {
+                    let _ = crate::cli_menu::run_menu_installer();
+                } else {
+                    browse(filter);
+                }
+            }
+            Commands::Menu => {
+                let _ = crate::cli_menu::run_menu_installer();
+            }
             Commands::Search { query } => search(query),
-            Commands::Install { id } => install(id),
+            Commands::Install { id } => match id {
+                Some(single_id) => install(single_id),
+                None => {
+                    let _ = crate::cli_menu::run_menu_installer();
+                }
+            },
             Commands::Enable { id } => enable(id),
             Commands::Disable { id } => disable(id),
             Commands::List => list(),

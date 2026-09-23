@@ -1,4 +1,5 @@
 mod cli;
+mod cli_menu;
 mod theme;
 
 use std::io::{self, IsTerminal, Write};
