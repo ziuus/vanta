@@ -106,10 +106,7 @@ fn answer(request: &str) -> String {
 
 fn dispatch(topic: &str, args: &Value) -> Option<Value> {
     Some(match topic {
-        "media" => {
-            let s = crate::widgets::media::snapshot_json();
-            s
-        }
+        "media" => crate::widgets::media::snapshot_json(),
         "media_control" => {
             if let Some(action) = args.get("action").and_then(|v| v.as_str()) {
                 let a = match action {
@@ -127,35 +124,21 @@ fn dispatch(topic: &str, args: &Value) -> Option<Value> {
             }
             return None;
         }
-        "media" => {
-            let s = crate::widgets::media::snapshot_json();
-            s
-        }
-        "media_control" => {
-            if let Some(action) = args.get("action").and_then(|v| v.as_str()) {
-                let a = match action {
-                    "play_pause" => Some(crate::widgets::media::Action::PlayPause),
-                    "next" => Some(crate::widgets::media::Action::Next),
-                    "previous" => Some(crate::widgets::media::Action::Previous),
-                    "volume_up" => Some(crate::widgets::media::Action::VolumeUp),
-                    "volume_down" => Some(crate::widgets::media::Action::VolumeDown),
-                    _ => None,
-                };
-                if let Some(a) = a {
-                    crate::widgets::media::control(a);
-                    return Some(serde_json::json!({ "status": "ok" }));
-                }
-            }
-            return None;
-        }
-                "state_get" => {
+        "state_get" => {
             let key = args.get("key").and_then(|v| v.as_str()).unwrap_or("");
             let val = crate::monitors::state_store::get(key);
             serde_json::json!({ "value": val })
         }
         "state_set" => {
-            let key = args.get("key").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            let val = args.get("value").cloned().unwrap_or(serde_json::Value::Null);
+            let key = args
+                .get("key")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let val = args
+                .get("value")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
             crate::monitors::state_store::set(key, val);
             serde_json::json!({ "status": "ok" })
         }
