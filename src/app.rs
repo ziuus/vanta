@@ -128,7 +128,21 @@ impl PanelId {
                 (PanelId::News, w.news),
                 (PanelId::Visualizer, w.music_viz),
             ],
-            DashboardMode::Extension(_) => vec![],
+            DashboardMode::Extension(ref ext_name) => {
+                let mut list = Vec::new();
+                if let Some(page) = cfg.pages.iter().find(|p| &p.name == ext_name) {
+                    for col in &page.layout {
+                        for name in col {
+                            if let Some(p) = Self::from_name(name, cfg) {
+                                if !list.contains(&p) {
+                                    list.push(p);
+                                }
+                            }
+                        }
+                    }
+                }
+                return list;
+            }
             DashboardMode::DebugLogs => vec![],
         };
         list.into_iter()

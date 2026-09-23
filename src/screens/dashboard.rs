@@ -29,17 +29,21 @@ pub fn render_layout(f: &mut Frame, area: Rect, app: &mut App, layout: &[Vec<Str
     let assigned_custom_ids: Vec<String> =
         layout.iter().flat_map(|col| col.iter().cloned()).collect();
 
-    let unassigned_custom_count = app
-        .config
-        .custom_widgets
-        .iter()
-        .filter(|c| {
-            c.enabled
-                && !assigned_custom_ids
-                    .iter()
-                    .any(|id| id.eq_ignore_ascii_case(&c.id))
-        })
-        .count();
+    let is_main_dashboard = layout == app.config.dashboard.layout.as_slice();
+    let unassigned_custom_count = if is_main_dashboard {
+        app.config
+            .custom_widgets
+            .iter()
+            .filter(|c| {
+                c.enabled
+                    && !assigned_custom_ids
+                        .iter()
+                        .any(|id| id.eq_ignore_ascii_case(&c.id))
+            })
+            .count()
+    } else {
+        0
+    };
 
     let custom_row_h: u16 = if unassigned_custom_count > 0 && area.height >= 37 {
         7
@@ -50,27 +54,24 @@ pub fn render_layout(f: &mut Frame, area: Rect, app: &mut App, layout: &[Vec<Str
     let [main_area, custom_area] =
         Layout::vertical([Constraint::Min(0), Constraint::Length(custom_row_h)]).areas(area);
 
-    let n_cols = app.config.dashboard.layout.len().clamp(1, 4);
-    let col_constraints: Vec<Constraint> = if n_cols == 3 && app.panel_states.dash_ratios.len() == 3
-    {
-        vec![
-            Constraint::Percentage(app.panel_states.dash_ratios[0]),
-            Constraint::Percentage(app.panel_states.dash_ratios[1]),
-            Constraint::Percentage(app.panel_states.dash_ratios[2]),
-        ]
-    } else {
-        (0..n_cols)
-            .map(|_| Constraint::Ratio(1, n_cols as u32))
-            .collect()
-    };
+    let n_cols = layout.len().clamp(1, 4);
+    let col_constraints: Vec<Constraint> =
+        if is_main_dashboard && n_cols == 3 && app.panel_states.dash_ratios.len() == 3 {
+            vec![
+                Constraint::Percentage(app.panel_states.dash_ratios[0]),
+                Constraint::Percentage(app.panel_states.dash_ratios[1]),
+                Constraint::Percentage(app.panel_states.dash_ratios[2]),
+            ]
+        } else {
+            (0..n_cols)
+                .map(|_| Constraint::Ratio(1, n_cols as u32))
+                .collect()
+        };
     let cols = Layout::horizontal(col_constraints).split(main_area);
 
     let mounts = disk::mounts().len().clamp(1, 4) as u16;
 
-    let columns_active: Vec<Vec<String>> = app
-        .config
-        .dashboard
-        .layout
+    let columns_active: Vec<Vec<String>> = layout
         .iter()
         .map(|col_names| {
             col_names
@@ -179,6 +180,20 @@ fn is_flex_panel(name: &str) -> bool {
             | "media-preview"
             | "image"
             | "files"
+            | "filespace_browser"
+            | "filespace_preview"
+            | "crypto_coin"
+            | "cryptopulse_overview"
+            | "cryptopulse_movers"
+            | "cryptopulse_watchlist"
+            | "cryptopulse_heatmap"
+            | "mediadeck_visualizer"
+            | "mediadeck_players"
+            | "sentinel"
+            | "proctrace_main"
+            | "netscope_main"
+            | "iowatch_main"
+            | "servicewatch_main"
     )
 }
 
@@ -200,6 +215,15 @@ fn panel_constraint(
         }
     } else {
         let h = match name.to_lowercase().as_str() {
+            "filespace_path" => 3,
+            "filespace_sidebar" => 10,
+            "filespace_queue" => 8,
+            "cryptopulse_mood" => 8,
+            "cryptopulse_stats" => 7,
+            "mediadeck_transport" => 4,
+            "mediadeck_signal" => 6,
+            "mediadeck_now_playing" => 6,
+            "portwatch_main" => 8,
             "system" => 12,
             "gauges" | "gauge" => gauge::H as u16 + 2,
             "storage" | "disk" => mounts + 2,
