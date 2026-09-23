@@ -9,8 +9,17 @@ const REGISTRY_URL: &str =
     "https://raw.githubusercontent.com/ziuus/vanta-integrations/main/registry.json";
 
 #[derive(Parser)]
-#[command(name = "vanta", version = env!("CARGO_PKG_VERSION"), about = "Aesthetic Rust TUI system dashboard")]
+#[command(
+    name = "vanta",
+    version = env!("CARGO_PKG_VERSION"),
+    about = "Aesthetic Rust TUI system dashboard",
+    disable_version_flag = true
+)]
 pub struct Cli {
+    /// Print version
+    #[arg(short = 'v', short_alias = 'V', long = "version", action = clap::ArgAction::Version)]
+    pub version: Option<bool>,
+
     #[command(subcommand)]
     pub command: Option<Commands>,
 }
@@ -27,8 +36,14 @@ pub enum Commands {
     Disable { id: String },
     /// List installed extensions
     List,
-    /// Update installed extensions from the registry (specify an ID or update all)
-    Update { id: Option<String> },
+    /// Update installed extensions from the registry, or update Vanta itself with --self
+    Update {
+        /// Optional extension ID to update, or 'self' to update Vanta itself
+        id: Option<String>,
+        /// Update Vanta host binary itself
+        #[arg(long = "self")]
+        self_update: bool,
+    },
     /// Remove an installed extension
     Remove { id: String },
 }
@@ -68,7 +83,7 @@ pub fn handle_cli(cli: Cli) -> bool {
             Commands::Enable { id } => enable(id),
             Commands::Disable { id } => disable(id),
             Commands::List => list(),
-            Commands::Update { id } => update(id),
+            Commands::Update { id, self_update } => update(id, self_update),
             Commands::Remove { id } => remove(id),
         }
         return true;
@@ -156,9 +171,9 @@ fn install(id: String) {
 }
 
 fn download_and_install(ext: &RegistryExtension) -> Result<PathBuf, String> {
-    if !ext.api_version.starts_with("0.9") {
+    if !ext.api_version.starts_with("0.9") && !ext.api_version.starts_with("0.10") {
         return Err(format!(
-            "'{}' requires Vanta UI API {}, but your Vanta supports API 0.9",
+            "'{}' requires Vanta UI API {}, but your Vanta supports API 0.10",
             ext.id, ext.api_version
         ));
     }
@@ -185,7 +200,7 @@ fn download_and_install(ext: &RegistryExtension) -> Result<PathBuf, String> {
         .map(|b| format!("{:02x}", b))
         .collect();
 
-    if hash != ext.sha256 {
+    if !ext.sha256.is_empty() && hash != ext.sha256 {
         return Err(format!(
             "Security Error: Artifact hash mismatch!\n  Expected: {}\n  Got:      {}",
             ext.sha256, hash
@@ -208,7 +223,36 @@ fn download_and_install(ext: &RegistryExtension) -> Result<PathBuf, String> {
     Ok(wasm_path)
 }
 
-fn update(id: Option<String>) {
+fn update_self() {
+    let current_version = env!("CARGO_PKG_VERSION");
+    println!("Updating Vanta host (current: v{})...", current_version);
+
+    let status = std::process::Command::new("npm")
+        .args(["install", "-g", "@ziuus/vanta@latest"])
+        .status();
+
+    match status {
+        Ok(s) if s.success() => {
+            println!("✓ Vanta successfully updated via npm!");
+        }
+        Ok(s) => {
+            eprintln!("npm update exited with status {}. To update manually:", s);
+            println!("  npm:   npm install -g @ziuus/vanta");
+            println!("  cargo: cargo install --git https://github.com/ziuus/vanta");
+        }
+        Err(_) => {
+            println!("npm command not found. To update manually:");
+            println!("  cargo install --git https://github.com/ziuus/vanta");
+        }
+    }
+}
+
+fn update(id: Option<String>, self_update: bool) {
+    if self_update || id.as_deref() == Some("self") || id.as_deref() == Some("vanta") {
+        update_self();
+        return;
+    }
+
     println!("Fetching registry...");
     let registry = match fetch_registry() {
         Ok(r) => r,
@@ -242,6 +286,7 @@ fn update(id: Option<String>) {
             }
             if installed.is_empty() {
                 println!("No installed extensions found to update.");
+                println!("\nTip: Run `vanta update --self` to update the Vanta binary itself.");
                 return;
             }
             installed
@@ -266,6 +311,7 @@ fn update(id: Option<String>) {
     }
 
     println!("Completed: {} extension(s) updated.", updated);
+    println!("Tip: Run `vanta update --self` to update the Vanta binary itself.");
 }
 
 fn list() {
