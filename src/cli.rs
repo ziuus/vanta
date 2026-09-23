@@ -26,6 +26,11 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
+    /// Browse community extensions categorized by workspace with install status
+    Browse {
+        /// Optional category or keyword filter
+        filter: Option<String>,
+    },
     /// Search for available extensions in the community registry
     Search { query: Option<String> },
     /// Install an extension from the registry
@@ -78,6 +83,7 @@ fn get_extensions_dir() -> PathBuf {
 pub fn handle_cli(cli: Cli) -> bool {
     if let Some(cmd) = cli.command {
         match cmd {
+            Commands::Browse { filter } => browse(filter),
             Commands::Search { query } => search(query),
             Commands::Install { id } => install(id),
             Commands::Enable { id } => enable(id),
@@ -95,6 +101,95 @@ fn fetch_registry() -> Result<Registry, Box<dyn std::error::Error>> {
     let res = ureq::get(REGISTRY_URL).call()?;
     let registry: Registry = serde_json::from_reader(res.into_body().into_reader())?;
     Ok(registry)
+}
+
+fn get_category(id: &str) -> &'static str {
+    if id.starts_with("cryptopulse") || id.starts_with("crypto") {
+        "CryptoPulse & Market Visualizers"
+    } else if id.starts_with("filespace") {
+        "FileSpace Terminal File Manager"
+    } else if id.starts_with("mediadeck") {
+        "MediaDeck Audio Workstation"
+    } else if id == "security" {
+        "Security & Vulnerability Monitor"
+    } else {
+        "Deep Observability & Sentry"
+    }
+}
+
+fn browse(filter: Option<String>) {
+    println!("Fetching Vanta extensions registry...");
+    let registry = match fetch_registry() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Failed to fetch registry: {}", e);
+            return;
+        }
+    };
+
+    let ext_dir = get_extensions_dir();
+    let filter_lower = filter.as_ref().map(|f| f.to_lowercase());
+
+    println!("\n╔════════════════════════════════════════════════════════════════════╗");
+    println!("║                   VANTA EXTENSION DIRECTORY                        ║");
+    println!("╚════════════════════════════════════════════════════════════════════╝\n");
+
+    let categories = [
+        "CryptoPulse & Market Visualizers",
+        "FileSpace Terminal File Manager",
+        "MediaDeck Audio Workstation",
+        "Deep Observability & Sentry",
+        "Security & Vulnerability Monitor",
+    ];
+
+    let mut total_shown = 0;
+
+    for cat in categories {
+        let cat_extensions: Vec<_> = registry
+            .extensions
+            .iter()
+            .filter(|e| get_category(&e.id) == cat)
+            .filter(|e| {
+                if let Some(ref f) = filter_lower {
+                    cat.to_lowercase().contains(f)
+                        || e.id.to_lowercase().contains(f)
+                        || e.name.to_lowercase().contains(f)
+                        || e.description.to_lowercase().contains(f)
+                } else {
+                    true
+                }
+            })
+            .collect();
+
+        if cat_extensions.is_empty() {
+            continue;
+        }
+
+        println!("━━━ {} ━━━", cat);
+
+        for ext in cat_extensions {
+            let is_installed = ext_dir.join(format!("{}.wasm", ext.id)).exists();
+            let status_badge = if is_installed {
+                "\x1b[32m[installed]\x1b[0m"
+            } else {
+                "\x1b[90m[available]\x1b[0m"
+            };
+
+            println!("  {:<24} {:<24} {}", ext.id, ext.name, status_badge);
+            println!("    {}", ext.description);
+            if !is_installed {
+                println!("    \x1b[36m→ Install: vanta install {}\x1b[0m", ext.id);
+            }
+            println!();
+            total_shown += 1;
+        }
+    }
+
+    if total_shown == 0 {
+        println!("No extensions found matching your filter.");
+    } else {
+        println!("Shown {} extension(s). Use `vanta install <id>` to install any extension.", total_shown);
+    }
 }
 
 fn search(query: Option<String>) {
