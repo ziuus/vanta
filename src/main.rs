@@ -125,21 +125,27 @@ fn main() -> io::Result<()> {
 }
 
 fn run<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<()> {
-    let mut frame_time = Duration::from_secs_f64(1.0 / app.config.ui.fps as f64);
+    let fps_for = |fps: u32| Duration::from_secs_f64(1.0 / fps as f64);
     let mut last_frame = Instant::now();
     // VANTA_PROFILE=1: log frame-time percentiles every 60 frames.
     let profiling = std::env::var_os("VANTA_PROFILE").is_some();
     let mut frame_us: Vec<u128> = Vec::with_capacity(60);
 
     terminal.draw(|f| app.render(f))?;
+    let mut frame_time = fps_for(vanta::anim::take(app.config.ui.fps));
     while app.running {
-        // Coalesce all pending input, then draw once.
+        // Coalesce all pending input, then draw once. Input and resizes
+        // redraw immediately so the UI stays responsive at idle frame rates.
         let timeout = frame_time.saturating_sub(last_frame.elapsed());
+        let mut dirty = false;
         if event::poll(timeout)? {
             loop {
                 match event::read()? {
-                    Event::Key(key) if key.kind == KeyEventKind::Press => app.handle_key(key),
-                    Event::Resize(_, _) => {}
+                    Event::Key(key) if key.kind == KeyEventKind::Press => {
+                        app.handle_key(key);
+                        dirty = true;
+                    }
+                    Event::Resize(_, _) => dirty = true,
                     _ => {}
                 }
                 if !event::poll(Duration::ZERO)? {
@@ -147,7 +153,7 @@ fn run<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, app: &mut App) 
                 }
             }
         }
-        if last_frame.elapsed() >= frame_time || !app.running {
+        if dirty || last_frame.elapsed() >= frame_time || !app.running {
             let t0 = Instant::now();
             terminal.draw(|f| app.render(f))?;
             if profiling {
@@ -172,7 +178,7 @@ fn run<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, app: &mut App) 
                 }
             }
             last_frame = Instant::now();
-            frame_time = Duration::from_secs_f64(1.0 / app.config.ui.fps as f64);
+            frame_time = fps_for(vanta::anim::take(app.config.ui.fps));
         }
     }
     Ok(())

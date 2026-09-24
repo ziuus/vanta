@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+pub mod anim;
 pub mod app;
 pub mod config;
 pub mod extension;

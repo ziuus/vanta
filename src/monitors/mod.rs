@@ -38,6 +38,49 @@ pub struct Summary {
 
 static SUMMARY: LazyLock<Mutex<Summary>> = LazyLock::new(|| Mutex::new(Summary::default()));
 
+static EPOCH: LazyLock<Instant> = LazyLock::new(Instant::now);
+
+/// Tracks when a snapshot was last read, so samplers whose data only some
+/// extensions consume can skip work nobody is looking at.
+pub(crate) struct Demand {
+    last_read_ms: AtomicU64,
+    last_run_ms: AtomicU64,
+}
+
+impl Demand {
+    pub(crate) const fn new() -> Self {
+        Self {
+            last_read_ms: AtomicU64::new(u64::MAX),
+            last_run_ms: AtomicU64::new(0),
+        }
+    }
+
+    fn now_ms() -> u64 {
+        EPOCH.elapsed().as_millis() as u64
+    }
+
+    /// Record that a consumer just read the snapshot.
+    pub(crate) fn touch(&self) {
+        self.last_read_ms.store(Self::now_ms(), Ordering::Relaxed);
+    }
+
+    /// True if someone read the snapshot within the last 10s and at least
+    /// `every` has passed since the previous run. Marks the run when true.
+    pub(crate) fn due(&self, every: Duration) -> bool {
+        let now = Self::now_ms();
+        let read = self.last_read_ms.load(Ordering::Relaxed);
+        if read == u64::MAX || now.saturating_sub(read) > 10_000 {
+            return false;
+        }
+        let last = self.last_run_ms.load(Ordering::Relaxed);
+        if last != 0 && now.saturating_sub(last) < every.as_millis() as u64 {
+            return false;
+        }
+        self.last_run_ms.store(now.max(1), Ordering::Relaxed);
+        true
+    }
+}
+
 pub fn summary() -> Summary {
     SUMMARY.lock().unwrap().clone()
 }
@@ -89,8 +132,9 @@ fn sample_all(sys: &mut sysinfo::System) {
     disk::sample();
     step("disk", &mut marks);
     processes::sample(sys.total_memory());
-    connections::sample();
     step("procs", &mut marks);
+    connections::sample();
+    step("conns", &mut marks);
     crate::widgets::media::sample();
     step("media", &mut marks);
     *SUMMARY.lock().unwrap() = collect_summary();

@@ -171,5 +171,6 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
     if area.width < 4 || area.height < 3 {
         return;
     }
+    crate::anim::request(30);
     f.render_widget(Rain { theme }, area);
 }

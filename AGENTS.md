@@ -26,7 +26,20 @@ Vanta uses Extism for sandboxed `wasm32-unknown-unknown` plugins. The core API i
   * Other extensions call `vanta_query` with `{"topic": "state_get", "key": "..."}` to read it.
 * **Host API Boundaries**: WASM plugins cannot perform blocking I/O (no `std::fs`, no threading). They must query the host for JSON snapshots (e.g., `fs_list`, `fs_ops`, `media`). Heavy tasks must be dispatched to the host via `fs_action` so they run on background threads.
 
-## 5. Ecosystem Boundaries
+## 5. Frame Scheduling & Idle Budget
+Vanta is meant to run 24/7, so a static screen must idle at ~2 fps (~4% of a core on an i5-8265U).
+* `src/anim.rs`: widgets that visibly animate call `anim::request(fps)` / `anim::request_full()` during render. The event loop redraws at the highest request (capped by `ui.fps`), else `anim::IDLE_FPS`. Input and resizes redraw immediately.
+* Never animate on a silent/idle state at full fps. Only request frames while there's actual motion.
+* Samplers whose data only extensions read (`services`, `connections`) use `monitors::Demand` so they run only while someone reads them.
+* Profile with `VANTA_PROFILE=1` (writes `/tmp/vanta-profile.log`).
+
+## 6. Build & Verify
+* Full release build (thin LTO) takes ~8 min. For iteration use a non-LTO build in a separate target dir:
+  `CARGO_TARGET_DIR=target/fast CARGO_PROFILE_RELEASE_LTO=false CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16 cargo build --release`
+* CI gates: `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`.
+* Visual check: `tmux -L vchk new-session -d -s v -x 120 -y 34 ./target/fast/release/vanta; sleep 3; tmux -L vchk capture-pane -t v -p; tmux -L vchk kill-server` (check 200×50, 120×34, 100×30).
+
+## 7. Ecosystem Boundaries
 * **Vanta Core** (`vanta`): Contains the foundational monitors, UI framework, Extism host engine, and background threadpools.
 * **Vanta Integrations** (`vanta-integrations` repo): A separate cargo workspace holding community-built WASM extensions. Each widget must be its own crate.
 

@@ -119,12 +119,10 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, _is_detailed: bool) {
         Constraint::Min(0),
     ])
     .split(area);
-    let peak = rx_h
-        .iter()
-        .chain(tx_h.iter())
-        .copied()
-        .fold(0.0, f64::max)
-        .max(1.0);
+    let peak_of = |h: &[f64]| h.iter().copied().fold(0.0, f64::max);
+    let (rx_peak, tx_peak) = (peak_of(&rx_h), peak_of(&tx_h));
+    // One shared scale keeps the two graphs comparable.
+    let peak = rx_peak.max(tx_peak).max(1.0);
 
     let mk_line = |arrow: &str, rate: f64, peak: f64, color, total| {
         let mut head = Line::from(vec![
@@ -151,7 +149,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, _is_detailed: bool) {
         Paragraph::new(mk_line(
             "↓",
             snap.rx_kbps,
-            peak,
+            rx_peak,
             theme.accent,
             snap.rx_total,
         )),
@@ -161,7 +159,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, _is_detailed: bool) {
         Paragraph::new(mk_line(
             "↑",
             snap.tx_kbps,
-            peak,
+            tx_peak,
             theme.secondary,
             snap.tx_total,
         )),
@@ -169,25 +167,15 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, _is_detailed: bool) {
     );
 
     if split[2].height > 0 {
-        let rx_cur = rx_h.last().copied().unwrap_or(0.0);
-        let rx_dyn = if peak > 0.0 {
-            theme.usage(rx_cur / peak * 100.0)
-        } else {
-            theme.accent
-        };
-        let tx_cur = tx_h.last().copied().unwrap_or(0.0);
-        let tx_dyn = if peak > 0.0 {
-            theme.usage(tx_cur / peak * 100.0)
-        } else {
-            theme.secondary
-        };
-
+        // Traffic near its own recent peak isn't a problem, so the graphs keep
+        // their direction colours instead of warning yellow/red.
+        let (rx_c, tx_c) = (theme.accent, theme.secondary);
         f.render_widget(
             BlockGraph::new(&rx_h)
                 .data2(&tx_h)
                 .max(peak)
-                .colors(rx_dyn, theme.yellow, theme.red)
-                .colors2(tx_dyn, theme.yellow, theme.red),
+                .colors(rx_c, rx_c, rx_c)
+                .colors2(tx_c, tx_c, tx_c),
             split[2],
         );
     }

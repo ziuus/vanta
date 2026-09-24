@@ -162,6 +162,16 @@ fn read_cmdline(pid: u32) -> String {
 /// Walk /proc once and rebuild the snapshot. Called on the tick, never per frame.
 pub fn sample(total_mem_bytes: u64) {
     let now = Instant::now();
+    // The walk costs ~20ms on a few hundred processes; once a second is plenty
+    // for a process table and halves the sampler's idle cost at fast refresh.
+    if STATE
+        .lock()
+        .unwrap()
+        .prev_time
+        .is_some_and(|t| now.duration_since(t) < std::time::Duration::from_millis(950))
+    {
+        return;
+    }
     let total_jiffies = read_total_jiffies();
     let ncpu = std::thread::available_parallelism()
         .map(|n| n.get())

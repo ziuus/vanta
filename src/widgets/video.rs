@@ -46,6 +46,7 @@ pub fn render_with_motion(
     let mut c_buffer = vec![theme.accent; width * height];
 
     let now = if motion_enabled {
+        crate::anim::request_full();
         (tick as f64 / 30.0) * (motion_speed.max(0.0) as f64)
     } else {
         1.25 // Frozen angle

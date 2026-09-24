@@ -16,7 +16,11 @@ enum DayKind {
 }
 
 pub fn render(f: &mut Frame, area: Rect, theme: &Theme, month_offset: i32) {
-    if area.height < 5 || area.width < 15 {
+    if area.height == 0 || area.width < 15 {
+        return;
+    }
+    if area.height < 5 {
+        render_week_strip(f, area, theme);
         return;
     }
 
@@ -213,6 +217,50 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, month_offset: i32) {
     f.render_widget(
         Paragraph::new(lines).alignment(Alignment::Center),
         render_area,
+    );
+}
+
+/// Compact fallback when the panel is squeezed below a full month grid:
+/// the month title (if there's room) over the current Mon–Sun week.
+fn render_week_strip(f: &mut Frame, area: Rect, theme: &Theme) {
+    let today = Local::now().date_naive();
+    let monday = today - chrono::Duration::days(today.weekday().num_days_from_monday() as i64);
+    let wide = area.width >= 49;
+    let mut spans = Vec::with_capacity(7);
+    for i in 0..7 {
+        let d = monday + chrono::Duration::days(i);
+        let name = &["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"][i as usize];
+        let txt = if wide {
+            format!(" {} {:>2} ", name, d.day())
+        } else {
+            format!(" {:>2} ", d.day())
+        };
+        let style = if d == today {
+            Style::default()
+                .fg(theme.bg)
+                .bg(theme.accent)
+                .add_modifier(Modifier::BOLD)
+        } else if i >= 5 {
+            Style::default().fg(theme.secondary)
+        } else {
+            Style::default().fg(theme.text)
+        };
+        spans.push(Span::styled(txt, style));
+    }
+    let mut lines = Vec::new();
+    if area.height >= 2 {
+        lines.push(Line::from(Span::styled(
+            format!("{} {}", month_name(today.month()), today.year()),
+            Style::default()
+                .fg(theme.accent)
+                .add_modifier(Modifier::BOLD),
+        )));
+    }
+    lines.push(Line::from(spans));
+    let top = area.height.saturating_sub(lines.len() as u16) / 2;
+    f.render_widget(
+        Paragraph::new(lines).alignment(Alignment::Center),
+        Rect::new(area.x, area.y + top, area.width, area.height - top),
     );
 }
 

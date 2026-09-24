@@ -289,24 +289,19 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, is_focused: bool, select
             theme.red
         };
         let mut spans = vec![Span::styled(
-            format!(
-                "{:<14}",
-                format!("{}%{}", b.pct, if b.charging { " ⚡" } else { "" })
-            ),
+            format!("{}%{}", b.pct, if b.charging { " ⚡" } else { "" }),
             Style::default().fg(col),
         )];
         if let Some(w) = b.watts {
             spans.push(Span::styled(
-                format!("{:<8.1}", w),
+                format!("  {:.1}W", w),
                 Style::default().fg(theme.dim),
             ));
-        } else {
-            spans.push(Span::styled(format!("{:<8}", ""), Style::default()));
         }
         if let Some(s) = b.eta_secs.filter(|s| *s > 0 && *s < 48 * 3600) {
             spans.push(Span::styled(
                 format!(
-                    "{}h{:02}m {}",
+                    "  {}h{:02}m {}",
                     s / 3600,
                     (s % 3600) / 60,
                     if b.charging { "to full" } else { "left" }

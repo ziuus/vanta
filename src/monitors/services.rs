@@ -15,15 +15,32 @@ pub struct ServiceNode {
 }
 
 static SNAPSHOT: LazyLock<RwLock<Vec<ServiceNode>>> = LazyLock::new(|| RwLock::new(Vec::new()));
+static DEMAND: super::Demand = super::Demand::new();
+
+thread_local! {
+    static CONN: std::cell::OnceCell<Option<Connection>> = const { std::cell::OnceCell::new() };
+}
 
 pub fn snapshot() -> Vec<ServiceNode> {
+    DEMAND.touch();
     SNAPSHOT.read().unwrap().clone()
 }
 
+/// Only the servicewatch extension reads this, and a full walk costs ~75ms of
+/// D-Bus round trips, so it runs only while someone is reading and at most
+/// every few seconds.
 pub fn sample() {
-    let Ok(conn) = Connection::new_system() else {
+    if !DEMAND.due(Duration::from_secs(3)) {
         return;
-    };
+    }
+    CONN.with(|c| {
+        if let Some(conn) = c.get_or_init(|| Connection::new_system().ok()) {
+            sample_with(conn);
+        }
+    });
+}
+
+fn sample_with(conn: &Connection) {
     let proxy = conn.with_proxy(
         "org.freedesktop.systemd1",
         "/org/freedesktop/systemd1",

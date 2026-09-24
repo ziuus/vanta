@@ -103,6 +103,7 @@ use std::sync::{LazyLock, RwLock};
 /// each other, and the write (sample()) only holds the lock for the swap
 /// of an already-built Vec — a sub-microsecond operation.
 static CACHE: LazyLock<RwLock<Vec<Connection>>> = LazyLock::new(|| RwLock::new(Vec::new()));
+static DEMAND: super::Demand = super::Demand::new();
 
 /// Refresh the connection cache. Called by `monitors::sample_all` on every
 /// sampler tick (typically every 400–1000 ms).
@@ -110,6 +111,11 @@ static CACHE: LazyLock<RwLock<Vec<Connection>>> = LazyLock::new(|| RwLock::new(V
 /// The expensive work (inode walk + procfs parse) happens *outside* the lock.
 /// The lock is held only during the final Vec swap.
 pub fn sample() {
+    // Only extensions read this and the fd walk is expensive: skip it unless
+    // a consumer asked recently.
+    if !DEMAND.due(std::time::Duration::from_secs(1)) {
+        return;
+    }
     let inode_to_pid = build_inode_map();
     let mut out = Vec::new();
     parse_into("/proc/net/tcp", "tcp", false, &inode_to_pid, &mut out);
@@ -125,6 +131,7 @@ pub fn sample() {
 ///
 /// Falls back to a live scan only on first call before the sampler ticks.
 pub fn snapshot() -> Vec<Connection> {
+    DEMAND.touch();
     // Hot path: read from cache.
     if let Ok(g) = CACHE.read() {
         if !g.is_empty() {

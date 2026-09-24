@@ -74,7 +74,8 @@ fn ensure_cava() {
         "\
 [general]
 bars = {cava_n}
-framerate = 120
+framerate = 60
+sleep_timer = 2
 
 [input]
 method = pulse
@@ -375,6 +376,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, _tick: u64) {
     let target: Vec<f32> = if is_silent {
         idle_wave(term_cols, _tick)
     } else {
+        crate::anim::request_full();
         resample_max(&raw, term_cols)
     };
     // Ease toward the target so bars flow between frames instead of snapping.

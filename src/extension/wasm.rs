@@ -93,6 +93,9 @@ impl Component for WasmComponent {
     }
 
     fn render(&mut self, f: &mut Frame, area: Rect, _theme: &Theme) {
+        // Extensions are opaque: give them a modest rate so live data and
+        // simple animations update without paying for full fps WASM calls.
+        crate::anim::request(10);
         let mut plugin = self.plugin.lock().unwrap();
         let mut rendered = false;
         // Call the render_widget function on WASM side with the widget ID
