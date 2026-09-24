@@ -124,12 +124,6 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
 }
 
 fn render_animation(f: &mut Frame, area: Rect, app: &App, theme: &Theme, focused: bool) {
-    for ext in &app.ext_manager.extensions {
-        if let Some(mut comp) = ext.components().into_iter().next() {
-            comp.render(f, area, theme);
-            return;
-        }
-    }
     let inner = panel(f, area, "donut", theme, focused);
     video::render_with_motion(
         f,
