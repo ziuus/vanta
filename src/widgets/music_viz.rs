@@ -175,6 +175,17 @@ gravity = 30
     });
 }
 
+/// Start cava if it isn't running, so `audio_active` works even while the
+/// visualizer itself is collapsed off screen. Cheap: retries are rate-limited.
+pub fn ensure_running() {
+    ensure_cava();
+}
+
+/// True while cava is delivering non-silent audio.
+pub fn audio_active() -> bool {
+    CAVA_RUNNING.load(Ordering::Relaxed) && SILENCE_FRAMES.lock().is_ok_and(|sf| *sf <= 8)
+}
+
 /// Terminate the cava we spawned. Called on shutdown.
 pub fn shutdown() {
     CAVA_RUNNING.store(false, Ordering::Relaxed);

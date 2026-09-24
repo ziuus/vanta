@@ -130,6 +130,34 @@ fn read_core_temps() -> Vec<f64> {
     Vec::new()
 }
 
+/// One row of per-core load: each core gets an equal slice filled with a
+/// block whose height and colour track its usage, e.g. `▂▂ ▇▇ ▁▁ ▅▅`.
+fn render_core_strip(f: &mut Frame, area: Rect, theme: &Theme, cores: &[f32]) {
+    const BARS: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+    let n = cores.len();
+    let w = area.width as usize;
+    if n == 0 || w < n {
+        return;
+    }
+    // Leave a one-cell gap between cores when there's room for it.
+    let slot = w / n;
+    let (cell, gap) = if slot >= 3 { (slot - 1, 1) } else { (slot, 0) };
+    let spans: Vec<Span> = cores
+        .iter()
+        .flat_map(|&u| {
+            let idx = ((u / 100.0) * 7.0).round().clamp(0.0, 7.0) as usize;
+            [
+                Span::styled(
+                    BARS[idx].to_string().repeat(cell),
+                    Style::default().fg(theme.usage(u as f64)),
+                ),
+                Span::raw(" ".repeat(gap)),
+            ]
+        })
+        .collect();
+    f.render_widget(Paragraph::new(Line::from(spans)), area);
+}
+
 /// Monitor-page CPU panel: header, big history graph, per-core meters.
 pub fn render(f: &mut Frame, area: Rect, theme: &Theme, is_detailed: bool) {
     if area.height < 3 || area.width < 20 {
@@ -148,30 +176,39 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, is_detailed: bool) {
     // Cap the core block so the graph always keeps at least 2 rows.
     core_rows = core_rows.min(area.height.saturating_sub(4));
 
+    // Compact mode: a one-row per-core heat strip under the graph.
+    let strip = !is_detailed && area.height >= 6 && core_count > 0;
     let mut constraints = vec![Constraint::Length(1), Constraint::Min(2)];
     if core_rows > 0 {
         constraints.push(Constraint::Length(1));
         constraints.push(Constraint::Length(core_rows));
+    } else if strip {
+        constraints.push(Constraint::Length(1));
     }
     let chunks = Layout::vertical(constraints).split(area);
 
     let color = theme.usage(snap.usage as f64);
-    let mut header = vec![Span::styled(
-        format!("{:>3.0}%", snap.usage),
-        Style::default().fg(color),
-    )];
+    // In compact mode the panel title already carries usage/temp/freq.
+    let mut header = if is_detailed {
+        vec![Span::styled(
+            format!("{:>3.0}%  ", snap.usage),
+            Style::default().fg(color),
+        )]
+    } else {
+        Vec::new()
+    };
 
     if snap.user_pct > 0.5 || snap.sys_pct > 0.5 || snap.iowait_pct > 0.5 {
         header.push(Span::styled(
-            format!("  u{:.0}%", snap.user_pct),
+            format!("usr {:.0}%", snap.user_pct),
             Style::default().fg(theme.secondary),
         ));
         header.push(Span::styled(
-            format!(" s{:.0}%", snap.sys_pct),
+            format!("  sys {:.0}%", snap.sys_pct),
             Style::default().fg(theme.yellow),
         ));
         header.push(Span::styled(
-            format!(" w{:.0}%", snap.iowait_pct),
+            format!("  io {:.0}%", snap.iowait_pct),
             Style::default().fg(theme.red),
         ));
     }
@@ -184,19 +221,19 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, is_detailed: bool) {
         Style::default().fg(theme.dim),
     ));
 
-    if snap.freq_mhz > 0 {
+    if snap.freq_mhz > 0 && is_detailed {
         header.push(Span::styled(
             format!("  {:.1}GHz", snap.freq_mhz as f64 / 1000.0),
             Style::default().fg(theme.text),
         ));
     }
-    if let Some(t) = snap.max_temp() {
+    if let Some(t) = snap.max_temp().filter(|_| is_detailed) {
         header.push(Span::styled(
             format!("  {:.0}°C", t),
             Style::default().fg(theme.temp(t)),
         ));
     }
-    if area.width >= 70 {
+    if area.width >= 70 && is_detailed {
         header.push(Span::styled(
             format!("  {} threads", core_count),
             Style::default().fg(theme.dim),
@@ -219,6 +256,10 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, is_detailed: bool) {
             .colors(theme.accent, theme.yellow, theme.red),
         chunks[1],
     );
+    if strip && core_rows == 0 {
+        render_core_strip(f, chunks[2], theme, &snap.cores);
+        return;
+    }
     if core_rows == 0 {
         return;
     }

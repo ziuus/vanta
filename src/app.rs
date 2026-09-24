@@ -65,6 +65,7 @@ pub enum PanelId {
     Matrix,
     Video,
     Weather,
+    UpNext,
     Tasks,
     Agenda,
     News,
@@ -167,6 +168,7 @@ impl PanelId {
             }
             "status" => Some(PanelId::Status),
             "weather" => w.weather.then_some(PanelId::Weather),
+            "upnext" | "up_next" | "up-next" | "next" => Some(PanelId::UpNext),
             "memory" | "mem" => w.memory.then_some(PanelId::Memory),
             "network" | "net" => w.network.then_some(PanelId::Network),
             "calendar" | "cal" => w.calendar.then_some(PanelId::Calendar),
@@ -214,6 +216,7 @@ impl PanelId {
             PanelId::Matrix => "matrix",
             PanelId::Video => "donut",
             PanelId::Weather => "weather",
+            PanelId::UpNext => "up next",
             PanelId::Custom(_) => "custom",
             PanelId::PinnedMedia => "media preview",
             &PanelId::Tasks => "tasks",
@@ -223,6 +226,28 @@ impl PanelId {
             &PanelId::Files => "files",
         }
     }
+}
+
+/// Conditions worth interrupting a glance for, most severe first.
+/// Each entry is (short message, critical?).
+pub fn alerts(s: &Summary) -> Vec<(String, bool)> {
+    let mut out = Vec::new();
+    if let Some((p, false)) = s.battery {
+        if p <= 20 {
+            out.push((format!("bat {}%", p), p <= 10));
+        }
+    }
+    if let Some(c) = s.temp_c.filter(|c| *c >= 85.0) {
+        out.push((format!("hot {:.0}°", c), c >= 95.0));
+    }
+    if let Some(d) = s.disk_pct.filter(|d| *d >= 90.0) {
+        out.push((format!("disk {:.0}%", d), d >= 97.0));
+    }
+    if s.mem_pct >= 90.0 {
+        out.push((format!("mem {:.0}%", s.mem_pct), s.mem_pct >= 97.0));
+    }
+    out.sort_by_key(|(_, crit)| !crit);
+    out
 }
 
 /// Per-panel interactive state.
@@ -1443,6 +1468,26 @@ impl App {
             Span::styled(" vanta", base.fg(t.accent)),
             Span::styled(" ● ", base.fg(dot)),
         ];
+        // The most severe active alert gets a coloured pill so it's visible
+        // from across the room; extra alerts are summarised as "+N".
+        let alerts = alerts(s);
+        if let Some((msg, crit)) = alerts.first() {
+            let bg = if *crit { t.red } else { t.yellow };
+            left.push(Span::styled(
+                format!(" ⚠ {} ", msg),
+                Style::default()
+                    .fg(t.bg)
+                    .bg(bg)
+                    .add_modifier(ratatui::style::Modifier::BOLD),
+            ));
+            let more = if alerts.len() > 1 {
+                format!(" +{}  ", alerts.len() - 1)
+            } else {
+                "  ".to_string()
+            };
+            left.push(Span::styled(more, dim));
+        }
+        let fixed_spans = left.len();
         for (i, (k, v, c)) in metrics.iter().enumerate() {
             if i > 0 {
                 left.push(sep.clone());
@@ -1472,7 +1517,7 @@ impl App {
         let (rw, avail) = (width(&right), area.width as usize);
         // Narrow terminal: shed metrics from the right (least important last)
         // until the page nav fits. Each metric is 3 spans (sep, key, value).
-        while width(&left) + rw >= avail && left.len() > 2 + 3 {
+        while width(&left) + rw >= avail && left.len() > fixed_spans + 3 {
             left.truncate(left.len() - 3);
         }
         let lw = width(&left);

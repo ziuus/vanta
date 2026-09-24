@@ -155,6 +155,7 @@ pub fn render_panel(f: &mut Frame, area: Rect, app: &crate::app::App, id: crate:
         P::Matrix => matrix::render(f, inner, theme),
         P::Video => video::render(f, inner, theme, app.frame),
         P::Weather => crate::widgets::weather::render(f, inner, theme),
+        P::UpNext => crate::widgets::upnext::render(f, inner, theme),
         P::Agenda => crate::widgets::agenda::render(
             f,
             inner,

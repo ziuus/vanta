@@ -160,7 +160,9 @@ fn signal_bars(pct: u8) -> &'static str {
 /// System/user status: network, packages, containers, load, session.
 /// Everything expensive is TTL-cached; the rest is a /proc read.
 pub fn render(f: &mut Frame, area: Rect, theme: &Theme, is_focused: bool, selected: usize) {
-    if area.height < 3 || area.width < 20 {
+    // Rows are top-aligned and clipped, so even a squeezed panel shows the
+    // first few facts rather than going blank.
+    if area.height == 0 || area.width < 20 {
         return;
     }
     let fx = facts();

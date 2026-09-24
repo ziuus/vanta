@@ -14,10 +14,10 @@ pub enum DashboardMode {
 impl DashboardMode {
     pub fn label(&self) -> &str {
         match self {
-            Self::Dashboard => "Dashboard",
+            Self::Dashboard => "Overview",
             Self::Monitor => "Monitor",
-            Self::Aesthetic => "Aesthetic",
-            Self::Workspace => "Workspace",
+            Self::Aesthetic => "Ambient",
+            Self::Workspace => "Focus",
             Self::DebugLogs => "Debug Logs",
             Self::Extension(name) => name,
         }
@@ -26,10 +26,10 @@ impl DashboardMode {
     #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
         match s {
-            "dashboard" => Self::Dashboard,
+            "dashboard" | "overview" => Self::Dashboard,
             "monitor" => Self::Monitor,
-            "aesthetic" => Self::Aesthetic,
-            "workspace" | "writer" => Self::Workspace,
+            "aesthetic" | "ambient" => Self::Aesthetic,
+            "workspace" | "writer" | "focus" => Self::Workspace,
             "processes" => Self::Monitor,
             "media" => Self::Aesthetic,
             "debug" | "logs" => Self::DebugLogs,

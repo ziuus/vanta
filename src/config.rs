@@ -36,26 +36,22 @@ pub struct DashboardConfig {
 
 impl DashboardConfig {
     pub fn preset_cockpit() -> Vec<Vec<String>> {
+        let col = |names: &[&str]| names.iter().map(|s| s.to_string()).collect();
         vec![
-            vec![
-                "system".into(),
-                "gauges".into(),
-                "cpu".into(),
-                "storage".into(),
-            ],
-            vec![
-                "clock".into(),
-                "media".into(),
-                "visualizer".into(),
-                "processes".into(),
-            ],
-            vec![
-                "status".into(),
-                "weather".into(),
-                "memory".into(),
-                "network".into(),
-                "calendar".into(),
-            ],
+            col(&["system", "gauges", "cpu", "memory", "storage"]),
+            col(&["clock", "media", "processes", "network"]),
+            col(&["weather", "calendar", "upnext", "status"]),
+        ]
+    }
+
+    /// The cockpit layout shipped before v0.11. Configs that still hold it
+    /// verbatim were never customised, so they're upgraded on load.
+    fn legacy_cockpit() -> Vec<Vec<String>> {
+        let col = |names: &[&str]| names.iter().map(|s| s.to_string()).collect();
+        vec![
+            col(&["system", "gauges", "cpu", "storage"]),
+            col(&["clock", "media", "visualizer", "processes"]),
+            col(&["status", "weather", "memory", "network", "calendar"]),
         ]
     }
 
@@ -93,6 +89,13 @@ impl DashboardConfig {
             vec!["notes".into()],
             vec!["files".into(), "processes".into()],
         ]
+    }
+
+    /// Fill an empty layout and upgrade an untouched legacy cockpit.
+    fn migrate(&mut self) {
+        if self.layout.is_empty() || self.layout == Self::legacy_cockpit() {
+            self.layout = Self::preset_cockpit();
+        }
     }
 
     pub fn apply_preset(&mut self, preset_name: &str) {
@@ -253,9 +256,7 @@ impl Config {
         let mut cfg: Config = toml::from_str(&content).unwrap_or_default();
         cfg.ui.refresh_rate = cfg.ui.refresh_rate.clamp(0.1, 10.0);
         cfg.ui.fps = cfg.ui.fps.clamp(5, 120);
-        if cfg.dashboard.layout.is_empty() {
-            cfg.dashboard = DashboardConfig::default();
-        }
+        cfg.dashboard.migrate();
         cfg
     }
 
@@ -574,19 +575,30 @@ mod tests {
             fps = 60
         "#;
         let cfg: Config = toml::from_str(toml_str).unwrap();
-        assert_eq!(cfg.dashboard.layout.len(), 3);
-        assert_eq!(
-            cfg.dashboard.layout[0],
-            vec!["system", "gauges", "cpu", "storage"]
-        );
-        assert_eq!(
-            cfg.dashboard.layout[1],
-            vec!["clock", "media", "visualizer", "processes"]
-        );
+        assert_eq!(cfg.dashboard.layout, DashboardConfig::preset_cockpit());
         assert_eq!(
             cfg.dashboard.layout[2],
-            vec!["status", "weather", "memory", "network", "calendar"]
+            vec!["weather", "calendar", "upnext", "status"]
         );
+    }
+
+    #[test]
+    fn legacy_cockpit_upgrades_but_custom_layouts_stay() {
+        let mut legacy = DashboardConfig {
+            preset: "cockpit".into(),
+            layout: DashboardConfig::legacy_cockpit(),
+        };
+        legacy.migrate();
+        assert_eq!(legacy.layout, DashboardConfig::preset_cockpit());
+
+        let mut custom_layout = DashboardConfig::legacy_cockpit();
+        custom_layout[0].push("gpu".into());
+        let mut custom = DashboardConfig {
+            preset: "cockpit".into(),
+            layout: custom_layout.clone(),
+        };
+        custom.migrate();
+        assert_eq!(custom.layout, custom_layout);
     }
 
     #[test]

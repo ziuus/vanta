@@ -135,11 +135,35 @@ pub fn render(
     style: &str,
     timezones: &[String],
 ) {
+    render_with_note(f, area, theme, h24, font, style, timezones, None);
+}
+
+/// Like [`render`], with an optional one-line note (e.g. the next agenda
+/// event) under the date. The note is dropped first when space is short.
+#[allow(clippy::too_many_arguments)]
+pub fn render_with_note(
+    f: &mut Frame,
+    area: Rect,
+    theme: &Theme,
+    h24: bool,
+    font: &str,
+    style: &str,
+    timezones: &[String],
+    note: Option<&str>,
+) {
     if area.height == 0 || area.width < 8 {
         return;
     }
     let now = Local::now();
     let date = now.format("%A, %-d %B %Y").to_string();
+    // Only spend a row on the note when the glyphs still fit at full height.
+    let note = note.filter(|_| area.height as usize > GLYPH_H + 2);
+    let area_for_clock = if note.is_some() {
+        Rect::new(area.x, area.y, area.width, area.height - 1)
+    } else {
+        area
+    };
+    let area = area_for_clock;
     let colon_on = now.nanosecond() < 500_000_000;
 
     let w = area.width as usize;
@@ -237,6 +261,19 @@ pub fn render(
             .alignment(Alignment::Center),
             Rect::new(area.x, date_y, area.width, 1),
         );
+    }
+    // The area was shrunk by one row for the note, so the row after a visible
+    // date is still inside the panel.
+    if let Some(note) = note.filter(|_| date_y < area.y + area.height) {
+        f.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                crate::widgets::meter::ellipsize(note, area.width as usize),
+                Style::default().fg(theme.secondary),
+            )))
+            .alignment(Alignment::Center),
+            Rect::new(area.x, date_y + 1, area.width, 1),
+        );
+        return;
     }
 
     // Render timezones

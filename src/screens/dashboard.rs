@@ -70,86 +70,47 @@ pub fn render_layout(f: &mut Frame, area: Rect, app: &mut App, layout: &[Vec<Str
     let cols = Layout::horizontal(col_constraints).split(main_area);
 
     let mounts = disk::mounts().len().clamp(1, 4) as u16;
-
-    let columns_active: Vec<Vec<String>> = layout
+    // The media panel hosts the visualizer itself unless the layout also has a
+    // standalone visualizer panel.
+    let embed_viz = !layout
         .iter()
-        .map(|col_names| {
-            col_names
-                .iter()
-                .filter(|name| PanelId::from_name(name, &app.config).is_some())
-                .cloned()
-                .collect()
-        })
-        .collect();
+        .flatten()
+        .any(|n| matches!(n.to_lowercase().as_str(), "visualizer" | "viz"));
+    let ctx = SizeCtx {
+        mounts,
+        total_height: main_area.height,
+        media_active: media::current_player().is_some() || music_viz::audio_active(),
+        embed_viz,
+    };
+    if embed_viz && layout.iter().flatten().any(|n| is_media_name(n)) {
+        // Keep cava alive so audio from MPRIS-less players can expand the panel.
+        music_viz::ensure_running();
+    }
 
     for (c, &col_area) in cols.iter().enumerate() {
-        if c >= columns_active.len() {
+        let Some(col_names) = layout.get(c) else {
             break;
-        }
-        let active_panels = &columns_active[c];
-        if active_panels.is_empty() {
-            continue;
-        }
-
-        let has_flex = active_panels.iter().any(|p| is_flex_panel(p));
-        let num_panels = active_panels.len();
-
-        let mut flex_adj_total = 0;
-        for p in active_panels.iter() {
-            if is_flex_panel(p) {
-                if let Some(id) = crate::app::PanelId::from_name(p, &app.config) {
-                    let key = format!("{:?}", id).to_lowercase();
-                    flex_adj_total += app
-                        .panel_states
-                        .dash_vertical
-                        .get(&key)
-                        .copied()
-                        .unwrap_or(0);
-                }
-            }
-        }
-
-        // Distribute -flex_adj_total to rigid components
-        let mut flex_remainder = -flex_adj_total;
-
-        let constraints: Vec<Constraint> = active_panels
+        };
+        let items: Vec<(String, Size)> = col_names
             .iter()
-            .enumerate()
-            .map(|(i, p)| {
-                let mut adj = 0;
-                if let Some(id) = crate::app::PanelId::from_name(p, &app.config) {
-                    let key = format!("{:?}", id).to_lowercase();
-                    adj = app
-                        .panel_states
-                        .dash_vertical
-                        .get(&key)
-                        .copied()
-                        .unwrap_or(0);
-                }
-                if !is_flex_panel(p) && flex_remainder != 0 {
-                    // Try to give this rigid component 2 or -2 units of the remainder, or whatever is left
-                    let chunk = if flex_remainder > 0 {
-                        flex_remainder.min(2)
-                    } else {
-                        flex_remainder.max(-2)
-                    };
-                    adj += chunk;
-                    flex_remainder -= chunk;
-                }
-                panel_constraint(
-                    p,
-                    i == num_panels - 1,
-                    has_flex,
-                    mounts,
-                    main_area.height,
-                    adj,
-                )
+            .filter(|name| PanelId::from_name(name, &app.config).is_some())
+            .map(|name| {
+                let adj = PanelId::from_name(name, &app.config)
+                    .and_then(|id| {
+                        let key = format!("{:?}", id).to_lowercase();
+                        app.panel_states.dash_vertical.get(&key).copied()
+                    })
+                    .unwrap_or(0);
+                (name.clone(), panel_size(name, &ctx, adj))
             })
             .collect();
-
+        if items.is_empty() {
+            continue;
+        }
+        let (names, constraints) = solve_column(items, col_area.height);
         let rows = Layout::vertical(constraints).split(col_area);
-        for (p, &row_area) in active_panels.iter().zip(rows.iter()) {
-            render_dashboard_panel(f, row_area, p, app, &sum, term);
+        for (p, &row_area) in names.iter().zip(rows.iter()) {
+            render_dashboard_panel(f, row_area, p, app, &sum, term, embed_viz);
         }
     }
 
@@ -197,64 +158,128 @@ fn is_flex_panel(name: &str) -> bool {
     )
 }
 
-fn panel_constraint(
-    name: &str,
-    is_last: bool,
-    has_flex_in_col: bool,
+fn is_media_name(name: &str) -> bool {
+    matches!(
+        name.to_lowercase().as_str(),
+        "media" | "now_playing" | "now-playing"
+    )
+}
+
+struct SizeCtx {
     mounts: u16,
     total_height: u16,
-    adjustment: i16,
-) -> Constraint {
-    let apply = |base: u16| -> u16 { (base as i16 + adjustment).max(3) as u16 };
+    media_active: bool,
+    embed_viz: bool,
+}
 
-    if is_flex_panel(name) {
-        if name.eq_ignore_ascii_case("cpu") {
-            Constraint::Min(apply(8))
-        } else {
-            Constraint::Min(apply(6))
-        }
-    } else {
-        let h = match name.to_lowercase().as_str() {
-            "filespace_path" => 3,
-            "filespace_sidebar" => 10,
-            "filespace_queue" => 8,
-            "cryptopulse_mood" => 8,
-            "cryptopulse_stats" => 7,
-            "mediadeck_transport" => 4,
-            "mediadeck_signal" => 6,
-            "mediadeck_now_playing" => 6,
-            "portwatch_main" => 8,
-            "system" => 12,
-            "gauges" | "gauge" => gauge::H as u16 + 2,
-            "storage" | "disk" => mounts + 2,
-            "clock" => 9,
-            "media" | "now_playing" | "now-playing" => 6,
-            "visualizer" | "viz" => 9,
-            "status" => 8,
-            "weather" => 9,
-            "calendar" | "cal" => 12,
-            "memory" | "mem" => {
-                if total_height >= 38 {
-                    7
-                } else {
-                    6
-                }
-            }
-            "gpu" => 7,
-            "network" | "net" => 7,
-            "video" | "donut" => 9,
-            "pinned_media" | "media_preview" | "media-preview" | "image" => 10,
-            "news" => 8,
-            "notes" | "writer" | "obsidian" => 10,
-            "files" => 10,
-            _ => 7,
-        };
-        if is_last && !has_flex_in_col {
-            Constraint::Min(apply(h))
-        } else {
-            Constraint::Length(apply(h))
-        }
+/// How a panel wants to be sized within its column (heights include borders).
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Size {
+    /// Height it gets when there's room.
+    pref: u16,
+    /// Smallest height at which it still renders something useful.
+    min: u16,
+    /// Takes whatever space is left over (graphs, lists).
+    flex: bool,
+    /// Higher survives longer when the column is too short.
+    priority: u8,
+}
+
+fn panel_size(name: &str, ctx: &SizeCtx, adjustment: i16) -> Size {
+    let n = name.to_lowercase();
+    let flex = is_flex_panel(&n) || matches!(n.as_str(), "upnext" | "up_next" | "up-next" | "next");
+    let (pref, min, priority): (u16, u16, u8) = match n.as_str() {
+        "clock" => (10, 5, 10),
+        "cpu" => (8, 6, 9),
+        "processes" | "procs" | "top_processes" | "top-processes" => (6, 5, 8),
+        "media" | "now_playing" | "now-playing" => match (ctx.media_active, ctx.embed_viz) {
+            (false, _) => (3, 3, 8),
+            (true, true) => (13, 5, 8),
+            (true, false) => (6, 4, 8),
+        },
+        "weather" => (10, 3, 7),
+        "memory" | "mem" => (if ctx.total_height >= 38 { 7 } else { 6 }, 4, 7),
+        "upnext" | "up_next" | "up-next" | "next" => (6, 4, 7),
+        "calendar" | "cal" => (12, 4, 6),
+        "network" | "net" => (7, 5, 6),
+        "system" => (12, 7, 5),
+        "storage" | "disk" => (ctx.mounts + 2, 3, 4),
+        "gpu" => (7, 5, 4),
+        "gauges" | "gauge" => (gauge::H as u16 + 2, gauge::H as u16 + 2, 3),
+        "status" => (8, 4, 3),
+        "visualizer" | "viz" => (9, 5, 3),
+        "video" | "donut" => (9, 6, 3),
+        "matrix" => (6, 4, 2),
+        "pinned_media" | "media_preview" | "media-preview" | "image" => (10, 6, 4),
+        "news" => (8, 5, 4),
+        "notes" | "writer" | "obsidian" | "files" => (10, 6, 5),
+        "tasks" | "agenda" => (6, 4, 6),
+        "filespace_path" => (3, 3, 5),
+        "filespace_sidebar" => (10, 6, 5),
+        "filespace_queue" => (8, 5, 5),
+        "cryptopulse_mood" => (8, 6, 5),
+        "cryptopulse_stats" => (7, 5, 5),
+        "mediadeck_transport" => (4, 4, 5),
+        "mediadeck_signal" | "mediadeck_now_playing" => (6, 5, 5),
+        "portwatch_main" => (8, 6, 5),
+        _ if flex => (6, 6, 5),
+        _ => (7, 5, 5),
+    };
+    let pref = (pref as i16 + adjustment).max(3) as u16;
+    Size {
+        pref,
+        min: min.min(pref),
+        flex,
+        priority,
     }
+}
+
+/// Fit a column's panels into `avail` rows. Drops the lowest-priority panels
+/// until every survivor's minimum fits, then shrinks rigid panels toward their
+/// minimum (lowest priority first). Flex panels, or the last panel when there
+/// are none, absorb the leftover space.
+fn solve_column(mut items: Vec<(String, Size)>, avail: u16) -> (Vec<String>, Vec<Constraint>) {
+    while items.len() > 1 && items.iter().map(|(_, s)| s.min).sum::<u16>() > avail {
+        // Lowest priority goes first; among equals, the one lowest in the column.
+        let drop = items
+            .iter()
+            .enumerate()
+            .min_by_key(|(i, (_, s))| (s.priority, usize::MAX - i))
+            .map(|(i, _)| i)
+            .unwrap_or(items.len() - 1);
+        items.remove(drop);
+    }
+
+    let want = |items: &[(String, Size)]| -> u16 {
+        items
+            .iter()
+            .map(|(_, s)| if s.flex { s.min } else { s.pref })
+            .sum()
+    };
+    while want(&items) > avail {
+        let over = want(&items) - avail;
+        let Some((_, s)) = items
+            .iter_mut()
+            .filter(|(_, s)| !s.flex && s.pref > s.min)
+            .min_by_key(|(_, s)| s.priority)
+        else {
+            break;
+        };
+        s.pref -= over.min(s.pref - s.min);
+    }
+
+    let has_flex = items.iter().any(|(_, s)| s.flex);
+    let last = items.len() - 1;
+    let constraints = items
+        .iter()
+        .enumerate()
+        .map(|(i, (_, s))| match (s.flex, has_flex) {
+            (true, _) => Constraint::Min(s.min),
+            (false, false) if i == last => Constraint::Min(s.pref),
+            _ => Constraint::Length(s.pref),
+        })
+        .collect();
+    (items.into_iter().map(|(n, _)| n).collect(), constraints)
 }
 
 fn render_dashboard_panel(
@@ -264,6 +289,7 @@ fn render_dashboard_panel(
     app: &mut App,
     sum: &crate::monitors::Summary,
     term: (u16, u16),
+    embed_viz: bool,
 ) {
     let theme_val = app.theme.clone();
     let theme = &theme_val;
@@ -317,7 +343,14 @@ fn render_dashboard_panel(
             gauge::render(f, inner, theme, &metrics);
         }
         "cpu" => {
-            let cpu_rt = format!(" {:.1}% ", sum.cpu_pct);
+            let snap = cpu::snapshot();
+            let mut cpu_rt = format!("{:.0}%", sum.cpu_pct);
+            if let Some(t) = snap.max_temp() {
+                cpu_rt.push_str(&format!(" · {:.0}°", t));
+            }
+            if snap.freq_mhz > 0 && area.width >= 40 {
+                cpu_rt.push_str(&format!(" · {:.1}GHz", snap.freq_mhz as f64 / 1000.0));
+            }
             let inner = panel_full(
                 f,
                 area,
@@ -339,7 +372,8 @@ fn render_dashboard_panel(
         }
         "clock" => {
             let inner = panel(f, area, "clock", theme, focus(PanelId::Clock));
-            clock::render(
+            let note = crate::widgets::upnext::next_note();
+            clock::render_with_note(
                 f,
                 inner,
                 theme,
@@ -347,19 +381,38 @@ fn render_dashboard_panel(
                 &app.config.ui.clock_font,
                 &app.config.ui.clock_style,
                 &[],
+                note.as_deref(),
             );
         }
         "media" | "now_playing" | "now-playing" => {
+            let player = media::current_player();
+            let rt = player.clone();
             let inner = panel_full(
                 f,
                 area,
                 "now playing",
-                None,
+                rt.as_deref(),
                 Some("Space play/pause · n/p track · <> vol"),
                 theme,
                 focus(PanelId::Media),
             );
-            media::render(f, inner, theme);
+            let active = player.is_some() || music_viz::audio_active();
+            if embed_viz && active && inner.height >= 6 {
+                let [info, _, viz] = Layout::vertical([
+                    Constraint::Length(3),
+                    Constraint::Length(1),
+                    Constraint::Min(1),
+                ])
+                .areas(inner);
+                media::render(f, info, theme);
+                music_viz::render(f, viz, theme, app.frame);
+            } else {
+                media::render(f, inner, theme);
+            }
+        }
+        "upnext" | "up_next" | "up-next" | "next" => {
+            let inner = panel(f, area, "up next", theme, focus(PanelId::UpNext));
+            crate::widgets::upnext::render(f, inner, theme);
         }
         "visualizer" | "viz" => {
             let inner = panel(f, area, "visualizer", theme, focus(PanelId::Visualizer));
@@ -396,16 +449,13 @@ fn render_dashboard_panel(
             );
         }
         "weather" => {
-            let weather_rt = if crate::monitors::weather::snapshot().ready {
-                format!(" {} ", crate::monitors::weather::snapshot().location)
-            } else {
-                " offline ".to_string()
-            };
+            let snap = crate::monitors::weather::snapshot();
+            let weather_rt = snap.ready.then_some(snap.location);
             let inner = panel_full(
                 f,
                 area,
                 "weather",
-                Some(&weather_rt),
+                weather_rt.as_deref(),
                 None,
                 theme,
                 focus(PanelId::Weather),
@@ -413,25 +463,25 @@ fn render_dashboard_panel(
             crate::widgets::weather::render(f, inner, theme);
         }
         "memory" | "mem" => {
-            let mem_rt = format!(" {:.1}% ", sum.mem_pct);
-            let inner = panel_full(
-                f,
-                area,
-                "memory",
-                Some(&mem_rt),
-                None,
-                theme,
-                focus(PanelId::Memory),
-            );
+            // The RAM/SWAP rows carry the numbers; the title stays clean.
+            let inner = panel_full(f, area, "memory", None, None, theme, focus(PanelId::Memory));
             memory::render(f, inner, theme, false);
         }
         "network" | "net" => {
-            let net_rt = format!(" ↓{:.0} ↑{:.0} kb/s ", sum.rx_kbps, sum.tx_kbps);
+            // The body already shows both rates; only repeat them in the title
+            // when the panel is too short to draw its body.
+            let net_rt = (area.height < 5).then(|| {
+                format!(
+                    "↓{} ↑{}",
+                    meter::fmt_kbps(sum.rx_kbps),
+                    meter::fmt_kbps(sum.tx_kbps)
+                )
+            });
             let inner = panel_full(
                 f,
                 area,
                 "network",
-                Some(&net_rt),
+                net_rt.as_deref(),
                 None,
                 theme,
                 focus(PanelId::Network),
@@ -720,4 +770,66 @@ fn render_top_procs(f: &mut Frame, area: Rect, theme: &crate::theme::Theme) {
         lines.push(Line::from(spans));
     }
     f.render_widget(Paragraph::new(lines), area);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ctx(media_active: bool) -> SizeCtx {
+        SizeCtx {
+            mounts: 3,
+            total_height: 32,
+            media_active,
+            embed_viz: true,
+        }
+    }
+
+    fn col(names: &[&str], media_active: bool) -> Vec<(String, Size)> {
+        names
+            .iter()
+            .map(|n| (n.to_string(), panel_size(n, &ctx(media_active), 0)))
+            .collect()
+    }
+
+    fn heights(cs: &[Constraint]) -> Vec<u16> {
+        cs.iter()
+            .map(|c| match c {
+                Constraint::Length(n) | Constraint::Min(n) => *n,
+                _ => 0,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn roomy_column_keeps_everything_at_preferred_size() {
+        let (names, cs) =
+            solve_column(col(&["weather", "calendar", "upnext", "status"], false), 48);
+        assert_eq!(names, ["weather", "calendar", "upnext", "status"]);
+        assert_eq!(heights(&cs), [10, 12, 4, 8]);
+        assert_eq!(cs[2], Constraint::Min(4));
+    }
+
+    #[test]
+    fn short_column_shrinks_low_priority_rigid_panels_first() {
+        // 10 + 12 + 4 + 8 = 34 > 30: status (prio 3) gives up 4 rows first.
+        let (names, cs) =
+            solve_column(col(&["weather", "calendar", "upnext", "status"], false), 30);
+        assert_eq!(names.len(), 4);
+        assert_eq!(heights(&cs), [10, 12, 4, 4]);
+    }
+
+    #[test]
+    fn tiny_column_drops_lowest_priority_panels() {
+        // Minimums: weather 3, calendar 4, upnext 4, status 4 = 15 > 12.
+        let (names, _) = solve_column(col(&["weather", "calendar", "upnext", "status"], false), 12);
+        assert!(!names.contains(&"status".to_string()));
+        assert!(names.contains(&"weather".to_string()));
+    }
+
+    #[test]
+    fn media_collapses_when_idle() {
+        assert_eq!(panel_size("media", &ctx(false), 0).pref, 3);
+        assert!(panel_size("media", &ctx(true), 0).pref > 3);
+    }
 }

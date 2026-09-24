@@ -206,6 +206,16 @@ pub fn sample() {
     st.conn = Some(conn_owned);
 }
 
+/// Player name of the current track, if any player is playing or paused.
+pub fn current_player() -> Option<String> {
+    STATE
+        .lock()
+        .unwrap()
+        .track
+        .as_ref()
+        .map(|t| t.player.clone())
+}
+
 /// Playback control on the currently displayed player. Fire-and-forget.
 pub fn control(action: Action) {
     let st = STATE.lock().unwrap();
@@ -284,9 +294,14 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
     let mut st = STATE.lock().unwrap();
     let Some(track) = st.track.clone() else {
         let y = area.y + area.height.saturating_sub(1) / 2;
+        let msg = if crate::widgets::music_viz::audio_active() {
+            "♪ audio playing"
+        } else {
+            "♪ nothing playing"
+        };
         f.render_widget(
             Paragraph::new(Line::from(Span::styled(
-                "nothing playing",
+                msg,
                 Style::default().fg(theme.dim),
             )))
             .alignment(ratatui::layout::Alignment::Center),
