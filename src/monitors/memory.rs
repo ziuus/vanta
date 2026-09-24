@@ -17,6 +17,8 @@ pub struct MemSnapshot {
     pub used: u64,
     pub swap_total: u64,
     pub swap_used: u64,
+    pub available: u64,
+    pub free: u64,
 }
 
 impl MemSnapshot {
@@ -41,6 +43,8 @@ static SNAP: Mutex<MemSnapshot> = Mutex::new(MemSnapshot {
     used: 0,
     swap_total: 0,
     swap_used: 0,
+    available: 0,
+    free: 0,
 });
 static HISTORY: LazyLock<Mutex<History<240>>> = LazyLock::new(|| Mutex::new(History::new()));
 
@@ -54,6 +58,8 @@ pub fn sample(sys: &sysinfo::System) {
         used: sys.used_memory(),
         swap_total: sys.total_swap(),
         swap_used: sys.used_swap(),
+        available: sys.available_memory(),
+        free: sys.free_memory(),
     };
     HISTORY.lock().unwrap().push(snap.pct());
     *SNAP.lock().unwrap() = snap;
@@ -79,15 +85,21 @@ fn row<'a>(label: &'a str, used: u64, total: u64, pct: f64, width: u16, theme: &
     ])
 }
 
-pub fn render(f: &mut Frame, area: Rect, theme: &Theme, _is_detailed: bool) {
+pub fn render(f: &mut Frame, area: Rect, theme: &Theme, is_detailed: bool) {
     if area.height < 2 {
         return;
     }
     let m = snapshot();
     let has_swap = m.swap_total > 0;
 
+    let mut breakdown_rows = 0;
+    if is_detailed && area.height >= 4 {
+        breakdown_rows = 1;
+    }
+
     let chunks = Layout::vertical([
         Constraint::Length(1),
+        Constraint::Length(breakdown_rows),
         Constraint::Min(1),
         Constraint::Length(if has_swap { 1 } else { 0 }),
     ])
@@ -98,12 +110,35 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, _is_detailed: bool) {
         chunks[0],
     );
 
+    if breakdown_rows > 0 {
+        let cached = m.total.saturating_sub(m.free).saturating_sub(m.used);
+        f.render_widget(
+            Paragraph::new(Line::from(vec![
+                Span::styled(
+                    format!("avl {:>5}", meter::fmt_bytes(m.available)),
+                    Style::default().fg(theme.dim),
+                ),
+                Span::raw("  "),
+                Span::styled(
+                    format!("fre {:>5}", meter::fmt_bytes(m.free)),
+                    Style::default().fg(theme.dim),
+                ),
+                Span::raw("  "),
+                Span::styled(
+                    format!("cac {:>5}", meter::fmt_bytes(cached)),
+                    Style::default().fg(theme.dim),
+                ),
+            ])),
+            chunks[1],
+        );
+    }
+
     let hist = HISTORY.lock().unwrap().recent(1000);
     f.render_widget(
         BlockGraph::new(&hist)
             .max(100.0)
             .colors(theme.secondary, theme.yellow, theme.red),
-        chunks[1],
+        chunks[2],
     );
 
     if has_swap {
@@ -116,7 +151,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, _is_detailed: bool) {
                 area.width,
                 theme,
             )),
-            chunks[2],
+            chunks[3],
         );
     }
 }

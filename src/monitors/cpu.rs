@@ -213,13 +213,15 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, is_detailed: bool) {
         ));
     }
 
-    header.push(Span::styled(
-        format!(
-            "  load {:.2} {:.2} {:.2}",
-            snap.load.0, snap.load.1, snap.load.2
-        ),
-        Style::default().fg(theme.dim),
-    ));
+    if is_detailed || area.width > 50 {
+        header.push(Span::styled(
+            format!(
+                "  load {:.2} {:.2} {:.2}",
+                snap.load.0, snap.load.1, snap.load.2
+            ),
+            Style::default().fg(theme.dim),
+        ));
+    }
 
     if snap.freq_mhz > 0 && is_detailed {
         header.push(Span::styled(
