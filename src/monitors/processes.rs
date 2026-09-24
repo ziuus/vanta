@@ -159,17 +159,20 @@ fn read_cmdline(pid: u32) -> String {
         .unwrap_or_default()
 }
 
+static DEMAND: super::Demand = super::Demand::new();
+
 /// Walk /proc once and rebuild the snapshot. Called on the tick, never per frame.
 pub fn sample(total_mem_bytes: u64) {
+    // The walk is the sampler's biggest cost. Once a second is plenty while
+    // a process table is on screen; otherwise every 5s just keeps counters
+    // fresh so cpu% is meaningful the moment one appears.
     let now = Instant::now();
-    // The walk costs ~20ms on a few hundred processes; once a second is plenty
-    // for a process table and halves the sampler's idle cost at fast refresh.
-    if STATE
+    let stale = STATE
         .lock()
         .unwrap()
         .prev_time
-        .is_some_and(|t| now.duration_since(t) < std::time::Duration::from_millis(950))
-    {
+        .is_none_or(|t| now.duration_since(t) >= std::time::Duration::from_secs(5));
+    if !DEMAND.due(std::time::Duration::from_millis(950)) && !stale {
         return;
     }
     let total_jiffies = read_total_jiffies();
@@ -294,11 +297,13 @@ fn user_name(uid: u32) -> String {
 }
 
 pub fn count() -> usize {
+    DEMAND.touch();
     STATE.lock().unwrap().snapshot.len()
 }
 
 /// Top `n` by CPU for the dashboard preview.
 pub fn top_by_cpu(n: usize) -> Vec<ProcInfo> {
+    DEMAND.touch();
     let st = STATE.lock().unwrap();
     let mut v: Vec<&ProcInfo> = st.snapshot.iter().collect();
     v.sort_by(|a, b| {
@@ -311,6 +316,7 @@ pub fn top_by_cpu(n: usize) -> Vec<ProcInfo> {
 
 /// Top `n` processes by total I/O throughput (read_bps + write_bps).
 pub fn top_by_io(n: usize) -> Vec<ProcInfo> {
+    DEMAND.touch();
     let st = STATE.lock().unwrap();
     let mut v: Vec<&ProcInfo> = st.snapshot.iter().collect();
     v.sort_by(|a, b| {
@@ -325,6 +331,7 @@ pub fn top_by_io(n: usize) -> Vec<ProcInfo> {
 /// where extensions decide their own ordering.  Capped at 512 to keep the JSON
 /// payload within reason on a busy system.
 pub fn snapshot_all() -> Vec<ProcInfo> {
+    DEMAND.touch();
     let st = STATE.lock().unwrap();
     st.snapshot.iter().take(512).cloned().collect()
 }
@@ -345,6 +352,7 @@ fn cmp(a: &ProcInfo, b: &ProcInfo, by: SortField, asc: bool) -> std::cmp::Orderi
 
 /// Filtered + sorted view of the current snapshot.
 fn view(sort_field: SortField, sort_asc: bool, search: &str) -> (Vec<ProcInfo>, f64) {
+    DEMAND.touch();
     let st = STATE.lock().unwrap();
     let lower = search.to_lowercase();
     let mut procs: Vec<ProcInfo> = st

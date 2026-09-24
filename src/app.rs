@@ -231,8 +231,8 @@ pub fn alerts(s: &Summary) -> Vec<(String, bool)> {
             out.push((format!("bat {}%", p), p <= 10));
         }
     }
-    if let Some(c) = s.temp_c.filter(|c| *c >= 85.0) {
-        out.push((format!("hot {:.0}°", c), c >= 95.0));
+    if let Some(c) = s.temp_c.filter(|_| s.hot) {
+        out.push((format!("hot {:.0}°", c), s.temp_critical()));
     }
     if let Some(d) = s.disk_pct.filter(|d| *d >= 90.0) {
         out.push((format!("disk {:.0}%", d), d >= 97.0));
@@ -329,6 +329,8 @@ pub struct App {
     /// A focused panel expanded to fill the page (Enter / Esc).
     pub zoomed: Option<PanelId>,
     pub summary: Summary,
+    /// When the last key was pressed; ambient hides its hints once idle.
+    pub last_input: Instant,
     /// Short transient message shown in the status bar (theme changed, killed pid …).
     toast: Option<(String, Instant)>,
     /// First press of k/K arms this; the second press within the window fires.
@@ -364,6 +366,7 @@ impl App {
             settings_scroll: 0,
             zoomed: None,
             summary: Summary::default(),
+            last_input: Instant::now(),
             toast: None,
             pending_signal: None,
             sampler_interval,
@@ -465,6 +468,7 @@ impl App {
     // ── Input ─────────────────────────────────────────────────
 
     pub fn handle_key(&mut self, key: KeyEvent) {
+        self.last_input = Instant::now();
         if matches!(self.mode, DashboardMode::Extension(_)) {
             for ext in &self.ext_manager.extensions {
                 for mut comp in ext.components() {
@@ -1369,10 +1373,16 @@ impl App {
                 area,
             );
         }
+        // Ambient scenes carry their own hint line, so the key bar only
+        // appears there for toasts and text input.
+        let quiet = self.mode == DashboardMode::Aesthetic
+            && self.zoomed.is_none()
+            && self.toast.is_none()
+            && !self.panel_states.pinned_media_input_active;
         let [title_bar, main, status_bar] = Layout::vertical([
             Constraint::Length(1),
             Constraint::Min(0),
-            Constraint::Length(1),
+            Constraint::Length(u16::from(!quiet)),
         ])
         .areas(area);
 
@@ -1459,7 +1469,18 @@ impl App {
             metrics.push(("disk", format!("{:>3.0}%", d), level(d)));
         }
         if let Some(c) = s.temp_c {
-            metrics.push(("temp", format!("{:.0}°", c), level(c)));
+            // Relative to the chip's own limit: plenty of laptops idle at
+            // 80°+, which a fixed 75° warning would flag all day.
+            let col = if s.temp_critical() {
+                worst = 2;
+                t.red
+            } else if s.hot {
+                worst = worst.max(1);
+                t.yellow
+            } else {
+                t.accent
+            };
+            metrics.push(("temp", format!("{:.0}°", c), col));
         }
         metrics.push((
             "net",
@@ -1639,6 +1660,12 @@ impl App {
                     hint("k", "term");
                     hint("K", "kill");
                 }
+                Some(PanelId::Timer) => {
+                    hint("space", "start/pause");
+                    hint("r", "reset");
+                    hint("s", "skip");
+                    hint("tab", "focus");
+                }
                 Some(PanelId::Calendar) => {
                     hint("←→", "month");
                     hint("↑↓", "year");
@@ -1656,18 +1683,22 @@ impl App {
                             },
                         );
                     }
-                    hint("space", "play/pause");
-                    hint("n/p", "track");
-                    hint("<>", "volume");
-                    hint("v", "visualizer");
-                    hint("g", "gauge");
-                    hint("m", "meter");
-                    hint("G", "graph");
+                    match self.mode {
+                        DashboardMode::Aesthetic => {
+                            hint("←→", "scene");
+                            hint("r", "rotation");
+                            hint("o", "motion");
+                        }
+                        _ => {
+                            hint("space", "play/pause");
+                            hint("n/p", "track");
+                        }
+                    }
                     hint("T", "theme");
                     hint("S", "settings");
-                    hint("+/-", "refresh");
                 }
             }
+            hint("?", "keys");
             hint("q", "quit");
         }
 

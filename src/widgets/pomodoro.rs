@@ -247,21 +247,25 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, ui: &UiConfig, focused: 
         (false, true) => " · paused",
         (false, false) => " · ready",
     };
-    let session = (done + u32::from(phase == Phase::Focus)).min(SESSIONS_PER_LONG_BREAK);
+    let session = (done + u32::from(phase == Phase::Focus)).clamp(1, SESSIONS_PER_LONG_BREAK);
+    let label = phase.label().to_uppercase();
+    let tail = [
+        format!(
+            "{}  ·  session {}/{}",
+            state, session, SESSIONS_PER_LONG_BREAK
+        ),
+        format!("{} · {}/{}", state, session, SESSIONS_PER_LONG_BREAK),
+        state.to_string(),
+    ]
+    .into_iter()
+    .find(|t| label.chars().count() + t.chars().count() <= area.width as usize)
+    .unwrap_or_default();
     let head = Line::from(vec![
         Span::styled(
-            phase.label().to_uppercase(),
+            label,
             Style::default().fg(color).add_modifier(Modifier::BOLD),
         ),
-        Span::styled(
-            format!(
-                "{}  ·  session {}/{}",
-                state,
-                session.max(1),
-                SESSIONS_PER_LONG_BREAK
-            ),
-            Style::default().fg(theme.dim),
-        ),
+        Span::styled(tail, Style::default().fg(theme.dim)),
     ]);
 
     if area.height < 4 {

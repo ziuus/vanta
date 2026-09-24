@@ -31,11 +31,11 @@ pub fn render(
     if snap.events.is_empty() {
         if !input_active {
             lines.push(Line::from(vec![Span::styled(
-                " No upcoming events.",
+                " Nothing scheduled.",
                 Style::default().fg(theme.dim),
             )]));
             lines.push(Line::from(vec![Span::styled(
-                " Press 'a' to add an event, or 'e' to edit agenda.ics",
+                " a add · e edit agenda.ics",
                 Style::default().fg(theme.dim),
             )]));
         }

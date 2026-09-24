@@ -297,10 +297,12 @@ impl Theme {
         self.usage_ramp(pct / 100.0)
     }
 
+    /// CPU temperature colour, relative to the chip's critical limit.
     pub fn temp(&self, c: f64) -> Color {
-        if c >= 90.0 {
+        let crit = *crate::monitors::cpu::TEMP_CRIT;
+        if c >= crit - 5.0 {
             self.red
-        } else if c >= 75.0 {
+        } else if c >= crit - 15.0 {
             self.yellow
         } else {
             self.accent

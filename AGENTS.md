@@ -38,6 +38,8 @@ Vanta is meant to run 24/7, so a static screen must idle at ~2 fps (~4% of a cor
   `CARGO_TARGET_DIR=target/fast CARGO_PROFILE_RELEASE_LTO=false CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16 cargo build --release`
 * CI gates: `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`.
 * Visual check: `tmux -L vchk new-session -d -s v -x 120 -y 34 ./target/fast/release/vanta; sleep 3; tmux -L vchk capture-pane -t v -p; tmux -L vchk kill-server` (check 200×50, 120×34, 100×30).
+  * Switching pages saves `ui.startup_mode` to the user's real `~/.config/vanta/config.toml`. Put it back after scripted runs (default `"dashboard"`).
+* Idle CPU: read `utime+stime` (fields 14+15) from `/proc/$(pgrep -nx vanta)/stat` twice, N seconds apart. Those are 1/100 s ticks, so % of a core = Δticks / N. `pgrep -f` matches the tmux server too, so use `-x`. As of v0.10.30 it's ~0.6–1% per page, plus ~0.8% for the cava child.
 
 ## 7. Ecosystem Boundaries
 * **Vanta Core** (`vanta`): Contains the foundational monitors, UI framework, Extism host engine, and background threadpools.

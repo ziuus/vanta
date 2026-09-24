@@ -28,11 +28,11 @@ pub fn render(
 
     if snap.tasks.is_empty() && !input_active {
         lines.push(Line::from(vec![Span::styled(
-            " No tasks found.",
+            " No tasks.",
             Style::default().fg(theme.dim),
         )]));
         lines.push(Line::from(vec![Span::styled(
-            " Press 'a' to add a task, or 'e' to edit todo.md",
+            " a add · e edit todo.md",
             Style::default().fg(theme.dim),
         )]));
     } else {

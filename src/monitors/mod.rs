@@ -33,10 +33,46 @@ pub struct Summary {
     pub tx_kbps: f64,
     pub battery: Option<(u8, bool)>,
     pub uptime: String,
+    /// Hottest sensor, smoothed over ~10s so turbo spikes don't flicker.
     pub temp_c: Option<f64>,
+    /// The CPU's critical temperature; alert levels are relative to it.
+    pub temp_crit: f64,
+    /// Latched "running hot" state (on at crit-10°, off below crit-15°).
+    pub hot: bool,
+}
+
+impl Summary {
+    /// Close enough to the throttle point to call critical.
+    pub fn temp_critical(&self) -> bool {
+        self.temp_c.is_some_and(|t| t >= self.temp_crit - 3.0)
+    }
 }
 
 static SUMMARY: LazyLock<Mutex<Summary>> = LazyLock::new(|| Mutex::new(Summary::default()));
+
+static STARTED: LazyLock<Instant> = LazyLock::new(Instant::now);
+const WARMUP: Duration = Duration::from_secs(20);
+const TEMP_TAU_SECS: f64 = 10.0;
+const HOT_ON_BELOW_CRIT: f64 = 10.0;
+const HOT_OFF_BELOW_CRIT: f64 = 15.0;
+
+/// Time-based exponential moving average: `tau` is the time constant, so
+/// the result doesn't depend on the sample interval.
+fn ema(prev: Option<f64>, x: f64, dt: f64, tau: f64) -> f64 {
+    match prev {
+        Some(p) => p + (x - p) * (1.0 - (-dt / tau).exp()),
+        None => x,
+    }
+}
+
+fn hot_latch(was_hot: bool, temp: Option<f64>, crit: f64) -> bool {
+    let margin = if was_hot {
+        HOT_OFF_BELOW_CRIT
+    } else {
+        HOT_ON_BELOW_CRIT
+    };
+    temp.is_some_and(|t| t >= crit - margin)
+}
 
 static EPOCH: LazyLock<Instant> = LazyLock::new(Instant::now);
 
@@ -85,10 +121,13 @@ pub fn summary() -> Summary {
     SUMMARY.lock().unwrap().clone()
 }
 
-fn collect_summary() -> Summary {
+fn collect_summary(prev: &Summary, dt: f64) -> Summary {
     let cpu = cpu::snapshot();
     let mem = memory::snapshot();
     let net = network::snapshot();
+    let temp_c = cpu
+        .max_temp()
+        .map(|t| ema(prev.temp_c, t, dt, TEMP_TAU_SECS));
     Summary {
         cpu_pct: cpu.usage,
         mem_pct: mem.pct(),
@@ -98,7 +137,11 @@ fn collect_summary() -> Summary {
         tx_kbps: net.tx_kbps,
         battery: system_info::read_battery(),
         uptime: system_info::fmt_uptime(sysinfo::System::uptime()),
-        temp_c: cpu.max_temp(),
+        // Vanta's own startup burst heats the CPU for a few seconds; don't
+        // greet the user with an alert it caused.
+        hot: STARTED.elapsed() > WARMUP && hot_latch(prev.hot, temp_c, *cpu::TEMP_CRIT),
+        temp_crit: *cpu::TEMP_CRIT,
+        temp_c,
     }
 }
 
@@ -137,7 +180,14 @@ fn sample_all(sys: &mut sysinfo::System) {
     step("conns", &mut marks);
     crate::widgets::media::sample();
     step("media", &mut marks);
-    *SUMMARY.lock().unwrap() = collect_summary();
+    static LAST: Mutex<Option<Instant>> = Mutex::new(None);
+    let dt = LAST
+        .lock()
+        .unwrap()
+        .replace(Instant::now())
+        .map_or(0.0, |t| t.elapsed().as_secs_f64());
+    let next = collect_summary(&SUMMARY.lock().unwrap(), dt);
+    *SUMMARY.lock().unwrap() = next;
     step("summary", &mut marks);
 
     if profiling {
@@ -161,6 +211,7 @@ fn sample_all(sys: &mut sysinfo::System) {
 /// Start the background sampler. The returned handle holds the interval in
 /// milliseconds; changing it takes effect on the next cycle.
 pub fn start(interval: Duration) -> Arc<AtomicU64> {
+    LazyLock::force(&STARTED);
     let handle = Arc::new(AtomicU64::new(interval.as_millis() as u64));
     let h = Arc::clone(&handle);
     std::thread::Builder::new()
@@ -218,6 +269,34 @@ fn facts_thread() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn temp_smoothing_ignores_short_spikes() {
+        let mut t = ema(None, 75.0, 0.0, TEMP_TAU_SECS);
+        assert_eq!(t, 75.0);
+        // A 2s turbo spike to 97° barely moves the smoothed value...
+        for _ in 0..4 {
+            t = ema(Some(t), 97.0, 0.5, TEMP_TAU_SECS);
+        }
+        assert!(t < 85.0, "spike leaked through: {t}");
+        // ...but sustained heat gets there.
+        for _ in 0..60 {
+            t = ema(Some(t), 97.0, 0.5, TEMP_TAU_SECS);
+        }
+        assert!(t > 90.0);
+    }
+
+    #[test]
+    fn hot_alert_is_relative_to_crit_with_hysteresis() {
+        // Laptops that idle in the mid 80s (Tjmax 100) stay quiet.
+        assert!(!hot_latch(false, Some(86.0), 100.0));
+        assert!(hot_latch(false, Some(90.0), 100.0));
+        assert!(hot_latch(true, Some(86.0), 100.0));
+        assert!(!hot_latch(true, Some(84.0), 100.0));
+        assert!(!hot_latch(true, None, 100.0));
+        // A chip with a lower limit warns earlier.
+        assert!(hot_latch(false, Some(86.0), 95.0));
+    }
 
     /// Regression: the headline numbers must not be gated behind the slow
     /// shell-outs in `status::sample()`. With those inline on the sampler thread

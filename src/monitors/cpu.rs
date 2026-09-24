@@ -125,6 +125,32 @@ static THREAD_CORE: LazyLock<Vec<Option<u32>>> = LazyLock::new(|| {
         .collect()
 });
 
+/// The CPU's own critical temperature (Tjmax, where throttling starts),
+/// from `temp1_crit` / `temp1_max` of the CPU hwmon. 100° when unreported.
+pub static TEMP_CRIT: LazyLock<f64> = LazyLock::new(|| {
+    fs::read_dir("/sys/class/hwmon/")
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            fs::read_to_string(p.join("name"))
+                .is_ok_and(|n| matches!(n.trim(), "coretemp" | "k10temp" | "zenpower"))
+        })
+        .find_map(|p| {
+            ["temp1_crit", "temp1_max"].iter().find_map(|f| {
+                fs::read_to_string(p.join(f))
+                    .ok()?
+                    .trim()
+                    .parse::<f64>()
+                    .ok()
+                    .map(|v| v / 1000.0)
+                    .filter(|c| (60.0..=130.0).contains(c))
+            })
+        })
+        .unwrap_or(100.0)
+});
+
 /// "Core 3" -> 3. Package/Tctl labels are not per-core.
 fn core_label_id(label: &str) -> Option<u32> {
     label.trim().strip_prefix("Core ")?.parse().ok()

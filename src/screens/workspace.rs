@@ -15,13 +15,14 @@ pub fn render(f: &mut Frame, area: Rect, app: &mut App) {
     let focused_panel = app.focused_panel;
     let focus = |id: PanelId| focused_panel == Some(id);
 
+    // The left column holds the timer's big digits and task text, so it
+    // never drops below what those need; the notes side keeps 40 too.
+    let half = area.width / 2;
+    let left_w = (area.width as u32 * app.panel_states.work_ratio as u32 / 100) as u16;
+    let left_w = left_w.clamp(40.min(half), area.width.saturating_sub(40).max(half));
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage(app.panel_states.work_ratio), // Productivity
-            Constraint::Percentage(100 - app.panel_states.work_ratio), // Notes + Files
-        ])
-        .spacing(2)
+        .constraints([Constraint::Length(left_w), Constraint::Min(0)])
         .split(area);
 
     let prod_area = chunks[0];
@@ -38,7 +39,12 @@ pub fn render(f: &mut Frame, area: Rect, app: &mut App) {
     // Left column: focus timer, agenda, tasks; news only when there's room
     // to spare, since a feed is the opposite of focus.
     let show_news = cfg.news && prod_area.height >= 44;
-    let timer_h = if prod_area.height >= 36 { 11 } else { 7 };
+    // 10 rows is the minimum that fits the 5-row big digits.
+    let timer_h = match prod_area.height {
+        36.. => 11,
+        30.. => 10,
+        _ => 7,
+    };
     let [timer_area, agenda_area, tasks_area, news_area] = Layout::vertical([
         Constraint::Length(timer_h),
         Constraint::Length(if cfg.agenda { 9 } else { 0 }),
