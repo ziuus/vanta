@@ -45,9 +45,14 @@ pub fn render_with_motion(
     let mut b_buffer = vec![' '; width * height];
     let mut c_buffer = vec![theme.accent; width * height];
 
+    let _ = tick;
     let now = if motion_enabled {
-        crate::anim::request_full();
-        (tick as f64 / 30.0) * (motion_speed.max(0.0) as f64)
+        // Wall-clock driven, so rotation speed doesn't depend on frame rate
+        // and 30fps is visually smooth for a slowly turning torus.
+        static START: std::sync::LazyLock<std::time::Instant> =
+            std::sync::LazyLock::new(std::time::Instant::now);
+        crate::anim::request(30);
+        START.elapsed().as_secs_f64() * (motion_speed.max(0.0) as f64)
     } else {
         1.25 // Frozen angle
     };

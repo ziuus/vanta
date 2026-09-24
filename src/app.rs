@@ -117,18 +117,8 @@ impl PanelId {
                 (PanelId::WriterNotes, true),
                 (PanelId::Files, true),
             ],
-            DashboardMode::Aesthetic => vec![
-                (PanelId::Clock, true),
-                (PanelId::Calendar, true),
-                (PanelId::Matrix, w.matrix),
-                (PanelId::Video, w.video),
-                (PanelId::PinnedMedia, w.pinned_media),
-                (PanelId::Weather, w.weather),
-                (PanelId::Tasks, w.tasks),
-                (PanelId::Agenda, w.agenda),
-                (PanelId::News, w.news),
-                (PanelId::Visualizer, w.music_viz),
-            ],
+            // Ambient scenes are full-screen and borderless: nothing to focus.
+            DashboardMode::Aesthetic => vec![],
             DashboardMode::Extension(ref ext_name) => {
                 let mut list = Vec::new();
                 if let Some(page) = cfg.pages.iter().find(|p| &p.name == ext_name) {
@@ -327,6 +317,7 @@ pub struct App {
     pub frame: u64,
     pub focused_panel: Option<PanelId>,
     pub panel_states: PanelStates,
+    pub ambient: crate::screens::aesthetic::AmbientState,
     pub show_help: bool,
     pub show_settings: bool,
     pub settings_row: usize,
@@ -362,6 +353,7 @@ impl App {
             frame: 0,
             focused_panel: None,
             panel_states: PanelStates::default(),
+            ambient: Default::default(),
             show_help: false,
             show_settings: false,
             settings_row: 0,
@@ -634,6 +626,27 @@ impl App {
                 _ => {}
             }
             return;
+        }
+
+        // Ambient scenes: ←/→ (h/l) step, r pauses/resumes rotation.
+        if self.mode == DashboardMode::Aesthetic && self.zoomed.is_none() {
+            let n = crate::screens::aesthetic::scenes(self).len();
+            let secs = self.config.ui.ambient_rotate_secs;
+            match key.code {
+                KeyCode::Left | KeyCode::Char('h') => return self.ambient.step(-1, secs, n),
+                KeyCode::Right | KeyCode::Char('l') => return self.ambient.step(1, secs, n),
+                KeyCode::Char('i') => {
+                    self.panel_states.pinned_media_input = self.config.ui.pinned_media_path.clone();
+                    self.panel_states.pinned_media_input_active = true;
+                    return;
+                }
+                KeyCode::Char('r') => {
+                    self.ambient.toggle_auto(secs, n);
+                    let state = if self.ambient.auto { "on" } else { "paused" };
+                    return self.toast(format!("scene rotation · {}", state));
+                }
+                _ => {}
+            }
         }
 
         match key.code {

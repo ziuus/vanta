@@ -1,137 +1,332 @@
-use ratatui::layout::{Constraint, Layout, Rect};
+//! Ambient: borderless full-screen scenes meant to be glanced at all day.
+//! Scenes rotate on a timer (`ui.ambient_rotate_secs`); ←/→ step through
+//! them and `r` toggles rotation.
+
+use std::time::Instant;
+
+use ratatui::layout::{Alignment, Constraint, Layout, Rect};
+use ratatui::style::{Modifier, Style};
+use ratatui::text::{Line, Span};
+use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
 use ratatui::Frame;
 
-use crate::app::{App, PanelId};
-use crate::screens::{panel, panel_full, too_small};
+use crate::app::App;
+use crate::screens::too_small;
 use crate::theme::Theme;
-use crate::widgets::{calendar, clock, matrix, music_viz, pinned_media, video};
+use crate::widgets::{clock, matrix, media, music_viz, pinned_media, upnext, video, weather};
 
-const MIN: (u16, u16) = (70, 24);
+const MIN: (u16, u16) = (60, 20);
 
-/// Eye candy: huge clock and calendar up top, matrix rain and the spinning
-/// donut in the middle, a full-width visualizer along the bottom.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Scene {
+    /// Giant clock over a calm audio horizon. Static when silent: the
+    /// cheapest scene, and the default.
+    Horizon,
+    /// Matrix rain with the clock floating in the middle.
+    Rain,
+    /// The spinning donut beside the time, weather and track.
+    Orbit,
+    /// Now playing: art, track and a big visualizer. Only while music plays.
+    Studio,
+    /// The pinned image with a small clock. Only when an image is pinned.
+    Gallery,
+}
+
+impl Scene {
+    fn label(self) -> &'static str {
+        match self {
+            Scene::Horizon => "horizon",
+            Scene::Rain => "rain",
+            Scene::Orbit => "orbit",
+            Scene::Studio => "studio",
+            Scene::Gallery => "gallery",
+        }
+    }
+}
+
+/// Rotation state. The scene is derived from wall time, so rendering stays
+/// read-only: `index = base + elapsed / rotate_secs`.
+#[derive(Clone, Debug)]
+pub struct AmbientState {
+    base: usize,
+    anchor: Instant,
+    pub auto: bool,
+}
+
+impl Default for AmbientState {
+    fn default() -> Self {
+        Self {
+            base: 0,
+            anchor: Instant::now(),
+            auto: true,
+        }
+    }
+}
+
+impl AmbientState {
+    fn index(&self, rotate_secs: u64, n: usize) -> usize {
+        let steps = if self.auto && rotate_secs > 0 {
+            (self.anchor.elapsed().as_secs() / rotate_secs) as usize
+        } else {
+            0
+        };
+        (self.base + steps) % n.max(1)
+    }
+
+    /// Move `delta` scenes from the one currently shown and restart the timer.
+    pub fn step(&mut self, delta: isize, app_rotate_secs: u64, n: usize) {
+        let n = n.max(1);
+        let cur = self.index(app_rotate_secs, n) as isize;
+        self.base = (cur + delta).rem_euclid(n as isize) as usize;
+        self.anchor = Instant::now();
+    }
+
+    pub fn toggle_auto(&mut self, rotate_secs: u64, n: usize) {
+        self.base = self.index(rotate_secs, n);
+        self.anchor = Instant::now();
+        self.auto = !self.auto;
+    }
+}
+
+/// Scenes available right now, in rotation order.
+pub fn scenes(app: &App) -> Vec<Scene> {
+    let cfg = &app.config;
+    let mut v = vec![Scene::Horizon];
+    if cfg.widgets.matrix {
+        v.push(Scene::Rain);
+    }
+    if cfg.widgets.video {
+        v.push(Scene::Orbit);
+    }
+    if media::current_player().is_some() {
+        v.push(Scene::Studio);
+    }
+    if cfg.widgets.pinned_media && !cfg.ui.pinned_media_path.is_empty() {
+        v.push(Scene::Gallery);
+    }
+    v
+}
+
 pub fn render(f: &mut Frame, area: Rect, app: &App) {
     if area.width < MIN.0 || area.height < MIN.1 {
         too_small(f, area, &app.theme, MIN);
         return;
     }
     let theme = &app.theme;
-    let cfg = &app.config.widgets;
-    let focus = |p: PanelId| app.focused_panel == Some(p);
+    let list = scenes(app);
+    let idx = app
+        .ambient
+        .index(app.config.ui.ambient_rotate_secs, list.len());
+    let scene = list[idx];
 
-    // Clock gets 12 rows when tall enough for the 2× glyphs, else 9.
-    let clock_h = if area.height >= 40 { 14 } else { 9 };
-    let viz_h = if cfg.music_viz {
-        (area.height / 4).clamp(6, 12)
+    let [stage, footer] = Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(area);
+    match scene {
+        Scene::Horizon => horizon(f, stage, app, theme),
+        Scene::Rain => rain(f, stage, app, theme),
+        Scene::Orbit => orbit(f, stage, app, theme),
+        Scene::Studio => studio(f, stage, app, theme),
+        Scene::Gallery => gallery(f, stage, app, theme),
+    }
+    if app.panel_states.pinned_media_input_active {
+        f.render_widget(
+            Paragraph::new(Line::from(vec![
+                Span::styled("image path: ", Style::default().fg(theme.dim)),
+                Span::styled(
+                    format!("{}_", app.panel_states.pinned_media_input),
+                    Style::default().fg(theme.accent),
+                ),
+            ]))
+            .alignment(Alignment::Center),
+            footer,
+        );
     } else {
-        0
-    };
-    let rows = Layout::vertical([
-        Constraint::Length(clock_h),
-        Constraint::Min(6),
-        Constraint::Length(viz_h),
-    ])
-    .spacing(1)
-    .split(area);
+        render_footer(f, footer, theme, &list, idx, app.ambient.auto);
+    }
+}
 
-    let top = Layout::horizontal([Constraint::Ratio(3, 5), Constraint::Ratio(2, 5)])
-        .spacing(1)
-        .split(rows[0]);
-    let inner = panel(f, top[0], "clock", theme, focus(PanelId::Clock));
-    clock::render(
+fn big_clock(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
+    let note = upnext::next_note();
+    clock::render_with_note(
         f,
-        inner,
+        area,
         theme,
         app.config.ui.clock_24h,
         &app.config.ui.clock_font,
         &app.config.ui.clock_style,
-        &app.config.ui.timezones,
+        &[],
+        note.as_deref(),
     );
-    let inner = panel_full(
-        f,
-        top[1],
-        "calendar",
-        None,
-        None,
-        theme,
-        focus(PanelId::Calendar),
-    );
-    calendar::render(f, inner, theme, app.panel_states.calendar_month_offset);
+}
 
-    match (cfg.matrix, cfg.video, cfg.pinned_media) {
-        (true, true, false) => {
-            let mid = Layout::horizontal([
-                Constraint::Ratio(1, 4),
-                Constraint::Ratio(1, 2),
-                Constraint::Ratio(1, 4),
-            ])
-            .spacing(1)
-            .split(rows[1]);
-            let inner = panel(f, mid[0], "matrix", theme, focus(PanelId::Matrix));
-            matrix::render(f, inner, theme);
-            render_animation(f, mid[1], app, theme, focus(PanelId::Video));
-            let inner = panel(f, mid[2], "matrix", theme, false);
-            matrix::render(f, inner, theme);
-        }
-        (true, true, true) => {
-            let mid = Layout::horizontal([
-                Constraint::Ratio(1, 4),
-                Constraint::Ratio(1, 2),
-                Constraint::Ratio(1, 4),
-            ])
-            .spacing(1)
-            .split(rows[1]);
-            let inner = panel(f, mid[0], "pinned media", theme, focus(PanelId::Media));
-            pinned_media::render(f, inner, theme, &app.config.ui.pinned_media_path, app.frame);
-            render_animation(f, mid[1], app, theme, focus(PanelId::Video));
-            let inner = panel(f, mid[2], "matrix", theme, focus(PanelId::Matrix));
-            matrix::render(f, inner, theme);
-        }
-        (true, false, true) => {
-            let mid = Layout::horizontal([Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)])
-                .spacing(1)
-                .split(rows[1]);
-            let inner = panel(f, mid[0], "matrix", theme, focus(PanelId::Matrix));
-            matrix::render(f, inner, theme);
-            let inner = panel(f, mid[1], "pinned media", theme, focus(PanelId::Media));
-            pinned_media::render(f, inner, theme, &app.config.ui.pinned_media_path, app.frame);
-        }
-        (false, true, true) => {
-            let mid = Layout::horizontal([Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)])
-                .spacing(1)
-                .split(rows[1]);
-            render_animation(f, mid[0], app, theme, focus(PanelId::Video));
-            let inner = panel(f, mid[1], "pinned media", theme, focus(PanelId::Media));
-            pinned_media::render(f, inner, theme, &app.config.ui.pinned_media_path, app.frame);
-        }
-        (false, false, true) => {
-            let inner = panel(f, rows[1], "pinned media", theme, focus(PanelId::Media));
-            pinned_media::render(f, inner, theme, &app.config.ui.pinned_media_path, app.frame);
-        }
-        (true, false, false) => {
-            let inner = panel(f, rows[1], "matrix", theme, focus(PanelId::Matrix));
-            matrix::render(f, inner, theme);
-        }
-        (false, _, false) => {
-            render_animation(f, rows[1], app, theme, focus(PanelId::Video));
-        }
+/// Centered single line of weather under the clock.
+fn weather_line(f: &mut Frame, area: Rect, theme: &Theme) {
+    if !crate::monitors::weather::snapshot().ready || area.height == 0 {
+        return;
     }
+    let w = area.width.min(48);
+    weather::render(
+        f,
+        Rect::new(area.x + (area.width - w) / 2, area.y, w, 1),
+        theme,
+    );
+}
 
-    if cfg.music_viz {
-        let inner = panel(f, rows[2], "visualizer", theme, focus(PanelId::Visualizer));
-        music_viz::render(f, inner, theme, app.frame);
+fn horizon(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
+    let viz_h = (area.height / 4).clamp(4, 10);
+    let [_, clock_area, wx, _, viz] = Layout::vertical([
+        Constraint::Fill(1),
+        Constraint::Length((area.height.saturating_sub(viz_h + 4)).min(18)),
+        Constraint::Length(1),
+        Constraint::Fill(1),
+        Constraint::Length(viz_h),
+    ])
+    .areas(area);
+    // Side margins keep the glyphs from running edge to edge.
+    let margin = clock_area.width / 8;
+    big_clock(
+        f,
+        Rect::new(
+            clock_area.x + margin,
+            clock_area.y,
+            clock_area.width - 2 * margin,
+            clock_area.height,
+        ),
+        app,
+        theme,
+    );
+    weather_line(f, wx, theme);
+    if app.config.widgets.music_viz {
+        music_viz::render(f, viz, theme, app.frame);
     }
 }
 
-fn render_animation(f: &mut Frame, area: Rect, app: &App, theme: &Theme, focused: bool) {
-    let inner = panel(f, area, "donut", theme, focused);
+fn rain(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
+    matrix::render(f, area, theme);
+    let w = (area.width * 3 / 5).clamp(40, 90).min(area.width);
+    let h = 12.min(area.height);
+    let card = Rect::new(
+        area.x + (area.width - w) / 2,
+        area.y + (area.height - h) / 2,
+        w,
+        h,
+    );
+    f.render_widget(Clear, card);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(theme.surface))
+        .style(Style::default().bg(theme.bg));
+    let inner = block.inner(card);
+    f.render_widget(block, card);
+    big_clock(f, inner, app, theme);
+}
+
+fn orbit(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
+    let [left, right] =
+        Layout::horizontal([Constraint::Percentage(55), Constraint::Percentage(45)]).areas(area);
     video::render_with_motion(
         f,
-        inner,
+        left,
         theme,
         app.frame,
         app.config.ui.motion_enabled,
         app.config.ui.motion_speed,
         &app.config.ui.motion_mode,
     );
+    let [_, clk, wx, _, track, _] = Layout::vertical([
+        Constraint::Fill(1),
+        Constraint::Length(10),
+        Constraint::Length(1),
+        Constraint::Length(1),
+        Constraint::Length(3),
+        Constraint::Fill(1),
+    ])
+    .areas(right);
+    big_clock(f, clk, app, theme);
+    weather_line(f, wx, theme);
+    if media::current_player().is_some() {
+        media::render(f, track, theme);
+    }
+}
+
+fn studio(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
+    let [_, info, _, viz] = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Length((area.height / 3).clamp(4, 10)),
+        Constraint::Length(1),
+        Constraint::Min(4),
+    ])
+    .areas(area);
+    let pad = area.width / 10;
+    media::render(
+        f,
+        Rect::new(info.x + pad, info.y, info.width - 2 * pad, info.height),
+        theme,
+    );
+    music_viz::render(f, viz, theme, app.frame);
+}
+
+fn gallery(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
+    pinned_media::render(f, area, theme, &app.config.ui.pinned_media_path, app.frame);
+    let time = if app.config.ui.clock_24h {
+        chrono::Local::now().format(" %H:%M ").to_string()
+    } else {
+        chrono::Local::now().format(" %-I:%M %P ").to_string()
+    };
+    let w = time.chars().count() as u16;
+    f.render_widget(
+        Paragraph::new(Span::styled(
+            time,
+            Style::default()
+                .fg(theme.text)
+                .bg(theme.bg)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Rect::new(area.x + area.width.saturating_sub(w + 1), area.y, w, 1),
+    );
+}
+
+/// Scene dots, e.g. "○ ● ○ ○  rain · ←/→ · r pause".
+fn render_footer(f: &mut Frame, area: Rect, theme: &Theme, list: &[Scene], idx: usize, auto: bool) {
+    let mut spans: Vec<Span> = list
+        .iter()
+        .enumerate()
+        .map(|(i, _)| {
+            if i == idx {
+                Span::styled("● ", Style::default().fg(theme.accent))
+            } else {
+                Span::styled("○ ", Style::default().fg(theme.surface))
+            }
+        })
+        .collect();
+    spans.push(Span::styled(
+        format!(
+            " {} · ←/→ scenes · r {} · i image",
+            list[idx].label(),
+            if auto { "pause" } else { "rotate" }
+        ),
+        Style::default().fg(theme.dim),
+    ));
+    f.render_widget(
+        Paragraph::new(Line::from(spans)).alignment(Alignment::Center),
+        area,
+    );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stepping_wraps_and_pausing_freezes_the_scene() {
+        let mut s = AmbientState::default();
+        assert_eq!(s.index(300, 3), 0);
+        s.step(-1, 300, 3);
+        assert_eq!(s.index(300, 3), 2);
+        s.step(1, 300, 3);
+        assert_eq!(s.index(300, 3), 0);
+        s.toggle_auto(300, 3);
+        assert!(!s.auto);
+        assert_eq!(s.index(1, 3), 0, "paused state ignores elapsed time");
+    }
 }

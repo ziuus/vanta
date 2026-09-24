@@ -158,6 +158,13 @@ pub struct UiConfig {
     pub motion_mode: String,
     /// Transparent background
     pub transparent: Option<bool>,
+    /// Seconds between Ambient scene changes (0 = stay on one scene).
+    #[serde(default = "default_ambient_rotate_secs")]
+    pub ambient_rotate_secs: u64,
+}
+
+fn default_ambient_rotate_secs() -> u64 {
+    300
 }
 
 fn default_motion_enabled() -> bool {
@@ -197,6 +204,7 @@ impl Default for UiConfig {
             motion_speed: 1.0,
             motion_mode: "spin".to_string(),
             transparent: None,
+            ambient_rotate_secs: default_ambient_rotate_secs(),
         }
     }
 }
