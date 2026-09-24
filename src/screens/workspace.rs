@@ -35,14 +35,22 @@ pub fn render(f: &mut Frame, area: Rect, app: &mut App) {
     let notes_area = right_chunks[0];
     let files_area = right_chunks[1];
 
-    // Left Productivity Column
-    let rows = Layout::vertical([
-        Constraint::Length(if cfg.agenda { 10 } else { 0 }),
-        Constraint::Length(if cfg.tasks { 12 } else { 0 }),
-        Constraint::Min(8), // News takes the rest
+    // Left column: focus timer, agenda, tasks; news only when there's room
+    // to spare, since a feed is the opposite of focus.
+    let show_news = cfg.news && prod_area.height >= 44;
+    let timer_h = if prod_area.height >= 36 { 11 } else { 7 };
+    let [timer_area, agenda_area, tasks_area, news_area] = Layout::vertical([
+        Constraint::Length(timer_h),
+        Constraint::Length(if cfg.agenda { 9 } else { 0 }),
+        Constraint::Min(if cfg.tasks { 6 } else { 0 }),
+        Constraint::Length(if show_news { 10 } else { 0 }),
     ])
-    .spacing(1)
-    .split(prod_area);
+    .areas(prod_area);
+    let rows = [agenda_area, tasks_area, news_area];
+
+    let timer_focused = focus(PanelId::Timer);
+    let inner = panel(f, timer_area, "focus timer", theme, timer_focused);
+    crate::widgets::pomodoro::render(f, inner, theme, &app.config.ui, timer_focused);
 
     if cfg.agenda {
         let snap = crate::monitors::agenda::snapshot();
@@ -106,7 +114,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &mut App) {
         );
     }
 
-    if cfg.news {
+    if show_news {
         let snap = crate::monitors::news::snapshot();
         let source = if snap.channel_title.is_empty() {
             " fetching ".to_string()

@@ -161,10 +161,26 @@ pub struct UiConfig {
     /// Seconds between Ambient scene changes (0 = stay on one scene).
     #[serde(default = "default_ambient_rotate_secs")]
     pub ambient_rotate_secs: u64,
+    /// Pomodoro lengths in minutes.
+    #[serde(default = "default_focus_minutes")]
+    pub focus_minutes: u64,
+    #[serde(default = "default_break_minutes")]
+    pub break_minutes: u64,
+    #[serde(default = "default_long_break_minutes")]
+    pub long_break_minutes: u64,
 }
 
 fn default_ambient_rotate_secs() -> u64 {
     300
+}
+fn default_focus_minutes() -> u64 {
+    25
+}
+fn default_break_minutes() -> u64 {
+    5
+}
+fn default_long_break_minutes() -> u64 {
+    15
 }
 
 fn default_motion_enabled() -> bool {
@@ -205,6 +221,9 @@ impl Default for UiConfig {
             motion_mode: "spin".to_string(),
             transparent: None,
             ambient_rotate_secs: default_ambient_rotate_secs(),
+            focus_minutes: default_focus_minutes(),
+            break_minutes: default_break_minutes(),
+            long_break_minutes: default_long_break_minutes(),
         }
     }
 }

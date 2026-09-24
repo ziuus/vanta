@@ -66,6 +66,7 @@ pub enum PanelId {
     Video,
     Weather,
     UpNext,
+    Timer,
     Tasks,
     Agenda,
     News,
@@ -111,6 +112,7 @@ impl PanelId {
                 (PanelId::Processes, true),
             ],
             DashboardMode::Workspace => vec![
+                (PanelId::Timer, true),
                 (PanelId::Agenda, w.agenda),
                 (PanelId::Tasks, w.tasks),
                 (PanelId::News, w.news),
@@ -159,6 +161,7 @@ impl PanelId {
             "status" => Some(PanelId::Status),
             "weather" => w.weather.then_some(PanelId::Weather),
             "upnext" | "up_next" | "up-next" | "next" => Some(PanelId::UpNext),
+            "timer" | "pomodoro" | "focus" => Some(PanelId::Timer),
             "memory" | "mem" => w.memory.then_some(PanelId::Memory),
             "network" | "net" => w.network.then_some(PanelId::Network),
             "calendar" | "cal" => w.calendar.then_some(PanelId::Calendar),
@@ -207,6 +210,7 @@ impl PanelId {
             PanelId::Video => "donut",
             PanelId::Weather => "weather",
             PanelId::UpNext => "up next",
+            PanelId::Timer => "focus timer",
             PanelId::Custom(_) => "custom",
             PanelId::PinnedMedia => "media preview",
             &PanelId::Tasks => "tasks",
@@ -645,6 +649,17 @@ impl App {
                     let state = if self.ambient.auto { "on" } else { "paused" };
                     return self.toast(format!("scene rotation · {}", state));
                 }
+                _ => {}
+            }
+        }
+
+        // Focus timer controls while its panel is focused.
+        if self.focused_panel == Some(PanelId::Timer) && key.modifiers.is_empty() {
+            use crate::widgets::pomodoro;
+            match key.code {
+                KeyCode::Char(' ') | KeyCode::Enter => return pomodoro::toggle(&self.config.ui),
+                KeyCode::Char('r') => return pomodoro::reset(&self.config.ui),
+                KeyCode::Char('s') => return pomodoro::skip(&self.config.ui),
                 _ => {}
             }
         }
@@ -1339,6 +1354,7 @@ impl App {
 
         // Advance custom widget history buffers before any rendering.
         self.custom_widgets.tick();
+        crate::widgets::pomodoro::tick(&self.config.ui);
 
         let area = f.area();
 
@@ -1499,6 +1515,17 @@ impl App {
                 "  ".to_string()
             };
             left.push(Span::styled(more, dim));
+        }
+        // A running focus timer follows you across pages.
+        if let Some((text, color)) = crate::widgets::pomodoro::badge(t) {
+            left.push(Span::styled(
+                format!(" {} ", text),
+                Style::default()
+                    .fg(t.bg)
+                    .bg(color)
+                    .add_modifier(ratatui::style::Modifier::BOLD),
+            ));
+            left.push(Span::styled("  ", dim));
         }
         let fixed_spans = left.len();
         for (i, (k, v, c)) in metrics.iter().enumerate() {

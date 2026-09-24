@@ -11,6 +11,7 @@ pub mod meter;
 pub mod music_viz;
 pub mod news;
 pub mod pinned_media;
+pub mod pomodoro;
 pub mod status;
 pub mod tasks;
 pub mod upnext;

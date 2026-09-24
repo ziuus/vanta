@@ -1,7 +1,7 @@
 use chrono::{Local, Timelike, Utc};
 use chrono_tz::Tz;
 use ratatui::layout::{Alignment, Rect};
-use ratatui::style::Style;
+use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
@@ -74,16 +74,12 @@ fn big_lines(
     text: &str,
     sx: usize,
     sy: usize,
-    colon_on: bool,
+    digit: Color,
+    colon: Color,
     font: &str,
-    theme: &Theme,
 ) -> Vec<Line<'static>> {
-    let digit = Style::default().fg(theme.accent);
-    let colon = Style::default().fg(if colon_on {
-        theme.accent
-    } else {
-        theme.surface
-    });
+    let digit = Style::default().fg(digit);
+    let colon = Style::default().fg(colon);
     let mut out = Vec::with_capacity(GLYPH_H * sy);
     for row in 0..GLYPH_H {
         let mut spans: Vec<Span<'static>> = Vec::new();
@@ -122,6 +118,33 @@ fn pick_scale(text: &str, w: usize, h: usize, font: &str) -> Option<(usize, usiz
         }
     }
     None
+}
+
+/// Draw `text` (digits and colons) as block glyphs at the largest scale that
+/// fits, centred in `area`. Returns the rows used, or 0 if nothing fit.
+pub fn render_big_text(
+    f: &mut Frame,
+    area: Rect,
+    text: &str,
+    color: Color,
+    font: &str,
+    clock_style: &str,
+) -> u16 {
+    let Some((sx, sy)) = pick_scale(text, area.width as usize, area.height as usize, font) else {
+        return 0;
+    };
+    let lines = big_lines(clock_style, text, sx, sy, color, color, font);
+    let (w, h) = (text_width(text, sx, font) as u16, lines.len() as u16);
+    f.render_widget(
+        Paragraph::new(lines),
+        Rect::new(
+            area.x + area.width.saturating_sub(w) / 2,
+            area.y + area.height.saturating_sub(h) / 2,
+            w.min(area.width),
+            h.min(area.height),
+        ),
+    );
+    h
 }
 
 /// Big clock. Layout: block-digit time, then a date line beneath. Falls back
@@ -225,7 +248,12 @@ pub fn render_with_note(
         return;
     };
 
-    let mut lines = big_lines(style, &text, sx, sy, colon_on, font, theme);
+    let colon = if colon_on {
+        theme.accent
+    } else {
+        theme.surface
+    };
+    let mut lines = big_lines(style, &text, sx, sy, theme.accent, colon, font);
     // Small seconds (when dropped) and am/pm tag sit at the bottom-right of the glyphs.
     let mut tag = seconds.unwrap_or_default();
     if let Some(s) = &suffix {

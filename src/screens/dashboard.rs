@@ -200,6 +200,7 @@ fn panel_size(name: &str, ctx: &SizeCtx, adjustment: i16) -> Size {
         "weather" => (10, 3, 7),
         "memory" | "mem" => (if ctx.total_height >= 38 { 7 } else { 6 }, 4, 7),
         "upnext" | "up_next" | "up-next" | "next" => (6, 4, 7),
+        "timer" | "pomodoro" | "focus" => (10, 3, 7),
         "calendar" | "cal" => (12, 4, 6),
         "network" | "net" => (7, 5, 6),
         "system" => (12, 7, 5),
@@ -413,6 +414,11 @@ fn render_dashboard_panel(
         "upnext" | "up_next" | "up-next" | "next" => {
             let inner = panel(f, area, "up next", theme, focus(PanelId::UpNext));
             crate::widgets::upnext::render(f, inner, theme);
+        }
+        "timer" | "pomodoro" | "focus" => {
+            let focused = focus(PanelId::Timer);
+            let inner = panel(f, area, "focus timer", theme, focused);
+            crate::widgets::pomodoro::render(f, inner, theme, &app.config.ui, focused);
         }
         "visualizer" | "viz" => {
             let inner = panel(f, area, "visualizer", theme, focus(PanelId::Visualizer));
