@@ -248,6 +248,7 @@ impl Default for WidgetConfig {
 
 impl Config {
     pub fn load() -> Self {
+        clean_orphaned_extensions();
         let content = std::fs::read_to_string(config_path()).unwrap_or_default();
         let mut cfg: Config = toml::from_str(&content).unwrap_or_default();
         cfg.ui.refresh_rate = cfg.ui.refresh_rate.clamp(0.1, 10.0);
@@ -313,6 +314,255 @@ pub fn config_path() -> String {
     }
 }
 
+pub fn prune_components_from_enabled_str(content: &str, to_remove: &[&str]) -> String {
+    let Some(start_idx) = content.find("enabled = [") else {
+        return content.to_string();
+    };
+    let after_bracket = start_idx + "enabled = [".len();
+    let Some(rel_end) = content[after_bracket..].find(']') else {
+        return content.to_string();
+    };
+    let end_idx = after_bracket + rel_end;
+
+    let array_content = &content[after_bracket..end_idx];
+    let items: Vec<&str> = array_content
+        .split(',')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    let mut kept = Vec::new();
+    for item in items {
+        let clean = item.trim_matches(|c| c == '"' || c == '\'' || c == ' ');
+        if !to_remove.iter().any(|r| r.eq_ignore_ascii_case(clean)) {
+            kept.push(item);
+        }
+    }
+
+    let new_array_content = if kept.is_empty() {
+        "".to_string()
+    } else {
+        kept.join(", ")
+    };
+
+    format!(
+        "{}{}{}",
+        &content[..after_bracket],
+        new_array_content,
+        &content[end_idx..]
+    )
+}
+
+pub fn remove_page_block_from_str(content: &str, page_name: &str) -> String {
+    let lines: Vec<&str> = content.lines().collect();
+    let mut result_lines: Vec<&str> = Vec::new();
+
+    let mut current_block: Vec<&str> = Vec::new();
+    let mut in_pages_block = false;
+    let mut block_matches_target = false;
+
+    for line in lines {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') {
+            if in_pages_block {
+                if !block_matches_target {
+                    result_lines.extend(current_block);
+                }
+                current_block = Vec::new();
+                in_pages_block = false;
+                block_matches_target = false;
+            }
+            if trimmed == "[[pages]]" {
+                in_pages_block = true;
+                current_block.push(line);
+                continue;
+            }
+        }
+
+        if in_pages_block {
+            if trimmed.starts_with("name") {
+                if let Some((_k, v)) = trimmed.split_once('=') {
+                    let clean_val = v.trim().trim_matches(|c| c == '"' || c == '\'');
+                    if clean_val.eq_ignore_ascii_case(page_name) {
+                        block_matches_target = true;
+                    }
+                }
+            }
+            current_block.push(line);
+        } else {
+            result_lines.push(line);
+        }
+    }
+
+    if in_pages_block && !block_matches_target {
+        result_lines.extend(current_block);
+    }
+
+    let mut out = result_lines.join("\n");
+    if content.ends_with('\n') && !out.ends_with('\n') {
+        out.push('\n');
+    }
+    out
+}
+
+pub fn reset_startup_mode_if_matches_str(content: &str, targets: &[&str]) -> String {
+    let lines: Vec<&str> = content.lines().collect();
+    let mut result_lines = Vec::new();
+
+    for line in lines {
+        let trimmed = line.trim();
+        if trimmed.starts_with("startup_mode") {
+            if let Some((_k, v)) = trimmed.split_once('=') {
+                let clean_val = v.trim().trim_matches(|c| c == '"' || c == '\'');
+                if targets.iter().any(|t| t.eq_ignore_ascii_case(clean_val)) {
+                    let indent = line.len() - line.trim_start().len();
+                    let spaces = &line[..indent];
+                    result_lines.push(format!("{}startup_mode = \"dashboard\"", spaces));
+                    continue;
+                }
+            }
+        }
+        result_lines.push(line.to_string());
+    }
+
+    let mut out = result_lines.join("\n");
+    if content.ends_with('\n') && !out.ends_with('\n') {
+        out.push('\n');
+    }
+    out
+}
+
+pub fn remove_page_from_config(page_name: &str, components: &[String]) -> Result<(), String> {
+    let path = config_path();
+    let content = match std::fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => return Ok(()),
+    };
+
+    let comp_refs: Vec<&str> = components.iter().map(|s| s.as_str()).collect();
+    let mut targets = vec![page_name];
+    targets.extend(&comp_refs);
+
+    let content = remove_page_block_from_str(&content, page_name);
+    let content = prune_components_from_enabled_str(&content, &comp_refs);
+    let new_content = reset_startup_mode_if_matches_str(&content, &targets);
+
+    std::fs::write(&path, new_content)
+        .map_err(|e| format!("Failed to write config.toml: {}", e))?;
+    Ok(())
+}
+
+pub fn remove_component_from_config(comp_id: &str) -> Result<(), String> {
+    let path = config_path();
+    let content = match std::fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => return Ok(()),
+    };
+
+    let targets = [comp_id];
+    let content = prune_components_from_enabled_str(&content, &targets);
+    let new_content = reset_startup_mode_if_matches_str(&content, &targets);
+
+    std::fs::write(&path, new_content)
+        .map_err(|e| format!("Failed to write config.toml: {}", e))?;
+    Ok(())
+}
+
+pub fn clean_orphaned_extensions() {
+    let path = config_path();
+    let content = match std::fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+
+    let ext_dir = match directories::ProjectDirs::from("", "", "vanta") {
+        Some(p) => p.config_dir().join("extensions"),
+        None => return,
+    };
+
+    let cfg: Config = match toml::from_str(&content) {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+
+    let mut orphaned_comps = Vec::new();
+    if let Some(ext_val) = &cfg.extensions {
+        if let Some(arr) = ext_val.get("enabled").and_then(|v| v.as_array()) {
+            for item in arr {
+                if let Some(comp_id) = item.as_str() {
+                    let wasm_file = ext_dir.join(format!("{}.wasm", comp_id));
+                    if !wasm_file.exists() {
+                        orphaned_comps.push(comp_id.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    let mut orphaned_pages = Vec::new();
+    for page in &cfg.pages {
+        let all_widgets: Vec<&str> = page
+            .layout
+            .iter()
+            .flat_map(|col| col.iter().map(|s| s.as_str()))
+            .collect();
+        let has_any_valid = all_widgets.iter().any(|w| {
+            matches!(
+                w.to_lowercase().as_str(),
+                "system"
+                    | "gauges"
+                    | "gauge"
+                    | "cpu"
+                    | "storage"
+                    | "disk"
+                    | "memory"
+                    | "network"
+                    | "gpu"
+                    | "processes"
+                    | "process"
+                    | "clock"
+                    | "calendar"
+                    | "weather"
+                    | "media"
+                    | "music_viz"
+                    | "visualizer"
+                    | "matrix"
+                    | "tasks"
+                    | "agenda"
+                    | "news"
+                    | "status"
+                    | "files"
+                    | "notes"
+                    | "donut"
+            ) || cfg
+                .custom_widgets
+                .iter()
+                .any(|c| c.id.eq_ignore_ascii_case(w))
+                || ext_dir.join(format!("{}.wasm", w)).exists()
+        });
+
+        if !has_any_valid && !all_widgets.is_empty() {
+            orphaned_pages.push(page.name.clone());
+        }
+    }
+
+    if orphaned_comps.is_empty() && orphaned_pages.is_empty() {
+        return;
+    }
+
+    let mut updated_content = content;
+    for page_name in &orphaned_pages {
+        updated_content = remove_page_block_from_str(&updated_content, page_name);
+        updated_content = reset_startup_mode_if_matches_str(&updated_content, &[page_name]);
+    }
+
+    let comp_refs: Vec<&str> = orphaned_comps.iter().map(|s| s.as_str()).collect();
+    updated_content = prune_components_from_enabled_str(&updated_content, &comp_refs);
+    updated_content = reset_startup_mode_if_matches_str(&updated_content, &comp_refs);
+
+    let _ = std::fs::write(&path, updated_content);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -352,5 +602,57 @@ mod tests {
         assert_eq!(cfg.dashboard.layout.len(), 2);
         assert_eq!(cfg.dashboard.layout[0], vec!["clock", "system"]);
         assert_eq!(cfg.dashboard.layout[1], vec!["processes", "weather"]);
+    }
+
+    #[test]
+    fn test_prune_components_from_enabled_str() {
+        let sample = r#"[extensions]
+enabled = ["comp_a", "comp_b", "comp_c"]
+"#;
+        let pruned = prune_components_from_enabled_str(sample, &["comp_b"]);
+        assert_eq!(
+            pruned,
+            r#"[extensions]
+enabled = ["comp_a", "comp_c"]
+"#
+        );
+
+        let pruned_all = prune_components_from_enabled_str(sample, &["comp_a", "comp_b", "comp_c"]);
+        assert_eq!(
+            pruned_all,
+            r#"[extensions]
+enabled = []
+"#
+        );
+    }
+
+    #[test]
+    fn test_remove_page_block_from_str() {
+        let sample = r#"[[pages]]
+layout = [["a", "b"]]
+name = "First Page"
+
+[[pages]]
+layout = [["c", "d"]]
+name = "Second Page"
+
+[ui]
+theme = "dark"
+"#;
+        let result = remove_page_block_from_str(sample, "Second Page");
+        assert!(!result.contains("Second Page"));
+        assert!(result.contains("First Page"));
+        assert!(result.contains("[ui]"));
+    }
+
+    #[test]
+    fn test_reset_startup_mode_if_matches_str() {
+        let sample = r#"[ui]
+startup_mode = "CryptoPulse Terminal"
+theme = "dark"
+"#;
+        let result = reset_startup_mode_if_matches_str(sample, &["CryptoPulse Terminal"]);
+        assert!(result.contains("startup_mode = \"dashboard\""));
+        assert!(result.contains("theme = \"dark\""));
     }
 }

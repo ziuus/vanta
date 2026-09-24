@@ -369,6 +369,40 @@ impl App {
         self.config.save();
     }
 
+    pub fn available_modes(&self) -> Vec<DashboardMode> {
+        let mut modes = vec![
+            DashboardMode::Dashboard,
+            DashboardMode::Monitor,
+            DashboardMode::Aesthetic,
+            DashboardMode::Workspace,
+        ];
+        for ext in &self.ext_manager.extensions {
+            for page in ext.pages() {
+                modes.push(DashboardMode::Extension(page.title().to_string()));
+            }
+        }
+        for page in &self.config.pages {
+            let has_valid_widgets = page.layout.iter().flatten().any(|id| {
+                PanelId::from_name(id, &self.config).is_some()
+                    || self
+                        .config
+                        .custom_widgets
+                        .iter()
+                        .any(|c| c.id.eq_ignore_ascii_case(id))
+                    || self.ext_manager.extensions.iter().any(|e| {
+                        e.components()
+                            .iter()
+                            .any(|c| c.id().eq_ignore_ascii_case(id))
+                            || e.metadata().id.eq_ignore_ascii_case(id)
+                    })
+            });
+            if has_valid_widgets {
+                modes.push(DashboardMode::Extension(page.name.clone()));
+            }
+        }
+        modes
+    }
+
     pub fn cycle_theme(&mut self) {
         let next = Theme::next_name(&self.config.ui.theme);
         self.config.ui.theme = next.to_string();
@@ -631,20 +665,7 @@ impl App {
             }
             KeyCode::Char(c) if c.is_ascii_digit() => {
                 let n = c.to_digit(10).unwrap() as usize;
-                let mut modes = vec![
-                    DashboardMode::Dashboard,
-                    DashboardMode::Monitor,
-                    DashboardMode::Aesthetic,
-                    DashboardMode::Workspace,
-                ];
-                for ext in &self.ext_manager.extensions {
-                    for page in ext.pages() {
-                        modes.push(DashboardMode::Extension(page.title().to_string()));
-                    }
-                }
-                for page in &self.config.pages {
-                    modes.push(DashboardMode::Extension(page.name.clone()));
-                }
+                let modes = self.available_modes();
                 if n > 0 && n <= modes.len() {
                     self.set_mode(modes[n - 1].clone());
                 }
@@ -1432,22 +1453,7 @@ impl App {
 
         let mut right: Vec<Span> = Vec::new();
 
-        let mut modes = vec![
-            DashboardMode::Dashboard,
-            DashboardMode::Monitor,
-            DashboardMode::Aesthetic,
-            DashboardMode::Workspace,
-        ];
-
-        // Append all loaded extension pages dynamically!
-        for ext in &self.ext_manager.extensions {
-            for page in ext.pages() {
-                modes.push(DashboardMode::Extension(page.title().to_string()));
-            }
-        }
-        for page in &self.config.pages {
-            modes.push(DashboardMode::Extension(page.name.clone()));
-        }
+        let modes = self.available_modes();
 
         for (i, m) in modes.into_iter().enumerate() {
             let style = if m == self.mode {

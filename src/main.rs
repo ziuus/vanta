@@ -64,16 +64,56 @@ fn main() -> io::Result<()> {
     {
         ext_dir.push("extensions");
         if let Ok(entries) = std::fs::read_dir(&ext_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension().and_then(|s| s.to_str()) == Some("wasm") {
-                    if let Ok(ext) = vanta::extension::wasm::WasmExtension::new(path) {
-                        app.ext_manager
-                            .register(Box::new(ext), app.config.extensions.as_ref());
+            let mut needed: std::collections::HashSet<String> = std::collections::HashSet::new();
+            if let Some(cfg) = app.config.extensions.as_ref() {
+                if let Some(arr) = cfg.get("enabled").and_then(|v| v.as_array()) {
+                    for item in arr {
+                        if let Some(s) = item.as_str() {
+                            needed.insert(s.to_lowercase());
+                        }
                     }
                 }
             }
+            for page in &app.config.pages {
+                for col in &page.layout {
+                    for widget_id in col {
+                        needed.insert(widget_id.to_lowercase());
+                    }
+                }
+            }
+
+            let mut paths_to_load = Vec::new();
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|s| s.to_str()) == Some("wasm") {
+                    if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                        if needed.contains(&stem.to_lowercase()) {
+                            paths_to_load.push(path);
+                        }
+                    }
+                }
+            }
+
+            let loaded: Vec<vanta::extension::wasm::WasmExtension> = std::thread::scope(|s| {
+                let handles: Vec<_> = paths_to_load
+                    .into_iter()
+                    .map(|path| s.spawn(move || vanta::extension::wasm::WasmExtension::new(path)))
+                    .collect();
+                handles
+                    .into_iter()
+                    .filter_map(|h| h.join().ok().and_then(|res| res.ok()))
+                    .collect()
+            });
+
+            for ext in loaded {
+                app.ext_manager
+                    .register(Box::new(ext), app.config.extensions.as_ref());
+            }
         }
+    }
+
+    if !app.available_modes().contains(&app.mode) {
+        app.set_mode(vanta::mode::DashboardMode::Dashboard);
     }
 
     let res = run(&mut terminal, &mut app);

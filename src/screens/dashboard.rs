@@ -614,6 +614,18 @@ fn render_dashboard_panel(
                     }
                 }
             }
+
+            if !matched {
+                let p = panel(f, area, custom_id, theme, false);
+                f.render_widget(
+                    Paragraph::new(format!(
+                        "Widget '{}' not found or uninstalled.\nRun 'vanta menu' to install extensions.",
+                        custom_id
+                    ))
+                    .style(Style::default().fg(theme.dim)),
+                    p,
+                );
+            }
         }
     }
 }

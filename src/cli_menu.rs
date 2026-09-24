@@ -203,6 +203,7 @@ pub fn install_page_ext(
 }
 
 pub fn run_menu_installer() -> io::Result<()> {
+    vanta::config::clean_orphaned_extensions();
     println!("Fetching Vanta extensions registry...");
     let res = match ureq::get(REGISTRY_URL).call() {
         Ok(r) => r,
@@ -774,16 +775,25 @@ pub fn run_menu_installer() -> io::Result<()> {
                                                 removed_count += 1;
                                             }
                                         }
+                                        let _ = vanta::config::remove_page_from_config(
+                                            &ext.name,
+                                            &ext.components,
+                                        );
                                         status_msg = format!(
-                                            "✓ Uninstalled page '{}' (removed {} components)",
+                                            "✓ Uninstalled page '{}' (removed {} components & cleaned config)",
                                             ext.name, removed_count
                                         );
                                         status_color = Color::Yellow;
                                     } else {
                                         let ext_file = ext_dir.join(format!("{}.wasm", ext.id));
-                                        if ext_file.exists() {
+                                        let existed = ext_file.exists();
+                                        if existed {
                                             match fs::remove_file(&ext_file) {
                                                 Ok(_) => {
+                                                    let _ =
+                                                        vanta::config::remove_component_from_config(
+                                                            &ext.id,
+                                                        );
                                                     status_msg = format!(
                                                         "✓ Uninstalled '{}' ({})",
                                                         ext.id,
@@ -800,8 +810,12 @@ pub fn run_menu_installer() -> io::Result<()> {
                                                 }
                                             }
                                         } else {
-                                            status_msg = format!("'{}' is not installed.", ext.id);
-                                            status_color = Color::DarkGray;
+                                            let _ = vanta::config::remove_component_from_config(
+                                                &ext.id,
+                                            );
+                                            status_msg =
+                                                format!("✓ Cleaned '{}' from config.toml", ext.id);
+                                            status_color = Color::Yellow;
                                         }
                                     }
                                 }

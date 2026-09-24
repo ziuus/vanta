@@ -548,16 +548,71 @@ fn list() {
 
 fn remove(id: String) {
     let ext_dir = get_extensions_dir();
-    let wasm_path = ext_dir.join(format!("{}.wasm", id));
+    let registry = fetch_registry().ok();
 
-    if wasm_path.exists() {
+    // 1. Check if `id` corresponds to a page extension in the registry
+    let matched_page = registry.as_ref().and_then(|r| {
+        r.extensions.iter().find(|e| {
+            e.ext_type == "page"
+                && (e.id.eq_ignore_ascii_case(&id) || e.name.eq_ignore_ascii_case(&id))
+        })
+    });
+
+    if let Some(page) = matched_page {
+        let mut removed_count = 0;
+        for comp in &page.components {
+            let comp_file = ext_dir.join(format!("{}.wasm", comp));
+            if comp_file.exists() && fs::remove_file(&comp_file).is_ok() {
+                removed_count += 1;
+            }
+        }
+        let _ = vanta::config::remove_page_from_config(&page.name, &page.components);
+        println!(
+            "✓ Removed page workspace '{}' (deleted {} component files, pruned config.toml)",
+            page.name, removed_count
+        );
+        return;
+    }
+
+    // 2. Check if `id` corresponds to a page defined in config.toml directly
+    let config = vanta::config::Config::load();
+    if let Some(cfg_page) = config
+        .pages
+        .iter()
+        .find(|p| p.name.eq_ignore_ascii_case(&id))
+    {
+        let comps: Vec<String> = cfg_page.layout.iter().flat_map(|col| col.clone()).collect();
+        let mut removed_count = 0;
+        for comp in &comps {
+            let comp_file = ext_dir.join(format!("{}.wasm", comp));
+            if comp_file.exists() && fs::remove_file(&comp_file).is_ok() {
+                removed_count += 1;
+            }
+        }
+        let _ = vanta::config::remove_page_from_config(&cfg_page.name, &comps);
+        println!(
+            "✓ Removed page workspace '{}' from config.toml (deleted {} component files)",
+            cfg_page.name, removed_count
+        );
+        return;
+    }
+
+    // 3. Otherwise treat as single extension component
+    let wasm_path = ext_dir.join(format!("{}.wasm", id));
+    let existed_on_disk = wasm_path.exists();
+    if existed_on_disk {
         if let Err(e) = fs::remove_file(&wasm_path) {
             eprintln!("Failed to remove extension: {}", e);
         } else {
             println!("✓ Removed extension '{}'", id);
         }
+    }
+
+    let _ = vanta::config::remove_component_from_config(&id);
+    if existed_on_disk {
+        println!("✓ Uninstalled extension '{}' and pruned config.toml", id);
     } else {
-        eprintln!("Extension '{}' is not installed.", id);
+        println!("✓ Pruned extension '{}' from config.toml", id);
     }
 }
 
@@ -611,24 +666,8 @@ fn enable(id: String) {
 }
 
 fn disable(id: String) {
-    let path = get_config_path();
-    let content = match fs::read_to_string(&path) {
-        Ok(c) => c,
-        Err(_) => return eprintln!("Could not read config.toml"),
-    };
-
-    let target1 = format!("\"{}\", ", id);
-    let target2 = format!("\"{}\"", id);
-
-    if content.contains(&target1) {
-        let new_content = content.replace(&target1, "");
-        fs::write(&path, new_content).unwrap();
-        println!("✓ Disabled '{}' in config.toml", id);
-    } else if content.contains(&target2) {
-        let new_content = content.replace(&target2, "");
-        fs::write(&path, new_content).unwrap();
-        println!("✓ Disabled '{}' in config.toml", id);
-    } else {
-        println!("Extension '{}' was not enabled.", id);
+    match vanta::config::remove_component_from_config(&id) {
+        Ok(_) => println!("✓ Disabled '{}' in config.toml", id),
+        Err(e) => eprintln!("Failed to disable extension: {}", e),
     }
 }
