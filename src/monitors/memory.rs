@@ -112,25 +112,26 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, is_detailed: bool) {
 
     if breakdown_rows > 0 {
         let cached = m.total.saturating_sub(m.free).saturating_sub(m.used);
-        f.render_widget(
-            Paragraph::new(Line::from(vec![
-                Span::styled(
-                    format!("avl {:>5}", meter::fmt_bytes(m.available)),
-                    Style::default().fg(theme.dim),
-                ),
-                Span::raw("  "),
-                Span::styled(
-                    format!("fre {:>5}", meter::fmt_bytes(m.free)),
-                    Style::default().fg(theme.dim),
-                ),
-                Span::raw("  "),
-                Span::styled(
-                    format!("cac {:>5}", meter::fmt_bytes(cached)),
-                    Style::default().fg(theme.dim),
-                ),
-            ])),
-            chunks[1],
-        );
+        let wide = area.width >= 44;
+        let items = [
+            (if wide { "available" } else { "avl" }, m.available),
+            (if wide { "free" } else { "fre" }, m.free),
+            (if wide { "cache" } else { "cac" }, cached),
+        ];
+        let spans: Vec<Span> = items
+            .iter()
+            .enumerate()
+            .flat_map(|(i, (k, v))| {
+                [
+                    Span::styled(
+                        format!("{}{} ", if i > 0 { "  " } else { "" }, k),
+                        Style::default().fg(theme.dim),
+                    ),
+                    Span::styled(meter::fmt_bytes(*v), Style::default().fg(theme.text)),
+                ]
+            })
+            .collect();
+        f.render_widget(Paragraph::new(Line::from(spans)), chunks[1]);
     }
 
     let hist = HISTORY.lock().unwrap().recent(1000);

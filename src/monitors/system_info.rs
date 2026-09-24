@@ -368,33 +368,42 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, sum: &Summary) {
     let facts = &*FACTS;
     let k = Style::default().fg(theme.dim);
     let v = Style::default().fg(theme.text);
-    let row = |key: &str, val: String| {
-        Line::from(vec![
-            Span::styled(format!("{:>7} ", key), k),
-            Span::styled(val, v),
-        ])
-    };
     let bat = match sum.battery {
         Some((p, true)) => format!("{}% ⚡", p),
         Some((p, false)) => format!("{}%", p),
         None => "AC".to_string(),
     };
-    let left = vec![
-        row(
+    let left = [
+        (
             "os",
             facts.os.split_whitespace().next().unwrap_or("Linux").into(),
         ),
-        row("host", facts.host.clone()),
-        row("kernel", facts.kernel.clone()),
+        ("host", facts.host.clone()),
+        ("kernel", facts.kernel.clone()),
     ];
-    let right = vec![
-        row("uptime", sum.uptime.clone()),
-        row("battery", bat),
-        row("procs", crate::monitors::processes::count().to_string()),
+    let right = [
+        ("up", sum.uptime.clone()),
+        ("bat", bat),
+        ("procs", crate::monitors::processes::count().to_string()),
     ];
+    // Values are ellipsized to their column so nothing clips mid-word.
+    let lines = |items: &[(&str, String)], width: u16| -> Vec<Line<'static>> {
+        let kw = items.iter().map(|(k, _)| k.len()).max().unwrap_or(0);
+        // One trailing cell keeps the left column off the right one.
+        let vw = (width as usize).saturating_sub(kw + 3);
+        items
+            .iter()
+            .map(|(key, val)| {
+                Line::from(vec![
+                    Span::styled(format!("{:>kw$}  ", key), k),
+                    Span::styled(meter::ellipsize(val, vw), v),
+                ])
+            })
+            .collect()
+    };
     let cols = Layout::horizontal([Constraint::Ratio(3, 5), Constraint::Ratio(2, 5)]).split(area);
-    f.render_widget(Paragraph::new(left), cols[0]);
-    f.render_widget(Paragraph::new(right), cols[1]);
+    f.render_widget(Paragraph::new(lines(&left, cols[0].width)), cols[0]);
+    f.render_widget(Paragraph::new(lines(&right, cols[1].width)), cols[1]);
 }
 
 #[cfg(test)]

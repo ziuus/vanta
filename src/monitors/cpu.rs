@@ -22,6 +22,9 @@ pub struct CpuSnapshot {
     pub freq_mhz: u64,
     /// Per-sensor temps from hwmon (package first when the driver reports one).
     pub temps: Vec<f64>,
+    /// Temperature of the physical core each logical CPU runs on, aligned
+    /// with `cores`. `None` when the sensor or topology is unknown.
+    pub thread_temps: Vec<Option<f64>>,
 }
 
 impl CpuSnapshot {
@@ -77,6 +80,19 @@ pub fn sample(sys: &sysinfo::System) {
     }
 
     let la = sysinfo::System::load_average();
+    let (temps, by_core) = read_core_temps();
+    let thread_temps = sys
+        .cpus()
+        .iter()
+        .enumerate()
+        .map(|(i, _)| {
+            THREAD_CORE
+                .get(i)
+                .copied()
+                .flatten()
+                .and_then(|c| by_core.get(&c).copied())
+        })
+        .collect();
     let snap = CpuSnapshot {
         usage: sys.global_cpu_usage(),
         user_pct,
@@ -85,7 +101,8 @@ pub fn sample(sys: &sysinfo::System) {
         cores: sys.cpus().iter().map(|c| c.cpu_usage()).collect(),
         load: (la.one, la.five, la.fifteen),
         freq_mhz: sys.cpus().iter().map(|c| c.frequency()).max().unwrap_or(0),
-        temps: read_core_temps(),
+        temps,
+        thread_temps,
     };
     HISTORY_USAGE.lock().unwrap().push(snap.usage as f64);
     HISTORY_USER.lock().unwrap().push(snap.user_pct as f64);
@@ -94,9 +111,31 @@ pub fn sample(sys: &sysinfo::System) {
     *SNAP.lock().unwrap() = snap;
 }
 
-fn read_core_temps() -> Vec<f64> {
+/// Physical core id of each logical CPU (`cpuN/topology/core_id`), read once.
+static THREAD_CORE: LazyLock<Vec<Option<u32>>> = LazyLock::new(|| {
+    (0..)
+        .map_while(|i| {
+            let dir = format!("/sys/devices/system/cpu/cpu{}", i);
+            std::path::Path::new(&dir).exists().then(|| {
+                fs::read_to_string(format!("{}/topology/core_id", dir))
+                    .ok()
+                    .and_then(|s| s.trim().parse().ok())
+            })
+        })
+        .collect()
+});
+
+/// "Core 3" -> 3. Package/Tctl labels are not per-core.
+fn core_label_id(label: &str) -> Option<u32> {
+    label.trim().strip_prefix("Core ")?.parse().ok()
+}
+
+/// All CPU sensor temps (sorted by sensor index) plus a map from physical
+/// core id to its temperature, taken from the `tempN_label` files.
+fn read_core_temps() -> (Vec<f64>, std::collections::HashMap<u32, f64>) {
+    let mut by_core = std::collections::HashMap::new();
     let Ok(hwmon_dir) = fs::read_dir("/sys/class/hwmon/") else {
-        return Vec::new();
+        return (Vec::new(), by_core);
     };
     for hwmon_entry in hwmon_dir.flatten() {
         let Ok(name) = fs::read_to_string(hwmon_entry.path().join("name")) else {
@@ -120,14 +159,22 @@ fn read_core_temps() -> Vec<f64> {
                     .ok()
                     .and_then(|v| v.trim().parse::<f64>().ok())
                 {
-                    temps.push((num, v / 1000.0));
+                    let c = v / 1000.0;
+                    temps.push((num, c));
+                    let label = hwmon_entry.path().join(format!("temp{}_label", num));
+                    if let Some(id) = fs::read_to_string(label)
+                        .ok()
+                        .and_then(|l| core_label_id(&l))
+                    {
+                        by_core.insert(id, c);
+                    }
                 }
             }
         }
         temps.sort_by_key(|(idx, _)| *idx);
-        return temps.into_iter().map(|(_, t)| t).collect();
+        return (temps.into_iter().map(|(_, t)| t).collect(), by_core);
     }
-    Vec::new()
+    (Vec::new(), by_core)
 }
 
 /// One row of per-core load: each core gets an equal slice filled with a
@@ -268,64 +315,53 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, is_detailed: bool) {
     let cols = Layout::horizontal(vec![Constraint::Ratio(1, per_line as u32); per_line])
         .spacing(2)
         .split(chunks[3]);
+    // Fixed columns so every bar starts and ends at the same x: the temp
+    // column is reserved whenever any core has a sensor, and dropped when the
+    // cell is too narrow to fit a useful bar alongside it.
+    let label_w = if core_count > 10 { 4 } else { 3 };
+    let any_temp = snap.thread_temps.iter().any(Option::is_some);
+    let cell_w = cols[0].width as usize;
+    let show_temp = any_temp && cell_w >= label_w + 6 + 5 + 4;
+    let right_w = 5 + if show_temp { 4 } else { 0 };
     for (i, &usage) in snap.cores.iter().enumerate() {
         let row = (i / per_line) as u16;
         if row >= core_rows {
             break;
         }
         let col = cols[i % per_line];
-        let cell = Rect::new(col.x, col.y + row, col.width, 1);
         let c = theme.usage(usage as f64);
-        let label = format!("c{:<2} ", i);
-
-        let temp_str = if let Some(t) = snap.temps.get(i) {
-            format!(" {:>3.0}°C", t)
-        } else {
-            String::new()
-        };
-
-        let pct = format!("{:>3.0}%", usage);
-        let right_label = format!("{}{}", pct, temp_str);
-
-        let right_label_chars = right_label.chars().count() as u16;
-        let label_chars = label.chars().count() as u16;
-
-        let core_chunks = Layout::horizontal([
-            Constraint::Length(label_chars),
-            Constraint::Min(0),
-            Constraint::Length(right_label_chars),
-        ])
-        .split(cell);
-
-        let bar_w = core_chunks[1].width as usize;
-
-        // 1. Left Label
-        f.render_widget(
-            Paragraph::new(Span::styled(label, Style::default().fg(theme.dim))),
-            core_chunks[0],
-        );
-
-        // 2. Bar
-        f.render_widget(
-            Paragraph::new(Span::styled(
-                meter::bar(usage as f64 / 100.0, bar_w),
-                Style::default().fg(c),
-            )),
-            core_chunks[1],
-        );
-
-        // 3. Right Label (pct + temp)
-        let mut right_spans = vec![Span::styled(format!("{:>4}", pct), Style::default().fg(c))];
-        if let Some(t) = snap.temps.get(i) {
-            right_spans.push(Span::styled(
-                format!(" {:>3.0}°C", t),
-                Style::default().fg(theme.temp(*t)),
-            ));
+        let bar_w = (col.width as usize).saturating_sub(label_w + right_w);
+        let (on, off) = meter::track(usage as f64 / 100.0, bar_w);
+        let mut spans = vec![
+            Span::styled(
+                format!("{:<w$}", format!("c{}", i), w = label_w),
+                Style::default().fg(theme.dim),
+            ),
+            Span::styled(on, Style::default().fg(c)),
+            Span::styled(off, Style::default().fg(theme.surface)),
+            Span::styled(format!("{:>4.0}%", usage), Style::default().fg(c)),
+        ];
+        if show_temp {
+            spans.push(match snap.thread_temps.get(i).copied().flatten() {
+                Some(t) => Span::styled(format!("{:>3.0}°", t), Style::default().fg(theme.temp(t))),
+                None => Span::raw("    "),
+            });
         }
-
         f.render_widget(
-            Paragraph::new(Line::from(right_spans)).alignment(ratatui::layout::Alignment::Right),
-            core_chunks[2],
+            Paragraph::new(Line::from(spans)),
+            Rect::new(col.x, col.y + row, col.width, 1),
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_core_labels_map_to_core_ids() {
+        assert_eq!(core_label_id("Core 3\n"), Some(3));
+        assert_eq!(core_label_id("Package id 0"), None);
+        assert_eq!(core_label_id("Tctl"), None);
     }
 }
