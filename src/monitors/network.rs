@@ -173,6 +173,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, _is_detailed: bool) {
         f.render_widget(
             BlockGraph::new(&rx_h)
                 .data2(&tx_h)
+                .pending(theme.dim)
                 .max(peak)
                 .colors(rx_c, rx_c, rx_c)
                 .colors2(tx_c, tx_c, tx_c),

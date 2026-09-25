@@ -331,6 +331,9 @@ pub struct App {
     pub summary: Summary,
     /// When the last key was pressed; ambient hides its hints once idle.
     pub last_input: Instant,
+    /// Whether `theme` is currently the night-dimmed variant; `None` forces
+    /// it to be rebuilt on the next frame (after a theme or setting change).
+    pub night: Option<bool>,
     /// Short transient message shown in the status bar (theme changed, killed pid …).
     toast: Option<(String, Instant)>,
     /// First press of k/K arms this; the second press within the window fires.
@@ -367,6 +370,7 @@ impl App {
             zoomed: None,
             summary: Summary::default(),
             last_input: Instant::now(),
+            night: None,
             toast: None,
             pending_signal: None,
             sampler_interval,
@@ -431,6 +435,7 @@ impl App {
         let next = Theme::next_name(&self.config.ui.theme);
         self.config.ui.theme = next.to_string();
         self.theme = Theme::from_name(&next);
+        self.night = None;
         self.config.save();
         self.toast(format!("theme · {}", next));
     }
@@ -1359,6 +1364,7 @@ impl App {
         // Advance custom widget history buffers before any rendering.
         self.custom_widgets.tick();
         crate::widgets::pomodoro::tick(&self.config.ui);
+        self.apply_night();
 
         let area = f.area();
 
@@ -1427,6 +1433,19 @@ impl App {
         }
         if self.show_settings {
             screens::settings::render(f, area, self);
+        }
+    }
+
+    /// Swap in the dimmed palette during `ui.night_hours`. The check is a
+    /// clock read per frame; the theme is only rebuilt when the state flips.
+    fn apply_night(&mut self) {
+        use chrono::Timelike;
+        let now = chrono::Local::now();
+        let night = self.config.ui.night_at(now.hour() * 60 + now.minute());
+        if self.night != Some(night) {
+            let base = Theme::from_name(&self.config.ui.theme);
+            self.theme = if night { base.dimmed() } else { base };
+            self.night = Some(night);
         }
     }
 
@@ -1518,6 +1537,9 @@ impl App {
             Span::styled(" vanta", base.fg(t.accent)),
             Span::styled(" ● ", base.fg(dot)),
         ];
+        if self.night == Some(true) {
+            left.push(Span::styled("☾  ", dim));
+        }
         // The most severe active alert gets a coloured pill so it's visible
         // from across the room; extra alerts are summarised as "+N".
         let alerts = alerts(s);

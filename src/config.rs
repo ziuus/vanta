@@ -168,6 +168,46 @@ pub struct UiConfig {
     pub break_minutes: u64,
     #[serde(default = "default_long_break_minutes")]
     pub long_break_minutes: u64,
+    /// Dim every colour during these hours: "22:00-07:00", "always", or ""
+    /// (off). Wraps past midnight.
+    pub night_hours: String,
+}
+
+/// Presets offered in the settings menu, in cycle order.
+pub const NIGHT_PRESETS: [&str; 6] = [
+    "",
+    "21:00-07:00",
+    "22:00-07:00",
+    "23:00-07:00",
+    "00:00-07:00",
+    "always",
+];
+
+fn parse_hhmm(s: &str) -> Option<u32> {
+    let (h, m) = s.trim().split_once(':')?;
+    let (h, m): (u32, u32) = (h.parse().ok()?, m.parse().ok()?);
+    (h < 24 && m < 60).then_some(h * 60 + m)
+}
+
+impl UiConfig {
+    /// Whether night dimming applies at `minute` (minutes since midnight).
+    pub fn night_at(&self, minute: u32) -> bool {
+        let spec = self.night_hours.trim();
+        if spec == "always" {
+            return true;
+        }
+        let Some((a, b)) = spec
+            .split_once('-')
+            .and_then(|(a, b)| Some((parse_hhmm(a)?, parse_hhmm(b)?)))
+        else {
+            return false;
+        };
+        if a <= b {
+            (a..b).contains(&minute)
+        } else {
+            minute >= a || minute < b
+        }
+    }
 }
 
 fn default_ambient_rotate_secs() -> u64 {
@@ -224,6 +264,7 @@ impl Default for UiConfig {
             focus_minutes: default_focus_minutes(),
             break_minutes: default_break_minutes(),
             long_break_minutes: default_long_break_minutes(),
+            night_hours: String::new(),
         }
     }
 }
@@ -594,6 +635,24 @@ pub fn clean_orphaned_extensions() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn night_hours_wrap_past_midnight() {
+        let ui = |s: &str| UiConfig {
+            night_hours: s.to_string(),
+            ..Default::default()
+        };
+        let at = |h: u32, m: u32| h * 60 + m;
+        let n = ui("22:00-07:00");
+        assert!(n.night_at(at(22, 0)) && n.night_at(at(3, 0)) && n.night_at(at(6, 59)));
+        assert!(!n.night_at(at(7, 0)) && !n.night_at(at(21, 59)) && !n.night_at(at(12, 0)));
+        let d = ui("01:00-05:30");
+        assert!(d.night_at(at(1, 0)) && !d.night_at(at(5, 30)) && !d.night_at(at(0, 59)));
+        assert!(ui("always").night_at(at(12, 0)));
+        for off in ["", "nonsense", "25:00-07:00"] {
+            assert!(!ui(off).night_at(at(23, 0)), "{off:?}");
+        }
+    }
 
     #[test]
     fn test_dashboard_config_defaults() {

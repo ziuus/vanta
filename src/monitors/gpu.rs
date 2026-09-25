@@ -22,11 +22,17 @@ pub struct GpuData {
     pub mem_used_mb: Option<f64>,
     pub mem_total_mb: Option<f64>,
     pub freq_mhz: Option<u64>,
+    /// Discrete GPU is runtime-suspended (power saving); other fields are
+    /// the last known values and utilisation reads 0.
+    pub asleep: bool,
 }
 
 struct Cache {
     data: Option<GpuData>,
     stamp: Option<Instant>,
+    /// Last nvidia-smi query and its result; spaced out while the GPU idles.
+    nvidia_stamp: Option<Instant>,
+    nvidia_last: Option<GpuData>,
     /// After nvidia-smi fails, don't fork it again until this instant. Keeps
     /// non-NVIDIA machines from spawning it every second, but still notices a
     /// driver or eGPU that shows up later.
@@ -37,6 +43,8 @@ static CACHE: LazyLock<Mutex<Cache>> = LazyLock::new(|| {
     Mutex::new(Cache {
         data: None,
         stamp: None,
+        nvidia_stamp: None,
+        nvidia_last: None,
         nvidia_retry_at: None,
     })
 });
@@ -53,19 +61,75 @@ pub fn util_pct() -> Option<f64> {
     snapshot().and_then(|g| g.util_pct)
 }
 
+/// PCI sysfs dirs of NVIDIA display controllers, found once.
+static NVIDIA_PCI: LazyLock<Vec<std::path::PathBuf>> = LazyLock::new(|| {
+    fs::read_dir("/sys/bus/pci/devices")
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            let read = |f: &str| fs::read_to_string(p.join(f)).unwrap_or_default();
+            read("vendor").trim() == "0x10de" && read("class").trim().starts_with("0x03")
+        })
+        .collect()
+});
+
+/// True when every NVIDIA GPU is runtime-suspended. Querying it then (even
+/// via nvidia-smi) would power it back up, so we leave it alone.
+fn nvidia_suspended() -> bool {
+    !NVIDIA_PCI.is_empty()
+        && NVIDIA_PCI.iter().all(|p| {
+            fs::read_to_string(p.join("power/runtime_status"))
+                .is_ok_and(|s| s.trim() == "suspended")
+        })
+}
+
+/// How long to wait between nvidia-smi queries. Each query resets the
+/// driver's autosuspend timer (~5s by default), so polling an idle GPU
+/// every second keeps it awake forever and drains laptop batteries.
+fn nvidia_interval(last_util: Option<f64>) -> Duration {
+    match last_util {
+        Some(u) if u > 0.0 => TTL,
+        _ => Duration::from_secs(10),
+    }
+}
+
 /// Refresh at most once per second — nvidia-smi is a subprocess.
 pub fn sample() {
     let mut c = CACHE.lock().unwrap();
     if c.stamp.is_some_and(|t| t.elapsed() < TTL) {
         return;
     }
+    let last = c.nvidia_last.clone();
+    let recent = c
+        .nvidia_stamp
+        .is_some_and(|t| t.elapsed() < nvidia_interval(last.as_ref().and_then(|d| d.util_pct)));
     let data = if c.nvidia_retry_at.is_some_and(|t| Instant::now() < t) {
         None
+    } else if nvidia_suspended() {
+        Some(GpuData {
+            name: last
+                .as_ref()
+                .map_or_else(|| "NVIDIA".to_string(), |d| d.name.clone()),
+            util_pct: Some(0.0),
+            temp_c: None,
+            mem_used_mb: None,
+            mem_total_mb: last.as_ref().and_then(|d| d.mem_total_mb),
+            freq_mhz: None,
+            asleep: true,
+        })
+    } else if let Some(d) = last.filter(|_| recent) {
+        Some(d)
     } else {
         let d = read_nvidia();
+        c.nvidia_stamp = Some(Instant::now());
         c.nvidia_retry_at = d
             .is_none()
             .then(|| Instant::now() + Duration::from_secs(60));
+        if d.is_some() {
+            c.nvidia_last = d.clone();
+        }
         d
     };
     let data = data.or_else(read_amd).or_else(read_intel);
@@ -101,6 +165,7 @@ fn read_nvidia() -> Option<GpuData> {
         mem_used_mb: num(3),
         mem_total_mb: num(4),
         freq_mhz: num(5).map(|v| v as u64),
+        asleep: false,
     })
 }
 
@@ -152,6 +217,7 @@ fn read_amd() -> Option<GpuData> {
             mem_used_mb: mem_used,
             mem_total_mb: mem_total,
             freq_mhz: freq,
+            asleep: false,
         });
     }
     None
@@ -175,6 +241,7 @@ fn read_intel() -> Option<GpuData> {
             mem_used_mb: None,
             mem_total_mb: None,
             freq_mhz: freq,
+            asleep: false,
         });
     }
     None
@@ -216,6 +283,15 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, _is_detailed: bool) {
         centered_note(f, area, "no GPU detected", theme);
         return;
     };
+    if gpu.asleep {
+        centered_note(
+            f,
+            area,
+            &format!("{} · asleep (power saving)", gpu.name),
+            theme,
+        );
+        return;
+    }
 
     let Some(util) = gpu.util_pct else {
         let freq = gpu
@@ -262,9 +338,11 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, _is_detailed: bool) {
 
     let hist = HISTORY.lock().unwrap().recent(1000);
     f.render_widget(
-        BlockGraph::new(&hist)
-            .max(100.0)
-            .colors(theme.accent, theme.yellow, theme.red),
+        BlockGraph::new(&hist).pending(theme.dim).max(100.0).colors(
+            theme.accent,
+            theme.yellow,
+            theme.red,
+        ),
         chunks[1],
     );
 
@@ -287,5 +365,17 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, _is_detailed: bool) {
             ])),
             chunks[2],
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn idle_gpu_is_polled_rarely_so_it_can_suspend() {
+        assert_eq!(nvidia_interval(Some(35.0)), TTL);
+        assert!(nvidia_interval(Some(0.0)) > Duration::from_secs(5));
+        assert!(nvidia_interval(None) > Duration::from_secs(5));
     }
 }

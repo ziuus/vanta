@@ -151,6 +151,25 @@ impl Theme {
         }
     }
 
+    /// Night variant: every colour pulled toward the background so a screen
+    /// left on in a dark room glows less. `bg` itself is unchanged.
+    pub fn dimmed(&self) -> Self {
+        const FG: f32 = 0.45;
+        const QUIET: f32 = 0.25;
+        let d = |c: Color, t: f32| blend(c, self.bg, t);
+        Self {
+            bg: self.bg,
+            accent: d(self.accent, FG),
+            secondary: d(self.secondary, FG),
+            surface: d(self.surface, QUIET),
+            text: d(self.text, FG),
+            dim: d(self.dim, QUIET),
+            green: d(self.green, FG),
+            yellow: d(self.yellow, FG),
+            red: d(self.red, FG),
+        }
+    }
+
     /// Name that follows `current` in the cycle order.
     pub fn next_name(current: &str) -> String {
         let names = theme_names();

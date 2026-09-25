@@ -59,6 +59,8 @@ pub struct BlockGraph<'a> {
     color2_warn: Option<Color>,
     color2_crit: Option<Color>,
     mirrored: bool,
+    /// Colour of the dotted baseline drawn where no samples exist yet.
+    pending: Option<Color>,
 }
 
 impl<'a> BlockGraph<'a> {
@@ -75,6 +77,43 @@ impl<'a> BlockGraph<'a> {
             color2_warn: None,
             color2_crit: None,
             mirrored: false,
+            pending: None,
+        }
+    }
+
+    /// Draw a dim dotted baseline across the columns that have no samples
+    /// yet, so a freshly started graph reads as "collecting" rather than as
+    /// an empty or broken panel.
+    pub fn pending(mut self, color: Color) -> Self {
+        self.pending = Some(color);
+        self
+    }
+
+    fn render_pending(&self, area: Rect, buf: &mut Buffer, color: Color) {
+        let cols = area.width as usize;
+        let n = self.data.len().max(self.data2.map_or(0, <[f64]>::len));
+        let empty = cols.saturating_sub(n.div_ceil(self.subcols()));
+        let centred = self.mirrored || self.data2.is_some();
+        let y = if centred {
+            area.top() + area.height / 2
+        } else {
+            area.bottom() - 1
+        };
+        for x in 0..empty as u16 {
+            if let Some(cell) = buf.cell_mut((area.left() + x, y)) {
+                if cell.symbol() == " " {
+                    cell.set_char('┈');
+                    cell.set_style(Style::default().fg(color));
+                }
+            }
+        }
+    }
+
+    /// Samples per terminal column in the active style.
+    fn subcols(&self) -> usize {
+        match GRAPH_STYLE.load(Ordering::Relaxed) % STYLE_COUNT {
+            1 => 2,
+            _ => 1,
         }
     }
 
@@ -399,6 +438,9 @@ impl Widget for BlockGraph<'_> {
             1 => self.render_braille(area, buf),
             _ => self.render_blocks(area, buf),
         }
+        if let Some(c) = self.pending {
+            self.render_pending(area, buf, c);
+        }
     }
 }
 
@@ -413,6 +455,23 @@ mod tests {
             Color::Rgb(255, 255, 0),
             Color::Rgb(255, 0, 0),
         )
+    }
+
+    #[test]
+    fn pending_baseline_fills_only_columns_without_samples() {
+        let data = [100.0, 100.0];
+        let area = Rect::new(0, 0, 10, 3);
+        let mut buf = Buffer::empty(area);
+        BlockGraph::new(&data)
+            .pending(Color::Rgb(9, 9, 9))
+            .render(area, &mut buf);
+        let bottom: String = (0..10).map(|x| buf[(x, 2)].symbol().to_string()).collect();
+        assert!(bottom.starts_with("┈┈┈┈┈┈┈┈"), "{bottom}");
+        assert!(!bottom.ends_with('┈'), "{bottom}");
+        // Without the option nothing is drawn in the gap.
+        let mut buf = Buffer::empty(area);
+        BlockGraph::new(&data).render(area, &mut buf);
+        assert_eq!(buf[(0, 2)].symbol(), " ");
     }
 
     #[test]

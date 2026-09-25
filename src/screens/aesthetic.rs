@@ -129,7 +129,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
         Scene::Rain => rain(f, stage, app, theme, t),
         Scene::Orbit => orbit(f, drift(stage, 3, 1, t), app, theme),
         Scene::Studio => studio(f, drift(stage, 3, 1, t), app, theme),
-        Scene::Gallery => gallery(f, stage, app, theme),
+        Scene::Gallery => gallery(f, stage, app, theme, t),
     }
     if app.panel_states.pinned_media_input_active {
         f.render_widget(Clear, footer);
@@ -313,7 +313,7 @@ fn studio(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     music_viz::render(f, viz, theme, app.frame);
 }
 
-fn gallery(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
+fn gallery(f: &mut Frame, area: Rect, app: &App, theme: &Theme, t: u64) {
     pinned_media::render(f, area, theme, &app.config.ui.pinned_media_path, app.frame);
     let time = if app.config.ui.clock_24h {
         chrono::Local::now().format(" %H:%M ").to_string()
@@ -329,7 +329,13 @@ fn gallery(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                 .bg(theme.bg)
                 .add_modifier(Modifier::BOLD),
         )),
-        Rect::new(area.x + area.width.saturating_sub(w + 1), area.y, w, 1),
+        // Wanders along the top-right corner like the other scenes' clocks.
+        Rect::new(
+            area.x + area.width.saturating_sub(w + 1 + tri(t, 6)),
+            area.y + tri(t / 5, 2).min(area.height.saturating_sub(1)),
+            w.min(area.width),
+            1,
+        ),
     );
 }
 

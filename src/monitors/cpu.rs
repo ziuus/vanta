@@ -326,6 +326,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, is_detailed: bool) {
     // Let's assume the user has braille style selected, or block style works too.
     f.render_widget(
         BlockGraph::new(&hist_usage)
+            .pending(theme.dim)
             .max(100.0)
             .mirrored(true)
             .colors(theme.accent, theme.yellow, theme.red),

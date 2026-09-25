@@ -23,6 +23,7 @@ pub enum SettingType {
     ClockFont,
     ClockStyle,
     Theme,
+    NightHours,
     Transparent,
     GaugeStyle,
     GraphStyle,
@@ -52,6 +53,7 @@ pub enum SettingType {
 pub const SETTINGS_ITEMS: &[(SettingType, &str)] = &[
     (SettingType::DashboardPreset, "Dashboard Layout"),
     (SettingType::Theme, "Theme"),
+    (SettingType::NightHours, "Night Dimming"),
     (SettingType::Transparent, "Transparent Background"),
     (SettingType::GaugeStyle, "Gauge Style"),
     (SettingType::GraphStyle, "Graph Style"),
@@ -116,6 +118,10 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
         let val_str = match stype {
             SettingType::DashboardPreset => app.config.dashboard.preset.clone(),
             SettingType::Theme => app.config.ui.theme.clone(),
+            SettingType::NightHours => match app.config.ui.night_hours.trim() {
+                "" => "off".to_string(),
+                h => h.to_string(),
+            },
             SettingType::Transparent => {
                 let c = app
                     .config
@@ -327,6 +333,17 @@ fn change_setting(app: &mut App, forward: bool) {
         }
         SettingType::Theme => {
             app.cycle_theme();
+        }
+        SettingType::NightHours => {
+            let presets = crate::config::NIGHT_PRESETS;
+            let n = presets.len();
+            let pos = presets
+                .iter()
+                .position(|&x| x == app.config.ui.night_hours.trim())
+                .unwrap_or(0);
+            let next = (if forward { pos + 1 } else { pos + n - 1 }) % n;
+            app.config.ui.night_hours = presets[next].to_string();
+            app.night = None;
         }
         SettingType::Transparent => {
             let current = app

@@ -136,9 +136,11 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, is_detailed: bool) {
 
     let hist = HISTORY.lock().unwrap().recent(1000);
     f.render_widget(
-        BlockGraph::new(&hist)
-            .max(100.0)
-            .colors(theme.secondary, theme.yellow, theme.red),
+        BlockGraph::new(&hist).pending(theme.dim).max(100.0).colors(
+            theme.secondary,
+            theme.yellow,
+            theme.red,
+        ),
         chunks[2],
     );
 

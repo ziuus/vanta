@@ -271,11 +271,10 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, _is_detailed: bool) {
                     let peak = series.iter().copied().fold(1.0f64, f64::max);
                     let want = series.len().saturating_sub(rows[1].width as usize);
                     f.render_widget(
-                        BlockGraph::new(&series[want..]).max(peak).colors(
-                            theme.secondary,
-                            theme.secondary,
-                            theme.secondary,
-                        ),
+                        BlockGraph::new(&series[want..])
+                            .pending(theme.dim)
+                            .max(peak)
+                            .colors(theme.secondary, theme.secondary, theme.secondary),
                         rows[1],
                     );
                 }
