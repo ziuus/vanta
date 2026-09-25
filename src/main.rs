@@ -26,7 +26,8 @@ fn main() -> io::Result<()> {
     log::info!(target: "core", "Vanta started (v{})", env!("CARGO_PKG_VERSION"));
     use clap::Parser;
     let cli_args = cli::Cli::parse();
-    if cli::handle_cli(cli_args) {
+    let run_mode = cli::handle_cli(cli_args);
+    if let cli::RunMode::Exit = run_mode {
         return Ok(());
     }
 
@@ -35,6 +36,7 @@ fn main() -> io::Result<()> {
         std::process::exit(1);
     }
 
+    let is_first_run = !std::path::Path::new(&vanta::config::config_path()).exists();
     let config = Config::load();
 
     // Restore the terminal on panic so a bug never leaves the shell in raw mode.
@@ -52,6 +54,15 @@ fn main() -> io::Result<()> {
     terminal.hide_cursor()?;
 
     let mut app = App::new(config);
+    if let cli::RunMode::Config = run_mode {
+        app.show_settings = true;
+    }
+    if let cli::RunMode::Setup = run_mode {
+        app.show_settings = true;
+    }
+    if is_first_run {
+        app.show_settings = true;
+    }
     app.ext_manager.register(
         Box::new(vanta::extension::template::TemplateExtension),
         app.config.extensions.as_ref(),

@@ -9,7 +9,11 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 /// Redraw rate when nothing on screen is animating. Fast enough for the
 /// clock's seconds and fresh sampler data; slow enough to cost ~nothing.
-pub const IDLE_FPS: u32 = 2;
+pub static IDLE_FPS: AtomicU32 = AtomicU32::new(2);
+
+pub fn set_idle_fps(fps: u32) {
+    IDLE_FPS.store(fps, Ordering::Relaxed);
+}
 
 static REQUESTED: AtomicU32 = AtomicU32::new(0);
 
@@ -29,7 +33,7 @@ pub fn request_full() {
 pub fn take(max_fps: u32) -> u32 {
     REQUESTED
         .swap(0, Ordering::Relaxed)
-        .clamp(IDLE_FPS, max_fps.max(IDLE_FPS))
+        .clamp(IDLE_FPS.load(Ordering::Relaxed), max_fps.max(IDLE_FPS.load(Ordering::Relaxed)))
 }
 
 #[cfg(test)]
@@ -39,12 +43,12 @@ mod tests {
     #[test]
     fn idle_when_nothing_requested_and_full_when_requested() {
         let _ = take(60);
-        assert_eq!(take(60), IDLE_FPS);
+        assert_eq!(take(60), IDLE_FPS.load(Ordering::Relaxed));
         request(10);
         request(4);
         assert_eq!(take(60), 10);
         request_full();
         assert_eq!(take(60), 60);
-        assert_eq!(take(60), IDLE_FPS);
+        assert_eq!(take(60), IDLE_FPS.load(Ordering::Relaxed));
     }
 }

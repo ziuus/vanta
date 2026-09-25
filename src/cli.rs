@@ -36,6 +36,10 @@ pub enum Commands {
     },
     /// Interactive menu installer to browse, install, and manage extensions
     Menu,
+    /// Open the interactive configuration menu
+    Config,
+    /// Open the initial setup wizard
+    Setup,
     /// Search for available extensions in the community registry
     Search { query: Option<String> },
     /// Install an extension from the registry (launches menu if no ID given)
@@ -80,7 +84,15 @@ fn get_extensions_dir() -> PathBuf {
     dir
 }
 
-pub fn handle_cli(cli: Cli) -> bool {
+
+pub enum RunMode {
+    Exit,
+    Normal,
+    Config,
+    Setup,
+}
+
+pub fn handle_cli(cli: Cli) -> RunMode {
     if let Some(cmd) = cli.command {
         match cmd {
             Commands::Browse {
@@ -93,6 +105,8 @@ pub fn handle_cli(cli: Cli) -> bool {
                     browse(filter);
                 }
             }
+            Commands::Config => return RunMode::Config,
+            Commands::Setup => return RunMode::Setup,
             Commands::Menu => {
                 let _ = crate::cli_menu::run_menu_installer();
             }
@@ -110,9 +124,9 @@ pub fn handle_cli(cli: Cli) -> bool {
             Commands::Remove { id } => remove(id),
             Commands::Link { path } => link(path),
         }
-        return true;
+        return RunMode::Exit;
     }
-    false
+    RunMode::Normal
 }
 
 fn fetch_registry() -> Result<Registry, Box<dyn std::error::Error>> {

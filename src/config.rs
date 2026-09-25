@@ -120,9 +120,22 @@ impl Default for DashboardConfig {
     }
 }
 
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PerformanceMode {
+    VeryLight,
+    Light,
+    #[default]
+    Normal,
+    High,
+    VeryHigh,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct UiConfig {
+    pub performance_mode: PerformanceMode,
     /// Seconds between data samples (CPU, memory, processes, ...).
     pub refresh_rate: f64,
     /// Render frames per second. Animations (visualizer, matrix, donut) run at this rate.
@@ -238,6 +251,7 @@ fn default_motion_mode() -> String {
 impl Default for UiConfig {
     fn default() -> Self {
         Self {
+            performance_mode: PerformanceMode::Normal,
             refresh_rate: 0.5,
             fps: 30,
             theme: "dark".to_string(),

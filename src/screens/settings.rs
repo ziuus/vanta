@@ -32,6 +32,7 @@ pub enum SettingType {
     MotionMode,
     MotionSpeed,
     Visualizer,
+    PerformanceMode,
     RefreshRate,
     Fps,
     Clock24h,
@@ -64,6 +65,7 @@ pub const SETTINGS_ITEMS: &[(SettingType, &str)] = &[
     (SettingType::Visualizer, "Visualizer"),
     (SettingType::ClockFont, "Clock Font"),
     (SettingType::ClockStyle, "Clock Style"),
+    (SettingType::PerformanceMode, "Performance Profile"),
     (SettingType::RefreshRate, "Refresh Rate (s)"),
     (SettingType::Fps, "FPS"),
     (SettingType::Clock24h, "24h Clock"),
@@ -149,6 +151,15 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
             SettingType::Visualizer => app.config.ui.visualizer.clone(),
             SettingType::ClockFont => app.config.ui.clock_font.clone(),
             SettingType::ClockStyle => app.config.ui.clock_style.clone(),
+            SettingType::PerformanceMode => {
+                match app.config.ui.performance_mode {
+                    crate::config::PerformanceMode::VeryLight => "Very Light".to_string(),
+                    crate::config::PerformanceMode::Light => "Light".to_string(),
+                    crate::config::PerformanceMode::Normal => "Normal".to_string(),
+                    crate::config::PerformanceMode::High => "High".to_string(),
+                    crate::config::PerformanceMode::VeryHigh => "Very High".to_string(),
+                }
+            }
             SettingType::RefreshRate => format!("{:.1}", app.config.ui.refresh_rate),
             SettingType::Fps => app.config.ui.fps.to_string(),
             SettingType::Clock24h => {
@@ -398,6 +409,23 @@ fn change_setting(app: &mut App, forward: bool) {
         SettingType::Visualizer => {
             crate::widgets::music_viz::cycle_style();
             app.config.ui.visualizer = crate::widgets::music_viz::style_name().to_string();
+        }
+        SettingType::PerformanceMode => {
+            let modes = [
+                crate::config::PerformanceMode::VeryLight,
+                crate::config::PerformanceMode::Light,
+                crate::config::PerformanceMode::Normal,
+                crate::config::PerformanceMode::High,
+                crate::config::PerformanceMode::VeryHigh,
+            ];
+            let pos = modes.iter().position(|x| x == &app.config.ui.performance_mode).unwrap_or(2);
+            let next = if forward {
+                modes[(pos + 1) % modes.len()].clone()
+            } else {
+                modes[(pos + modes.len() - 1) % modes.len()].clone()
+            };
+            app.config.ui.performance_mode = next;
+            app.apply_performance_mode(&app.config.ui.performance_mode.clone());
         }
         SettingType::RefreshRate => {
             app.adjust_refresh(forward);

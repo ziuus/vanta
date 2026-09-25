@@ -200,6 +200,10 @@ You can easily load custom themes dynamically without recompiling Vanta.
 
 ## 🔌 Extensions & Plugins
 
+- **Configuration:** Run `vanta config` to open the interactive settings editor.
+- **First-time Setup:** The same setup menu runs automatically when starting Vanta for the first time.
+
+
 Vanta is fully extensible via WebAssembly (WASM). You can install community widgets, or build your own!
 
 - **Install via Menu:** Run `vanta menu` to browse and install extensions interactively.
