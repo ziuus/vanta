@@ -186,6 +186,16 @@ pub fn audio_active() -> bool {
     CAVA_RUNNING.load(Ordering::Relaxed) && SILENCE_FRAMES.lock().is_ok_and(|sf| *sf <= 8)
 }
 
+/// Overall loudness right now, 0..1 (mean of cava's bars); 0 when silent
+/// or when cava isn't running.
+pub fn energy() -> f32 {
+    if !audio_active() {
+        return 0.0;
+    }
+    let bars = read_cava_bars();
+    (bars.iter().sum::<f32>() / bars.len().max(1) as f32).clamp(0.0, 1.0)
+}
+
 /// Terminate the cava we spawned. Called on shutdown.
 pub fn shutdown() {
     CAVA_RUNNING.store(false, Ordering::Relaxed);

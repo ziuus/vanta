@@ -22,8 +22,12 @@ pub enum Scene {
     /// Giant clock over a calm audio horizon. Static when silent: the
     /// cheapest scene, and the default.
     Horizon,
+    /// A big retro flip clock whose minute card folds over on the minute.
+    Flip,
     /// Matrix rain with the clock floating in the middle.
     Rain,
+    /// A drifting contour map; load speeds it up, music ripples it.
+    Topo,
     /// The spinning donut beside the time, weather and track.
     Orbit,
     /// Now playing: art, track and a big visualizer. Only while music plays.
@@ -36,6 +40,8 @@ impl Scene {
     fn label(self) -> &'static str {
         match self {
             Scene::Horizon => "horizon",
+            Scene::Flip => "flip",
+            Scene::Topo => "topography",
             Scene::Rain => "rain",
             Scene::Orbit => "orbit",
             Scene::Studio => "studio",
@@ -91,10 +97,11 @@ impl AmbientState {
 /// Scenes available right now, in rotation order.
 pub fn scenes(app: &App) -> Vec<Scene> {
     let cfg = &app.config;
-    let mut v = vec![Scene::Horizon];
+    let mut v = vec![Scene::Horizon, Scene::Flip];
     if cfg.widgets.matrix {
         v.push(Scene::Rain);
     }
+    v.push(Scene::Topo);
     if cfg.widgets.video {
         v.push(Scene::Orbit);
     }
@@ -126,7 +133,9 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
     let t = drift_step();
     match scene {
         Scene::Horizon => horizon(f, drift(stage, 3, 0, t), app, theme, t),
+        Scene::Flip => flip(f, drift(stage, 3, 1, t), app, theme),
         Scene::Rain => rain(f, stage, app, theme, t),
+        Scene::Topo => topo(f, stage, app, theme, t),
         Scene::Orbit => orbit(f, drift(stage, 3, 1, t), app, theme),
         Scene::Studio => studio(f, drift(stage, 3, 1, t), app, theme),
         Scene::Gallery => gallery(f, stage, app, theme, t),
@@ -243,6 +252,55 @@ fn horizon(f: &mut Frame, area: Rect, app: &App, theme: &Theme, t: u64) {
     if app.config.widgets.music_viz {
         music_viz::render(f, viz, theme, app.frame);
     }
+}
+
+fn flip(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
+    let transparent = app
+        .config
+        .ui
+        .transparent
+        .unwrap_or_else(|| !theme.is_light());
+    let note = upnext::next_note();
+    crate::widgets::flip_clock::render(
+        f,
+        area,
+        theme,
+        app.config.ui.clock_24h,
+        transparent,
+        note.as_deref(),
+    );
+}
+
+/// Full-bleed map with a small legend that wanders along the bottom-left
+/// corner (the map itself is always moving, so only the legend needs it).
+fn topo(f: &mut Frame, area: Rect, app: &App, theme: &Theme, t: u64) {
+    crate::widgets::topo::render(
+        f,
+        area,
+        theme,
+        app.summary.cpu_pct,
+        app.config.ui.motion_enabled,
+        app.night == Some(true),
+    );
+    let time = if app.config.ui.clock_24h {
+        chrono::Local::now().format("%H:%M").to_string()
+    } else {
+        chrono::Local::now().format("%-I:%M %P").to_string()
+    };
+    let mut legend = format!(" {}  ·  cpu {:.0}% ", time, app.summary.cpu_pct);
+    if crate::widgets::topo::reacting_to_music() {
+        legend.push_str("·  ♪ ");
+    }
+    let w = (legend.chars().count() as u16).min(area.width);
+    let (x, y) = (
+        area.x + 1 + tri(t, 6).min(area.width.saturating_sub(w + 1)),
+        area.bottom().saturating_sub(3 + tri(t / 5, 2)),
+    );
+    f.render_widget(Clear, Rect::new(x, y, w, 1));
+    f.render_widget(
+        Paragraph::new(Span::styled(legend, Style::default().fg(theme.dim))),
+        Rect::new(x, y, w, 1),
+    );
 }
 
 fn rain(f: &mut Frame, area: Rect, app: &App, theme: &Theme, t: u64) {
