@@ -198,6 +198,15 @@ You can easily load custom themes dynamically without recompiling Vanta.
    ```
 4. Press `T` in Vanta to cycle to it, or set it explicitly in your `config.toml` (`theme = "cyberpunk"`).
 
+## 🔌 Extensions & Plugins
+
+Vanta is fully extensible via WebAssembly (WASM). You can install community widgets, or build your own!
+
+- **Install via Menu:** Run `vanta menu` to browse and install extensions interactively.
+- **Local Dev:** Use `vanta link /path/to/my_widget.wasm` to instantly test your custom plugin locally without publishing it.
+
+Read more about building plugins at the [vanta-integrations](https://github.com/ziuus/vanta-integrations) repository.
+
 ## Configuration & Customization
 
 Vanta is highly configurable via `~/.config/vanta/config.toml`. You can:
