@@ -1,10 +1,9 @@
-use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
+use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Paragraph};
 use ratatui::Frame;
 
-use crate::monitors::{cpu, gpu, system_info};
 use crate::theme::Theme;
 use crate::widgets::meter;
 
@@ -19,9 +18,6 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
     if inner.width < 10 {
         return;
     }
-
-    let cpu_snap = cpu::snapshot();
-    let gpu_snap = gpu::snapshot();
 
     // get temp and fan
     let cpu_temp = crate::monitors::cpu::snapshot().max_temp();

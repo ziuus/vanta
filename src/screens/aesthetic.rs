@@ -436,6 +436,19 @@ fn render_footer(f: &mut Frame, area: Rect, theme: &Theme, list: &[Scene], idx: 
     );
 }
 
+
+fn starfield(f: &mut Frame, area: Rect, _app: &App, theme: &Theme) {
+    crate::widgets::starfield::render(f, area, theme);
+}
+
+fn life(f: &mut Frame, area: Rect, _app: &App, theme: &Theme) {
+    crate::widgets::life::render(f, area, theme);
+}
+
+fn snow(f: &mut Frame, area: Rect, _app: &App, theme: &Theme) {
+    crate::widgets::snow::render(f, area, theme);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -473,14 +486,5 @@ mod tests {
     }
 }
 
-fn starfield(f: &mut Frame, area: Rect, _app: &App, theme: &Theme) {
-    crate::widgets::starfield::render(f, area, theme);
-}
 
-fn life(f: &mut Frame, area: Rect, _app: &App, theme: &Theme) {
-    crate::widgets::life::render(f, area, theme);
-}
 
-fn snow(f: &mut Frame, area: Rect, _app: &App, theme: &Theme) {
-    crate::widgets::snow::render(f, area, theme);
-}

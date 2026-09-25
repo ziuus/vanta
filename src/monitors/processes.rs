@@ -233,7 +233,7 @@ pub fn sample(total_mem_bytes: u64) {
         };
         let cmdline = match prev.get(&pid) {
             Some(p) if !p.cmdline.is_empty() => p.cmdline.to_string(),
-            _ => read_cmdline(pid).into(),
+            _ => read_cmdline(pid),
         };
         next_prev.insert(
             pid,
@@ -246,7 +246,7 @@ pub fn sample(total_mem_bytes: u64) {
         );
         procs.push(ProcInfo {
             cmdline: cmdline.into(),
-            name: name.into(),
+            name,
             pid,
             ppid,
             mem_kb,

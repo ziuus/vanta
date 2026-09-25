@@ -1,4 +1,4 @@
-use chrono::{TimeZone, Utc};
+use chrono::Utc;
 use chrono_tz::Tz;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
@@ -43,22 +43,21 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, timezones: &[String], h2
             break;
         }
 
-        let mut time_str = String::new();
         let mut label = tz_str.as_str();
 
-        if let Ok(tz) = tz_str.parse::<Tz>() {
+        let time_str = if let Ok(tz) = tz_str.parse::<Tz>() {
             let local_time = now.with_timezone(&tz);
-            time_str = if h24 {
+            if let Some(city) = tz_str.split('/').next_back() {
+                label = city;
+            }
+            if h24 {
                 local_time.format("%H:%M").to_string()
             } else {
                 local_time.format("%I:%M %p").to_string()
-            };
-            if let Some(city) = tz_str.split('/').last() {
-                label = city;
             }
         } else {
-            time_str = "Invalid TZ".into();
-        }
+            "Invalid TZ".into()
+        };
 
         // Replace underscores with spaces in label
         let display_label = label.replace('_', " ");

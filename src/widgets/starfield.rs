@@ -3,7 +3,7 @@ use std::time::Instant;
 
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Style};
+use ratatui::style::Style;
 use ratatui::widgets::Widget;
 use ratatui::Frame;
 
@@ -75,7 +75,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
     let dt = now.duration_since(st.last_tick).as_secs_f32().min(0.1);
     st.last_tick = now;
 
-    let cpu = crate::monitors::cpu::snapshot().usage as f32 / 100.0;
+    let cpu = crate::monitors::cpu::snapshot().usage / 100.0;
     let music = crate::widgets::music_viz::energy();
     let target_speed = 0.05 + (cpu * 0.5) + (music * 1.5);
 
