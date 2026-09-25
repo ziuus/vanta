@@ -357,6 +357,9 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, _tick: u64) {
         return;
     }
 
+    let style = VIZ_STYLE.load(Ordering::Relaxed) % STYLE_COUNT;
+    let logical_cols = if style == 4 { term_cols * 2 } else { term_cols };
+
     // Always try to keep cava alive — no playerctl gate
     ensure_cava();
 
@@ -385,10 +388,10 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, _tick: u64) {
     // When silent, synthesize a gentle "breathing" wave so the widget stays
     // alive-looking instead of showing dead/blank bars.
     let target: Vec<f32> = if is_silent {
-        idle_wave(term_cols, _tick)
+        idle_wave(logical_cols, _tick)
     } else {
         crate::anim::request_full();
-        resample_max(&raw, term_cols)
+        resample_max(&raw, logical_cols)
     };
     // Ease toward the target so bars flow between frames instead of snapping.
     // Applied across the silent boundary too, so fading in/out glides.
@@ -411,15 +414,14 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, _tick: u64) {
         *peak
     };
 
-    let style = VIZ_STYLE.load(Ordering::Relaxed) % STYLE_COUNT;
     let dim = is_silent;
 
     let lines = match style {
-        1 => draw_mirror(&heights, norm_peak, term_cols, term_rows, theme, dim),
-        2 => draw_wave(&heights, norm_peak, term_cols, term_rows, theme, dim),
-        3 => draw_peaks(&heights, norm_peak, term_cols, term_rows, theme, dim),
-        4 => draw_braille(&heights, norm_peak, term_cols, term_rows, theme, dim),
-        _ => draw_bars(&heights, norm_peak, term_cols, term_rows, theme, dim),
+        1 => draw_mirror(&heights, norm_peak, logical_cols, term_rows, theme, dim),
+        2 => draw_wave(&heights, norm_peak, logical_cols, term_rows, theme, dim),
+        3 => draw_peaks(&heights, norm_peak, logical_cols, term_rows, theme, dim),
+        4 => draw_braille(&heights, norm_peak, logical_cols, term_rows, theme, dim),
+        _ => draw_bars(&heights, norm_peak, logical_cols, term_rows, theme, dim),
     };
 
     f.render_widget(Paragraph::new(lines), area);
