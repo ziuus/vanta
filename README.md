@@ -235,6 +235,9 @@ and never blocks on I/O.
 | Media | MPRIS over D-Bus (`dbus` crate) |
 | Audio viz | `cava` raw output, idle wave fallback |
 
+## 🤖 AI Agent Integration
+If you use an AI assistant like Cursor, Copilot, or Claude to configure your system, you can feed it our [Configuration Skill Prompt](VANTA_CONFIG_SKILL.md) to instantly teach it how to design Vanta layouts and customize your `config.toml`!
+
 ## Contributing
 
 Issues and PRs welcome — bug reports, new themes, new panels, or a GPU vendor
