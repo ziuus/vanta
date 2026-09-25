@@ -311,3 +311,4 @@ mod tests {
         assert!(s.mem_pct > 0.0, "mem_pct still Default after 1s");
     }
 }
+pub mod github;

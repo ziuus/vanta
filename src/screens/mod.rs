@@ -185,6 +185,7 @@ pub fn render_panel(f: &mut Frame, area: Rect, app: &crate::app::App, id: crate:
         ),
         P::WriterNotes => {}
         P::Files => {}
+        P::GitHub | P::WorldClocks => {}
         P::Processes => {
             let ps = &app.panel_states;
             crate::monitors::processes::render(

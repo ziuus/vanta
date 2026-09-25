@@ -34,7 +34,8 @@ impl CpuSnapshot {
     }
 }
 
-static SNAP: LazyLock<Mutex<std::sync::Arc<CpuSnapshot>>> = LazyLock::new(|| Mutex::new(std::sync::Arc::new(CpuSnapshot::default())));
+static SNAP: LazyLock<Mutex<std::sync::Arc<CpuSnapshot>>> =
+    LazyLock::new(|| Mutex::new(std::sync::Arc::new(CpuSnapshot::default())));
 static HISTORY_USAGE: LazyLock<Mutex<History<240>>> = LazyLock::new(|| Mutex::new(History::new()));
 static HISTORY_USER: LazyLock<Mutex<History<240>>> = LazyLock::new(|| Mutex::new(History::new()));
 static HISTORY_SYS: LazyLock<Mutex<History<240>>> = LazyLock::new(|| Mutex::new(History::new()));

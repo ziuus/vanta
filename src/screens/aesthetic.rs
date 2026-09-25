@@ -34,6 +34,9 @@ pub enum Scene {
     Studio,
     /// The pinned image with a small clock. Only when an image is pinned.
     Gallery,
+    Starfield,
+    Life,
+    Snow,
 }
 
 impl Scene {
@@ -46,6 +49,9 @@ impl Scene {
             Scene::Orbit => "orbit",
             Scene::Studio => "studio",
             Scene::Gallery => "gallery",
+            Scene::Starfield => "starfield",
+            Scene::Life => "life",
+            Scene::Snow => "snow",
         }
     }
 }
@@ -102,6 +108,9 @@ pub fn scenes(app: &App) -> Vec<Scene> {
         v.push(Scene::Rain);
     }
     v.push(Scene::Topo);
+    v.push(Scene::Starfield);
+    v.push(Scene::Life);
+    v.push(Scene::Snow);
     if cfg.widgets.video {
         v.push(Scene::Orbit);
     }
@@ -139,6 +148,9 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
         Scene::Orbit => orbit(f, drift(stage, 3, 1, t), app, theme),
         Scene::Studio => studio(f, drift(stage, 3, 1, t), app, theme),
         Scene::Gallery => gallery(f, stage, app, theme, t),
+        Scene::Starfield => starfield(f, stage, app, theme),
+        Scene::Life => life(f, stage, app, theme),
+        Scene::Snow => snow(f, stage, app, theme),
     }
     if app.panel_states.pinned_media_input_active {
         f.render_widget(Clear, footer);
@@ -459,4 +471,16 @@ mod tests {
         // Tiny areas don't drift (and don't underflow).
         assert_eq!(drift(Rect::new(0, 0, 7, 7), 3, 1, 5), Rect::new(0, 0, 7, 7));
     }
+}
+
+fn starfield(f: &mut Frame, area: Rect, _app: &App, theme: &Theme) {
+    crate::widgets::starfield::render(f, area, theme);
+}
+
+fn life(f: &mut Frame, area: Rect, _app: &App, theme: &Theme) {
+    crate::widgets::life::render(f, area, theme);
+}
+
+fn snow(f: &mut Frame, area: Rect, _app: &App, theme: &Theme) {
+    crate::widgets::snow::render(f, area, theme);
 }
