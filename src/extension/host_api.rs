@@ -351,8 +351,8 @@ fn dispatch(topic: &str, args: &Value) -> Option<Value> {
                     .map(|p| json!({
                         "pid": p.pid,
                         "ppid": p.ppid,
-                        "name": p.name,
-                        "cmdline": p.cmdline,
+                        "name": p.name.as_ref(),
+                        "cmdline": p.cmdline.as_ref(),
                         "cpu_pct": p.cpu_pct,
                         "mem_kb": p.mem_kb,
                         "state": p.state.to_string(),
@@ -385,7 +385,7 @@ fn dispatch(topic: &str, args: &Value) -> Option<Value> {
                 "total_write_bps": total_write,
                 "processes": procs.iter().map(|p| json!({
                     "pid": p.pid,
-                    "name": p.name,
+                    "name": p.name.as_ref(),
                     "read_bps": p.read_bps,
                     "write_bps": p.write_bps,
                     "total_bps": p.read_bps + p.write_bps,
@@ -439,8 +439,8 @@ fn dispatch(topic: &str, args: &Value) -> Option<Value> {
                 "processes": procs.iter().map(|p| json!({
                     "pid": p.pid,
                     "ppid": p.ppid,
-                    "name": p.name,
-                    "command": p.cmdline,
+                    "name": p.name.as_ref(),
+                    "command": p.cmdline.as_ref(),
                     "state": p.state.to_string(),
                     "threads": p.threads,
                     "uid": p.uid,

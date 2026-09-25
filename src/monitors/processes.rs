@@ -15,8 +15,8 @@ use crate::widgets::meter;
 
 #[derive(Debug, Clone)]
 pub struct ProcInfo {
-    pub name: String,
-    pub cmdline: String,
+    pub name: std::sync::Arc<str>,
+    pub cmdline: std::sync::Arc<str>,
     pub pid: u32,
     pub ppid: u32,
     pub mem_kb: u64,
@@ -33,7 +33,7 @@ struct Prev {
     read: u64,
     write: u64,
     /// argv never changes for a live PID, so read it once.
-    cmdline: String,
+    cmdline: std::sync::Arc<str>,
 }
 
 struct State {
@@ -91,7 +91,7 @@ static PAGE_KB: LazyLock<u64> = LazyLock::new(|| {
 });
 
 struct Stat {
-    name: String,
+    name: std::sync::Arc<str>,
     state: char,
     ppid: u32,
     jiffies: u64,
@@ -113,7 +113,7 @@ fn read_stat(pid: u32) -> Option<Stat> {
         return None;
     }
     Some(Stat {
-        name,
+        name: name.into(),
         state: p[0].chars().next().unwrap_or('?'),
         ppid: p[1].parse().ok()?,
         jiffies: p[11].parse::<u64>().ok()? + p[12].parse::<u64>().ok()?,
@@ -232,8 +232,8 @@ pub fn sample(total_mem_bytes: u64) {
             _ => (0.0, 0.0, 0.0),
         };
         let cmdline = match prev.get(&pid) {
-            Some(p) if !p.cmdline.is_empty() => p.cmdline.clone(),
-            _ => read_cmdline(pid),
+            Some(p) if !p.cmdline.is_empty() => p.cmdline.to_string(),
+            _ => read_cmdline(pid).into(),
         };
         next_prev.insert(
             pid,
@@ -241,12 +241,12 @@ pub fn sample(total_mem_bytes: u64) {
                 jiffies,
                 read,
                 write,
-                cmdline: cmdline.clone(),
+                cmdline: cmdline.clone().into(),
             },
         );
         procs.push(ProcInfo {
-            cmdline,
-            name,
+            cmdline: cmdline.into(),
+            name: name.into(),
             pid,
             ppid,
             mem_kb,
@@ -275,7 +275,7 @@ pub fn name_of(pid: u32) -> Option<String> {
         .snapshot
         .iter()
         .find(|p| p.pid == pid)
-        .map(|p| p.name.clone())
+        .map(|p| p.name.to_string())
 }
 
 /// uid → login name from /etc/passwd, read once.
@@ -655,7 +655,7 @@ pub fn render(
         let name = if tree_mode {
             format!("{}{}", tree_prefix(r), p.name)
         } else {
-            p.name.clone()
+            p.name.to_string()
         };
         let user = meter::ellipsize(&user_name(p.uid), c_usr);
 
@@ -713,9 +713,9 @@ pub fn render(
         }
         if c_cmd > 4 {
             let raw = if p.cmdline.is_empty() {
-                p.name.as_str()
+                p.name.as_ref()
             } else {
-                p.cmdline.as_str()
+                p.cmdline.as_ref()
             };
             let cmd = if compact_cmd && !is_sel {
                 cmd_basename(raw)
@@ -789,9 +789,9 @@ pub fn render(
     let l2 = sel
         .map(|r| {
             let raw = if r.info.cmdline.is_empty() {
-                r.info.name.as_str()
+                r.info.name.as_ref()
             } else {
-                r.info.cmdline.as_str()
+                r.info.cmdline.as_ref()
             };
             Line::from(Span::styled(
                 format!(" {}", meter::ellipsize(raw, w.saturating_sub(2))),

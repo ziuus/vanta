@@ -34,13 +34,13 @@ impl CpuSnapshot {
     }
 }
 
-static SNAP: LazyLock<Mutex<CpuSnapshot>> = LazyLock::new(|| Mutex::new(CpuSnapshot::default()));
+static SNAP: LazyLock<Mutex<std::sync::Arc<CpuSnapshot>>> = LazyLock::new(|| Mutex::new(std::sync::Arc::new(CpuSnapshot::default())));
 static HISTORY_USAGE: LazyLock<Mutex<History<240>>> = LazyLock::new(|| Mutex::new(History::new()));
 static HISTORY_USER: LazyLock<Mutex<History<240>>> = LazyLock::new(|| Mutex::new(History::new()));
 static HISTORY_SYS: LazyLock<Mutex<History<240>>> = LazyLock::new(|| Mutex::new(History::new()));
 static HISTORY_IOWAIT: LazyLock<Mutex<History<240>>> = LazyLock::new(|| Mutex::new(History::new()));
 
-pub fn snapshot() -> CpuSnapshot {
+pub fn snapshot() -> std::sync::Arc<CpuSnapshot> {
     SNAP.lock().unwrap().clone()
 }
 
@@ -108,7 +108,7 @@ pub fn sample(sys: &sysinfo::System) {
     HISTORY_USER.lock().unwrap().push(snap.user_pct as f64);
     HISTORY_SYS.lock().unwrap().push(snap.sys_pct as f64);
     HISTORY_IOWAIT.lock().unwrap().push(snap.iowait_pct as f64);
-    *SNAP.lock().unwrap() = snap;
+    *SNAP.lock().unwrap() = std::sync::Arc::new(snap);
 }
 
 /// Physical core id of each logical CPU (`cpuN/topology/core_id`), read once.
