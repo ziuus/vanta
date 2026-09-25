@@ -29,7 +29,6 @@ export default function RootLayout({
           <div className="font-bold text-2xl tracking-tighter mix-blend-difference">VANTA</div>
           <div className="flex gap-6 text-sm font-medium mix-blend-difference">
             <a href="/" className="hover:opacity-60 transition-opacity">Overview</a>
-            <a href="/pricing" className="hover:opacity-60 transition-opacity">Pricing</a>
             <a href="/blog" className="hover:opacity-60 transition-opacity">Blog</a>
             <a href="https://github.com/ziuus/vanta" className="hover:opacity-60 transition-opacity">GitHub</a>
           </div>
