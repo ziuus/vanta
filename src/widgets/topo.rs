@@ -74,7 +74,7 @@ fn drift_fps(speed: f32) -> u32 {
         .map(|&(l, _, _, s)| l * s.abs())
         .fold(0.0, f32::max)
         * speed;
-    ((dots_per_sec * 1.5).ceil() as u32).clamp(3, 12)
+    ((dots_per_sec * 3.0).ceil() as u32).clamp(15, 30)
 }
 
 /// Fill `field` (w × h, row-major) with the height map at `phase`, plus a
@@ -160,7 +160,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, cpu_pct: f32, motion: bo
         let v = speed(cpu_pct);
         st.phase += v * dt;
         st.ripple += dt * 3.0 * (st.energy > 0.01) as u8 as f32;
-        let fps = if st.energy > 0.02 { 15 } else { drift_fps(v) };
+        let fps = if st.energy > 0.02 { 30 } else { drift_fps(v) };
         // Night: the same drift, just fewer (and dimmer) redraws.
         crate::anim::request(if night { fps.min(4) } else { fps });
     }
@@ -272,7 +272,7 @@ mod tests {
         assert!(speed(90.0) > speed(5.0) * 2.0);
         assert_eq!(speed(500.0), speed(100.0));
         // Idle drift is slow enough for a few fps; heavy load asks for more.
-        assert!(drift_fps(speed(5.0)) <= 4);
+        assert!(drift_fps(speed(5.0)) <= 20);
         assert!(drift_fps(speed(100.0)) > drift_fps(speed(5.0)));
     }
 }

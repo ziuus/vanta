@@ -85,6 +85,8 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
 
     if speed > 0.1 {
         crate::anim::request_full();
+    } else {
+        crate::anim::request(30);
     }
 
     let widget = StarfieldWidget {
