@@ -1,42 +1,81 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { collection, query, where, getDocs } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { use } from "react";
 
-export default async function BlogPost({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = await params;
-  
+interface BlogPost {
+  id: string;
+  title: string;
+  content: string;
+  date: string;
+  author: string;
+}
+
+export default function BlogPost({ params }: { params: Promise<{ slug: string }> }) {
+  const resolvedParams = use(params);
+  const [post, setPost] = useState<BlogPost | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchPost() {
+      try {
+        const q = query(collection(db, "blogs"), where("slug", "==", resolvedParams.slug));
+        const snapshot = await getDocs(q);
+        
+        if (!snapshot.empty) {
+          setPost({ id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as BlogPost);
+        }
+      } catch (error) {
+        console.error("Error fetching post:", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+    
+    fetchPost();
+  }, [resolvedParams.slug]);
+
+  if (loading) {
+    return (
+      <main className="min-h-screen pt-40 px-6 md:px-20 pb-20 bg-[var(--bg-base)] flex items-center justify-center">
+        <div className="text-[var(--text-secondary)] font-mono animate-pulse">Decrypting...</div>
+      </main>
+    );
+  }
+
+  if (!post) {
+    return (
+      <main className="min-h-screen pt-40 px-6 md:px-20 pb-20 bg-[var(--bg-base)] flex flex-col items-center justify-center">
+        <div className="text-[var(--text-secondary)] font-mono mb-6">[ERROR] Entry not found.</div>
+        <Link href="/blog" className="text-accent font-mono uppercase tracking-widest hover:underline">Return to index</Link>
+      </main>
+    );
+  }
+
   return (
-    <main className="min-h-screen pt-32 px-6 md:px-20 pb-20">
-      <div className="max-w-3xl mx-auto">
-        <Link href="/blog" className="inline-flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-black transition-colors mb-12">
-          <ArrowLeft size={16} />
-          Back to Journal
+    <main className="min-h-screen pt-32 px-6 md:px-20 pb-20 bg-[var(--bg-base)]">
+      <article className="max-w-3xl mx-auto">
+        <Link href="/blog" className="inline-flex items-center gap-2 text-[var(--text-secondary)] hover:text-accent font-mono text-sm uppercase tracking-widest mb-12 transition-colors">
+          <ArrowLeft size={16} /> Back
         </Link>
         
-        <p className="text-sm font-medium text-gray-400 mb-4">Sep 25, 2026</p>
-        <h1 className="text-4xl md:text-6xl font-bold tracking-tight mb-8 capitalize leading-tight">
-          {slug.replace(/-/g, " ")}
-        </h1>
-        
-        <div className="prose prose-lg max-w-none text-gray-600 prose-headings:text-black">
-          <p className="text-xl leading-relaxed mb-8">
-            This is a placeholder for the actual blog post content. In a production environment, 
-            this content would be fetched from a headless CMS like Sanity, Contentful, or statically generated from MDX files.
-          </p>
-          <h2 className="text-2xl font-semibold mb-4 mt-12 text-black">The Architecture</h2>
-          <p className="mb-6">
-            When building premium terminal experiences, you have to prioritize framerate and memory consumption above all else. 
-            Vanta leverages the ratatui ecosystem to ensure UI elements are drawn directly to the terminal buffer without unnecessary intermediate representations.
-          </p>
-          <div className="liquid-glass p-8 my-10 border-l-4 border-l-black">
-            <p className="italic text-black font-medium">
-              "Performance isn't a feature; it's the foundation of everything we build."
-            </p>
+        <header className="mb-16">
+          <div className="flex items-center gap-4 font-mono text-sm text-[var(--text-secondary)] mb-6">
+            <span className="text-accent">{post.date}</span>
+            <span>//</span>
+            <span>{post.author}</span>
           </div>
-          <p>
-            By carefully managing the background thread execution and Extism WebAssembly sandboxing, we provide a rich plugin ecosystem that cannot accidentally freeze the main render loop.
-          </p>
+          <h1 className="text-4xl md:text-6xl font-black tracking-tighter text-[var(--text-primary)] leading-tight">{post.title}</h1>
+        </header>
+        
+        <div className="prose prose-invert prose-lg max-w-none prose-p:text-[var(--text-secondary)] prose-headings:text-[var(--text-primary)]">
+          <div dangerouslySetInnerHTML={{ __html: post.content }} />
         </div>
-      </div>
+      </article>
     </main>
   );
 }

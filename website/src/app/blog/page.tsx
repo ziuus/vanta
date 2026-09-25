@@ -1,49 +1,70 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { collection, getDocs, orderBy, query } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 
-const posts = [
-  {
-    title: "Vanta v0.10.38 Released: Performance Unleashed",
-    date: "Sep 25, 2026",
-    excerpt: "The latest release brings custom performance profiles, letting Vanta idle at under 4% CPU usage while maintaining a 60fps render loop when active.",
-    slug: "vanta-v0-10-38-released"
-  },
-  {
-    title: "Building Micro-Extensions with Extism",
-    date: "Sep 20, 2026",
-    excerpt: "How we re-architected Vanta to support completely sandboxed WebAssembly plugins, enabling an ecosystem of custom widgets.",
-    slug: "building-micro-extensions"
-  },
-  {
-    title: "Why We Chose Rust and Ratatui",
-    date: "Sep 15, 2026",
-    excerpt: "Terminal interfaces don't have to be ugly. Read our deep dive into the rendering architecture that powers Vanta's modern aesthetic.",
-    slug: "why-rust-and-ratatui"
-  }
-];
+interface BlogPost {
+  id: string;
+  title: string;
+  excerpt: string;
+  date: string;
+  slug: string;
+}
 
 export default function Blog() {
+  const [posts, setPosts] = useState<BlogPost[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchPosts() {
+      try {
+        const q = query(collection(db, "blogs"), orderBy("date", "desc"));
+        const snapshot = await getDocs(q);
+        const fetchedPosts = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as BlogPost[];
+        setPosts(fetchedPosts);
+      } catch (error) {
+        console.error("Error fetching posts:", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+    
+    fetchPosts();
+  }, []);
+
   return (
-    <main className="min-h-screen pt-32 px-6 md:px-20">
+    <main className="min-h-screen pt-40 px-6 md:px-20 pb-20 bg-[var(--bg-base)]">
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-5xl md:text-7xl font-bold tracking-tighter mb-16">Journal.</h1>
-        
-        <div className="flex flex-col gap-12">
-          {posts.map((post, i) => (
-            <article key={i} className="group cursor-pointer border-b border-black/10 pb-12">
-              <Link href={`/blog/${post.slug}`} className="block">
-                <p className="text-sm font-medium text-gray-400 mb-3">{post.date}</p>
-                <div className="flex justify-between items-center mb-4">
-                  <h2 className="text-3xl font-semibold group-hover:text-gray-600 transition-colors">{post.title}</h2>
-                  <div className="w-10 h-10 rounded-full border border-black/10 flex items-center justify-center opacity-0 -translate-x-4 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300">
-                    <ArrowRight size={16} />
-                  </div>
+        <h1 className="text-5xl md:text-7xl font-black tracking-tighter mb-16 text-[var(--text-primary)]">
+          ENGINEERING <br/><span className="text-[var(--text-secondary)]">JOURNAL.</span>
+        </h1>
+
+        {loading ? (
+          <div className="text-[var(--text-secondary)] font-mono animate-pulse">Loading core logs...</div>
+        ) : posts.length === 0 ? (
+          <div className="text-[var(--text-secondary)] font-mono border border-[var(--border-subtle)] p-8">
+            [INFO] No entries found in the database.
+          </div>
+        ) : (
+          <div className="flex flex-col gap-8">
+            {posts.map((post) => (
+              <Link key={post.id} href={`/blog/${post.slug}`} className="group border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-8 hover:border-[var(--text-primary)] transition-colors">
+                <div className="text-xs font-mono text-accent mb-4">{post.date}</div>
+                <h2 className="text-3xl font-bold mb-4 text-[var(--text-primary)]">{post.title}</h2>
+                <p className="text-[var(--text-secondary)] text-lg mb-8">{post.excerpt}</p>
+                <div className="flex items-center gap-2 font-mono text-sm uppercase tracking-widest text-[var(--text-primary)] group-hover:text-accent transition-colors">
+                  Read Entry <ArrowRight size={16} />
                 </div>
-                <p className="text-lg text-gray-500 max-w-2xl">{post.excerpt}</p>
               </Link>
-            </article>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </main>
   );
