@@ -344,7 +344,6 @@ pub struct App {
 }
 
 impl App {
-    
     pub fn apply_performance_mode(&mut self, mode: &crate::config::PerformanceMode) {
         use crate::config::PerformanceMode::*;
         let (fps, idle_fps, refresh) = match mode {
@@ -357,7 +356,10 @@ impl App {
         self.config.ui.fps = fps;
         self.config.ui.refresh_rate = refresh;
         crate::anim::set_idle_fps(idle_fps);
-        self.sampler_interval.store((refresh * 1000.0) as u64, std::sync::atomic::Ordering::Relaxed);
+        self.sampler_interval.store(
+            (refresh * 1000.0) as u64,
+            std::sync::atomic::Ordering::Relaxed,
+        );
     }
 
     pub fn new(config: Config) -> Self {
@@ -370,12 +372,12 @@ impl App {
         crate::widgets::block_graph::set_style(&config.ui.graph_style);
         let custom_widgets = CustomWidgetManager::start_all(&config.custom_widgets);
         crate::anim::set_idle_fps(match config.ui.performance_mode {
-        crate::config::PerformanceMode::VeryLight | crate::config::PerformanceMode::Light => 1,
-        crate::config::PerformanceMode::Normal => 2,
-        crate::config::PerformanceMode::High => 5,
-        crate::config::PerformanceMode::VeryHigh => 10,
-    });
-    let mut app = Self {
+            crate::config::PerformanceMode::VeryLight | crate::config::PerformanceMode::Light => 1,
+            crate::config::PerformanceMode::Normal => 2,
+            crate::config::PerformanceMode::High => 5,
+            crate::config::PerformanceMode::VeryHigh => 10,
+        });
+        let mut app = Self {
             running: true,
             ext_manager: crate::extension::ExtensionManager::new(),
             theme,

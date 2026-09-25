@@ -84,7 +84,6 @@ fn get_extensions_dir() -> PathBuf {
     dir
 }
 
-
 pub enum RunMode {
     Exit,
     Normal,

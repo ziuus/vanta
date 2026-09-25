@@ -151,15 +151,13 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
             SettingType::Visualizer => app.config.ui.visualizer.clone(),
             SettingType::ClockFont => app.config.ui.clock_font.clone(),
             SettingType::ClockStyle => app.config.ui.clock_style.clone(),
-            SettingType::PerformanceMode => {
-                match app.config.ui.performance_mode {
-                    crate::config::PerformanceMode::VeryLight => "Very Light".to_string(),
-                    crate::config::PerformanceMode::Light => "Light".to_string(),
-                    crate::config::PerformanceMode::Normal => "Normal".to_string(),
-                    crate::config::PerformanceMode::High => "High".to_string(),
-                    crate::config::PerformanceMode::VeryHigh => "Very High".to_string(),
-                }
-            }
+            SettingType::PerformanceMode => match app.config.ui.performance_mode {
+                crate::config::PerformanceMode::VeryLight => "Very Light".to_string(),
+                crate::config::PerformanceMode::Light => "Light".to_string(),
+                crate::config::PerformanceMode::Normal => "Normal".to_string(),
+                crate::config::PerformanceMode::High => "High".to_string(),
+                crate::config::PerformanceMode::VeryHigh => "Very High".to_string(),
+            },
             SettingType::RefreshRate => format!("{:.1}", app.config.ui.refresh_rate),
             SettingType::Fps => app.config.ui.fps.to_string(),
             SettingType::Clock24h => {
@@ -418,7 +416,10 @@ fn change_setting(app: &mut App, forward: bool) {
                 crate::config::PerformanceMode::High,
                 crate::config::PerformanceMode::VeryHigh,
             ];
-            let pos = modes.iter().position(|x| x == &app.config.ui.performance_mode).unwrap_or(2);
+            let pos = modes
+                .iter()
+                .position(|x| x == &app.config.ui.performance_mode)
+                .unwrap_or(2);
             let next = if forward {
                 modes[(pos + 1) % modes.len()].clone()
             } else {

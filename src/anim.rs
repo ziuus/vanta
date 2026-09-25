@@ -31,9 +31,10 @@ pub fn request_full() {
 /// Consume this frame's requests and return the fps to use for the next one,
 /// clamped to `[IDLE_FPS, max_fps]`.
 pub fn take(max_fps: u32) -> u32 {
-    REQUESTED
-        .swap(0, Ordering::Relaxed)
-        .clamp(IDLE_FPS.load(Ordering::Relaxed), max_fps.max(IDLE_FPS.load(Ordering::Relaxed)))
+    REQUESTED.swap(0, Ordering::Relaxed).clamp(
+        IDLE_FPS.load(Ordering::Relaxed),
+        max_fps.max(IDLE_FPS.load(Ordering::Relaxed)),
+    )
 }
 
 #[cfg(test)]

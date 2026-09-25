@@ -120,7 +120,6 @@ impl Default for DashboardConfig {
     }
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum PerformanceMode {
