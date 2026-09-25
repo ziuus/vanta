@@ -81,7 +81,10 @@ impl LifeState {
 
                 let idx = (y * w + x) as usize;
                 let is_alive = self.grid[idx];
-                let next_alive = matches!((is_alive, alive_neighbors), (true, 2) | (true, 3) | (false, 3));
+                let next_alive = matches!(
+                    (is_alive, alive_neighbors),
+                    (true, 2) | (true, 3) | (false, 3)
+                );
 
                 if next_alive != is_alive {
                     changed = true;

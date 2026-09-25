@@ -436,7 +436,6 @@ fn render_footer(f: &mut Frame, area: Rect, theme: &Theme, list: &[Scene], idx: 
     );
 }
 
-
 fn starfield(f: &mut Frame, area: Rect, _app: &App, theme: &Theme) {
     crate::widgets::starfield::render(f, area, theme);
 }
@@ -485,6 +484,3 @@ mod tests {
         assert_eq!(drift(Rect::new(0, 0, 7, 7), 3, 1, 5), Rect::new(0, 0, 7, 7));
     }
 }
-
-
-
