@@ -422,6 +422,54 @@ pub fn prune_components_from_enabled_str(content: &str, to_remove: &[&str]) -> S
     )
 }
 
+pub fn prune_components_from_pages_str(content: &str, to_remove: &[&str]) -> String {
+    let mut out = Vec::new();
+    let mut in_pages = false;
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') {
+            in_pages = trimmed == "[[pages]]";
+        }
+
+        if in_pages && trimmed.starts_with("layout") {
+            if let Ok(mut table) = line.parse::<toml::Table>() {
+                if let Some(layout_val) = table.get_mut("layout") {
+                    if let Some(cols) = layout_val.as_array_mut() {
+                        for col in cols.iter_mut() {
+                            if let Some(items) = col.as_array_mut() {
+                                items.retain(|item| {
+                                    if let Some(s) = item.as_str() {
+                                        !to_remove.iter().any(|r| r.eq_ignore_ascii_case(s))
+                                    } else {
+                                        true
+                                    }
+                                });
+                            }
+                        }
+                        cols.retain(|col| {
+                            if let Some(items) = col.as_array() {
+                                !items.is_empty()
+                            } else {
+                                true
+                            }
+                        });
+                    }
+                }
+                out.push(table.to_string().trim().to_string());
+                continue;
+            }
+        }
+        out.push(line.to_string());
+    }
+
+    let mut final_str = out.join("\n");
+    if content.ends_with('\n') && !final_str.ends_with('\n') {
+        final_str.push('\n');
+    }
+    final_str
+}
+
 pub fn remove_page_block_from_str(content: &str, page_name: &str) -> String {
     let lines: Vec<&str> = content.lines().collect();
     let mut result_lines: Vec<&str> = Vec::new();
@@ -530,6 +578,7 @@ pub fn remove_component_from_config(comp_id: &str) -> Result<(), String> {
 
     let targets = [comp_id];
     let content = prune_components_from_enabled_str(&content, &targets);
+    let content = prune_components_from_pages_str(&content, &targets);
     let new_content = reset_startup_mode_if_matches_str(&content, &targets);
 
     std::fs::write(&path, new_content)
@@ -627,6 +676,7 @@ pub fn clean_orphaned_extensions() {
 
     let comp_refs: Vec<&str> = orphaned_comps.iter().map(|s| s.as_str()).collect();
     updated_content = prune_components_from_enabled_str(&updated_content, &comp_refs);
+    updated_content = prune_components_from_pages_str(&updated_content, &comp_refs);
     updated_content = reset_startup_mode_if_matches_str(&updated_content, &comp_refs);
 
     let _ = std::fs::write(&path, updated_content);
