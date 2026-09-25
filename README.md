@@ -236,7 +236,11 @@ and never blocks on I/O.
 | Audio viz | `cava` raw output, idle wave fallback |
 
 ## 🤖 AI Agent Integration
-If you use an AI assistant like Cursor, Copilot, or Claude to configure your system, you can feed it our [Configuration Skill Prompt](VANTA_CONFIG_SKILL.md) to instantly teach it how to design Vanta layouts and customize your `config.toml`!
+
+Vanta is explicitly designed to be modified and configured by AI agents (like Cursor, Claude, or Copilot). We provide dedicated skill/prompt files that you can feed directly into your AI:
+
+- **For End Users (Configuration):** Provide the **[VANTA_CONFIG_SKILL.md](VANTA_CONFIG_SKILL.md)** file to your AI. It teaches the agent how to build gorgeous 2D dashboard grids, customize themes, set up performance profiles, and write your `config.toml`.
+- **For Developers (WASM Plugins):** Provide the **[AGENTS.md](AGENTS.md)** file to your AI. It acts as a complete architecture and API guide, teaching the agent how to write Extism WASM widgets, hook into the host Key-Value mailbox, and compile plugins for Vanta.
 
 ## Contributing
 
