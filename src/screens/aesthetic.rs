@@ -17,8 +17,9 @@ use crate::widgets::{clock, matrix, media, music_viz, pinned_media, upnext, vide
 
 const MIN: (u16, u16) = (60, 20);
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Scene {
+    Custom(String),
     /// Giant clock over a calm audio horizon. Static when silent: the
     /// cheapest scene, and the default.
     Horizon,
@@ -40,8 +41,9 @@ pub enum Scene {
 }
 
 impl Scene {
-    fn label(self) -> &'static str {
+    fn label(&self) -> &str {
         match self {
+            Scene::Custom(ref id) => id.as_str(),
             Scene::Horizon => "horizon",
             Scene::Flip => "flip",
             Scene::Topo => "topography",
@@ -133,7 +135,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
     let idx = app
         .ambient
         .index(app.config.ui.ambient_rotate_secs, list.len());
-    let scene = list[idx];
+    let scene = list[idx].clone();
 
     // Hints overlay the bottom row only while visible, so the stage keeps
     // the full height and nothing jumps when they come and go.
@@ -151,6 +153,23 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
         Scene::Starfield => starfield(f, stage, app, theme),
         Scene::Life => life(f, stage, app, theme),
         Scene::Snow => snow(f, stage, app, theme),
+        Scene::Custom(ref id) => {
+            let mut matched = false;
+            for ext in &app.ext_manager.extensions {
+                for mut comp in ext.components() {
+                    if comp.id().eq_ignore_ascii_case(id)
+                        || ext.metadata().id.eq_ignore_ascii_case(id)
+                    {
+                        comp.render(f, stage, theme);
+                        matched = true;
+                        break;
+                    }
+                }
+                if matched {
+                    break;
+                }
+            }
+        }
     }
     if app.panel_states.pinned_media_input_active {
         f.render_widget(Clear, footer);

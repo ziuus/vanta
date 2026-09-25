@@ -59,6 +59,8 @@ pub enum Commands {
     },
     /// Remove an installed extension
     Remove { id: String },
+    /// Symlink a local WASM extension for development without publishing
+    Link { path: PathBuf },
 }
 
 #[derive(Deserialize, Debug)]
@@ -106,6 +108,7 @@ pub fn handle_cli(cli: Cli) -> bool {
             Commands::List => list(),
             Commands::Update { id, self_update } => update(id, self_update),
             Commands::Remove { id } => remove(id),
+            Commands::Link { path } => link(path),
         }
         return true;
     }
@@ -669,5 +672,57 @@ fn disable(id: String) {
     match vanta::config::remove_component_from_config(&id) {
         Ok(_) => println!("✓ Disabled '{}' in config.toml", id),
         Err(e) => eprintln!("Failed to disable extension: {}", e),
+    }
+}
+
+fn link(path: PathBuf) {
+    if !path.exists() {
+        eprintln!("File does not exist: {}", path.display());
+        return;
+    }
+    if path.extension().and_then(|s| s.to_str()) != Some("wasm")
+        && path.extension().and_then(|s| s.to_str()) != Some("toml")
+    {
+        eprintln!("File must be a .wasm or .toml file.");
+        return;
+    }
+
+    let stem = path.file_stem().unwrap().to_string_lossy().to_string();
+    let ext_dir = if path.extension().and_then(|s| s.to_str()) == Some("toml") {
+        let mut dir = directories::ProjectDirs::from("", "", "vanta")
+            .map(|p| p.config_dir().to_path_buf())
+            .unwrap_or_else(|| PathBuf::from("."));
+        dir.push("themes");
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    } else {
+        get_extensions_dir()
+    };
+
+    let ext_str = path.extension().unwrap().to_string_lossy();
+    let target = ext_dir.join(format!("{}.{}", stem, ext_str));
+
+    let abs_path = fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
+    let _ = fs::remove_file(&target);
+
+    #[cfg(unix)]
+    let res = std::os::unix::fs::symlink(&abs_path, &target);
+    #[cfg(not(unix))]
+    let res = fs::copy(&abs_path, &target).map(|_| ());
+
+    match res {
+        Ok(_) => {
+            println!("✓ Linked '{}' to {}", stem, target.display());
+            if ext_str == "wasm" {
+                enable(stem.clone());
+                println!(
+                    "✓ Enabled '{}' in config.toml. You can now test it in Vanta!",
+                    stem
+                );
+            } else {
+                println!("✓ Theme '{}' linked. It is now available in Vanta!", stem);
+            }
+        }
+        Err(e) => eprintln!("✗ Failed to link: {}", e),
     }
 }

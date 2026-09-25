@@ -48,6 +48,7 @@ const TOPICS: &[&str] = &[
     "connections",
     "process_tree",
     "services",
+    "github",
 ];
 
 /// Telemetry the host does *not* collect. Reported so extensions can render an
@@ -242,6 +243,10 @@ fn dispatch(topic: &str, args: &Value) -> Option<Value> {
         "fs_ops" => {
             let snap = crate::monitors::fs_tasks::snapshot();
             serde_json::json!(snap)
+        }
+        "github" => {
+            let s = monitors::github::snapshot();
+            serde_json::to_value(s).unwrap_or(serde_json::json!(null))
         }
         "crypto" => {
             let s = monitors::crypto::snapshot();

@@ -25,14 +25,7 @@ impl WasmExtension {
         let wasm = Wasm::file(&path);
         // Set a reasonable 250ms timeout on execution so WASM plugins can perform I/O without stutter
         let manifest = Manifest::new([wasm])
-            .with_allowed_hosts(
-                vec![
-                    "api.binance.com".to_string(),
-                    "api.coingecko.com".to_string(),
-                    "api.alternative.me".to_string(),
-                ]
-                .into_iter(),
-            )
+            .with_allowed_hosts(vec!["*".to_string()].into_iter())
             .with_timeout(std::time::Duration::from_millis(250));
         // Host functions give the sandbox read-only access to telemetry the
         // sampler thread already collects; see extension::host_api.

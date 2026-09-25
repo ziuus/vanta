@@ -63,8 +63,6 @@ pub enum PanelId {
     Status,
     Calendar,
     Matrix,
-    GitHub,
-    WorldClocks,
     Video,
     Weather,
     UpNext,
@@ -220,8 +218,6 @@ impl PanelId {
             &PanelId::News => "news",
             &PanelId::WriterNotes => "notes",
             &PanelId::Files => "files",
-            &PanelId::GitHub => "github",
-            &PanelId::WorldClocks => "world_clocks",
         }
     }
 }

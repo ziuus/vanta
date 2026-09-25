@@ -66,6 +66,18 @@ fn get_category(id: &str) -> &'static str {
     }
 }
 
+fn get_themes_dir() -> PathBuf {
+    let base = if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
+        PathBuf::from(xdg).join("vanta")
+    } else if let Ok(home) = std::env::var("HOME") {
+        PathBuf::from(home).join(".config").join("vanta")
+    } else {
+        PathBuf::from(".")
+    };
+    let dir = base.join("themes");
+    let _ = fs::create_dir_all(&dir);
+    dir
+}
 fn get_extensions_dir() -> PathBuf {
     let mut dir = directories::ProjectDirs::from("", "", "vanta")
         .map(|p| p.config_dir().to_path_buf())
@@ -171,14 +183,22 @@ fn download_and_install_ext(ext: &RegistryExtension) -> Result<PathBuf, String> 
         }
     }
 
-    let ext_dir = get_extensions_dir();
-    let wasm_path = ext_dir.join(format!("{}.wasm", ext.id));
-    let tmp_path = ext_dir.join(format!("{}.wasm.tmp", ext.id));
+    let (_ext_dir, ext_path, tmp_path) = if ext.ext_type == "theme" || ext.ext_type == "scene" {
+        let d = get_themes_dir();
+        let p = d.join(format!("{}.toml", ext.id));
+        let t = d.join(format!("{}.toml.tmp", ext.id));
+        (d, p, t)
+    } else {
+        let d = get_extensions_dir();
+        let p = d.join(format!("{}.wasm", ext.id));
+        let t = d.join(format!("{}.wasm.tmp", ext.id));
+        (d, p, t)
+    };
 
     fs::write(&tmp_path, buf).map_err(|e| format!("Disk write failed: {}", e))?;
-    fs::rename(&tmp_path, &wasm_path).map_err(|e| format!("Atomic replace failed: {}", e))?;
+    fs::rename(&tmp_path, &ext_path).map_err(|e| format!("Atomic replace failed: {}", e))?;
 
-    Ok(wasm_path)
+    Ok(ext_path)
 }
 
 pub fn install_page_ext(
@@ -245,6 +265,8 @@ pub fn run_menu_installer() -> io::Result<()> {
         "Use ↑/↓ to navigate, Enter to install, u to remove, Tab for category, q to quit.",
     );
     let mut status_color = Color::DarkGray;
+    let mut search_query = String::new();
+    let mut search_mode = false;
 
     loop {
         let current_category = categories[active_cat_idx];
@@ -256,6 +278,17 @@ pub fn run_menu_installer() -> io::Result<()> {
                 "🧩 Components" => e.ext_type == "component",
                 "All" => true,
                 _ => get_category(&e.id) == current_category,
+            })
+            .filter(|e| {
+                if search_query.is_empty() {
+                    true
+                } else {
+                    let q = search_query.to_lowercase();
+                    e.name.to_lowercase().contains(&q)
+                        || e.description.to_lowercase().contains(&q)
+                        || e.id.to_lowercase().contains(&q)
+                        || e.author.to_lowercase().contains(&q)
+                }
             })
             .collect();
 
@@ -276,6 +309,7 @@ pub fn run_menu_installer() -> io::Result<()> {
                 .direction(Direction::Vertical)
                 .constraints([
                     Constraint::Length(3), // Header & Category Tabs
+                    Constraint::Length(3), // Search bar
                     Constraint::Min(10),   // Main list & details
                     Constraint::Length(3), // Status & hotkeys footer
                 ])
@@ -326,10 +360,31 @@ pub fn run_menu_installer() -> io::Result<()> {
             f.render_widget(tabs, chunks[0]);
 
             // 2. Main Area (Split Left: List, Right: Details)
+            let search_border = if search_mode {
+                Color::Cyan
+            } else {
+                Color::DarkGray
+            };
+            let search_title = if search_mode {
+                " 🔍 Search (Esc to exit) "
+            } else {
+                " 🔍 Search (/ to focus) "
+            };
+            let search_p = Paragraph::new(format!("{}█", search_query))
+                .style(Style::default().fg(Color::White))
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .border_type(BorderType::Rounded)
+                        .border_style(Style::default().fg(search_border))
+                        .title(search_title),
+                );
+            f.render_widget(search_p, chunks[1]);
+
             let body_chunks = Layout::default()
                 .direction(Direction::Horizontal)
                 .constraints([Constraint::Percentage(45), Constraint::Percentage(55)])
-                .split(chunks[1]);
+                .split(chunks[2]);
 
             // Left: Extension items list
             let items: Vec<ListItem> = filtered_extensions
@@ -689,139 +744,185 @@ pub fn run_menu_installer() -> io::Result<()> {
         if event::poll(Duration::from_millis(150))? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
-                    match key.code {
-                        KeyCode::Char('q') | KeyCode::Esc => break,
-                        KeyCode::Up | KeyCode::Char('k') => {
-                            let current = list_state.selected().unwrap_or(0);
-                            if current > 0 {
-                                list_state.select(Some(current - 1));
-                            } else if !filtered_extensions.is_empty() {
-                                list_state.select(Some(filtered_extensions.len() - 1));
+                    if search_mode {
+                        match key.code {
+                            KeyCode::Esc => {
+                                search_mode = false;
+                                status_msg = String::from("Exited search.");
+                                status_color = Color::DarkGray;
                             }
-                        }
-                        KeyCode::Down | KeyCode::Char('j') => {
-                            let current = list_state.selected().unwrap_or(0);
-                            if !filtered_extensions.is_empty() {
-                                if current + 1 < filtered_extensions.len() {
-                                    list_state.select(Some(current + 1));
-                                } else {
-                                    list_state.select(Some(0));
+                            KeyCode::Backspace => {
+                                search_query.pop();
+                                list_state.select(Some(0));
+                            }
+                            KeyCode::Char(c) => {
+                                search_query.push(c);
+                                list_state.select(Some(0));
+                            }
+                            KeyCode::Enter => {
+                                search_mode = false;
+                                status_msg = String::from("Press Enter again to install.");
+                                status_color = Color::Cyan;
+                            }
+                            KeyCode::Up => {
+                                let current = list_state.selected().unwrap_or(0);
+                                if current > 0 {
+                                    list_state.select(Some(current - 1));
                                 }
                             }
-                        }
-                        KeyCode::Tab | KeyCode::Right | KeyCode::Char('l') => {
-                            active_cat_idx = (active_cat_idx + 1) % categories.len();
-                            list_state.select(Some(0));
-                            status_msg = format!("Filtered by: {}", categories[active_cat_idx]);
-                            status_color = Color::Cyan;
-                        }
-                        KeyCode::BackTab | KeyCode::Left | KeyCode::Char('h') => {
-                            if active_cat_idx == 0 {
-                                active_cat_idx = categories.len() - 1;
-                            } else {
-                                active_cat_idx -= 1;
+                            KeyCode::Down => {
+                                let current = list_state.selected().unwrap_or(0);
+                                if !filtered_extensions.is_empty()
+                                    && current + 1 < filtered_extensions.len()
+                                {
+                                    list_state.select(Some(current + 1));
+                                }
                             }
-                            list_state.select(Some(0));
-                            status_msg = format!("Filtered by: {}", categories[active_cat_idx]);
-                            status_color = Color::Cyan;
+                            _ => {}
                         }
-                        KeyCode::Enter | KeyCode::Char('i') | KeyCode::Char(' ') => {
-                            if let Some(selected_idx) = list_state.selected() {
-                                if let Some(ext) = filtered_extensions.get(selected_idx) {
-                                    if ext.ext_type == "page" {
-                                        match install_page_ext(ext, &registry.extensions) {
-                                            Ok(msg) => {
-                                                status_msg = format!("✓ {}", msg);
-                                                status_color = Color::Green;
-                                            }
-                                            Err(e) => {
-                                                status_msg =
-                                                    format!("✗ Failed to install page: {}", e);
-                                                status_color = Color::Red;
-                                            }
-                                        }
+                    } else {
+                        match key.code {
+                            KeyCode::Char('/') | KeyCode::Char('s') => {
+                                search_mode = true;
+                                status_msg = String::from("Type to search...");
+                                status_color = Color::Cyan;
+                            }
+                            KeyCode::Char('q') | KeyCode::Esc => break,
+                            KeyCode::Up | KeyCode::Char('k') => {
+                                let current = list_state.selected().unwrap_or(0);
+                                if current > 0 {
+                                    list_state.select(Some(current - 1));
+                                } else if !filtered_extensions.is_empty() {
+                                    list_state.select(Some(filtered_extensions.len() - 1));
+                                }
+                            }
+                            KeyCode::Down | KeyCode::Char('j') => {
+                                let current = list_state.selected().unwrap_or(0);
+                                if !filtered_extensions.is_empty() {
+                                    if current + 1 < filtered_extensions.len() {
+                                        list_state.select(Some(current + 1));
                                     } else {
-                                        match download_and_install_ext(ext) {
-                                            Ok(path) => {
-                                                status_msg = format!(
-                                                    "✓ Installed '{}' to {}",
-                                                    ext.id,
-                                                    path.display()
-                                                );
-                                                status_color = Color::Green;
-                                            }
-                                            Err(e) => {
-                                                status_msg = format!(
-                                                    "✗ Failed to install '{}': {}",
-                                                    ext.id, e
-                                                );
-                                                status_color = Color::Red;
-                                            }
-                                        }
+                                        list_state.select(Some(0));
                                     }
                                 }
                             }
-                        }
-                        KeyCode::Char('u') | KeyCode::Delete | KeyCode::Backspace => {
-                            if let Some(selected_idx) = list_state.selected() {
-                                if let Some(ext) = filtered_extensions.get(selected_idx) {
-                                    if ext.ext_type == "page" {
-                                        let mut removed_count = 0;
-                                        for comp in &ext.components {
-                                            let comp_file = ext_dir.join(format!("{}.wasm", comp));
-                                            if comp_file.exists()
-                                                && fs::remove_file(&comp_file).is_ok()
-                                            {
-                                                removed_count += 1;
+                            KeyCode::Tab | KeyCode::Right | KeyCode::Char('l') => {
+                                active_cat_idx = (active_cat_idx + 1) % categories.len();
+                                list_state.select(Some(0));
+                                status_msg = format!("Filtered by: {}", categories[active_cat_idx]);
+                                status_color = Color::Cyan;
+                            }
+                            KeyCode::BackTab | KeyCode::Left | KeyCode::Char('h') => {
+                                if active_cat_idx == 0 {
+                                    active_cat_idx = categories.len() - 1;
+                                } else {
+                                    active_cat_idx -= 1;
+                                }
+                                list_state.select(Some(0));
+                                status_msg = format!("Filtered by: {}", categories[active_cat_idx]);
+                                status_color = Color::Cyan;
+                            }
+                            KeyCode::Enter | KeyCode::Char('i') | KeyCode::Char(' ') => {
+                                if let Some(selected_idx) = list_state.selected() {
+                                    if let Some(ext) = filtered_extensions.get(selected_idx) {
+                                        if ext.ext_type == "page" {
+                                            match install_page_ext(ext, &registry.extensions) {
+                                                Ok(msg) => {
+                                                    status_msg = format!("✓ {}", msg);
+                                                    status_color = Color::Green;
+                                                }
+                                                Err(e) => {
+                                                    status_msg =
+                                                        format!("✗ Failed to install page: {}", e);
+                                                    status_color = Color::Red;
+                                                }
                                             }
-                                        }
-                                        let _ = vanta::config::remove_page_from_config(
-                                            &ext.name,
-                                            &ext.components,
-                                        );
-                                        status_msg = format!(
-                                            "✓ Uninstalled page '{}' (removed {} components & cleaned config)",
-                                            ext.name, removed_count
-                                        );
-                                        status_color = Color::Yellow;
-                                    } else {
-                                        let ext_file = ext_dir.join(format!("{}.wasm", ext.id));
-                                        let existed = ext_file.exists();
-                                        if existed {
-                                            match fs::remove_file(&ext_file) {
-                                                Ok(_) => {
-                                                    let _ =
-                                                        vanta::config::remove_component_from_config(
-                                                            &ext.id,
-                                                        );
+                                        } else {
+                                            match download_and_install_ext(ext) {
+                                                Ok(path) => {
                                                     status_msg = format!(
-                                                        "✓ Uninstalled '{}' ({})",
+                                                        "✓ Installed '{}' to {}",
                                                         ext.id,
-                                                        ext_file.display()
+                                                        path.display()
                                                     );
-                                                    status_color = Color::Yellow;
+                                                    status_color = Color::Green;
                                                 }
                                                 Err(e) => {
                                                     status_msg = format!(
-                                                        "✗ Failed to remove '{}': {}",
+                                                        "✗ Failed to install '{}': {}",
                                                         ext.id, e
                                                     );
                                                     status_color = Color::Red;
                                                 }
                                             }
-                                        } else {
-                                            let _ = vanta::config::remove_component_from_config(
-                                                &ext.id,
-                                            );
-                                            status_msg =
-                                                format!("✓ Cleaned '{}' from config.toml", ext.id);
-                                            status_color = Color::Yellow;
                                         }
                                     }
                                 }
                             }
+                            KeyCode::Char('u') | KeyCode::Delete | KeyCode::Backspace => {
+                                if let Some(selected_idx) = list_state.selected() {
+                                    if let Some(ext) = filtered_extensions.get(selected_idx) {
+                                        if ext.ext_type == "page" {
+                                            let mut removed_count = 0;
+                                            for comp in &ext.components {
+                                                let comp_file =
+                                                    ext_dir.join(format!("{}.wasm", comp));
+                                                if comp_file.exists()
+                                                    && fs::remove_file(&comp_file).is_ok()
+                                                {
+                                                    removed_count += 1;
+                                                }
+                                            }
+                                            let _ = vanta::config::remove_page_from_config(
+                                                &ext.name,
+                                                &ext.components,
+                                            );
+                                            status_msg = format!(
+                                            "✓ Uninstalled page '{}' (removed {} components & cleaned config)",
+                                            ext.name, removed_count
+                                        );
+                                            status_color = Color::Yellow;
+                                        } else {
+                                            let ext_file = ext_dir.join(format!("{}.wasm", ext.id));
+                                            let existed = ext_file.exists();
+                                            if existed {
+                                                match fs::remove_file(&ext_file) {
+                                                    Ok(_) => {
+                                                        let _ =
+                                                        vanta::config::remove_component_from_config(
+                                                            &ext.id,
+                                                        );
+                                                        status_msg = format!(
+                                                            "✓ Uninstalled '{}' ({})",
+                                                            ext.id,
+                                                            ext_file.display()
+                                                        );
+                                                        status_color = Color::Yellow;
+                                                    }
+                                                    Err(e) => {
+                                                        status_msg = format!(
+                                                            "✗ Failed to remove '{}': {}",
+                                                            ext.id, e
+                                                        );
+                                                        status_color = Color::Red;
+                                                    }
+                                                }
+                                            } else {
+                                                let _ = vanta::config::remove_component_from_config(
+                                                    &ext.id,
+                                                );
+                                                status_msg = format!(
+                                                    "✓ Cleaned '{}' from config.toml",
+                                                    ext.id
+                                                );
+                                                status_color = Color::Yellow;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            _ => {}
                         }
-                        _ => {}
                     }
                 }
             }
