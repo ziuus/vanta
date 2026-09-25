@@ -21,7 +21,7 @@ A fast, aesthetic terminal system dashboard in Rust. The most complete keyboard-
 ---
 
 Vanta collapses everything you care about into one terminal pane: CPU, memory, disk,
-network, GPU, processes, now-playing, a block-digit clock, a calendar, and an audio
+network, GPU (and radial thermals), processes, now-playing, GitHub contributions, multiple timezones, a calendar, and an audio
 visualizer. Keyboard only. **~3 MB binary, ~2–5% CPU** at the default 30 fps.
 
 ```bash
@@ -124,6 +124,15 @@ Every graph on top, every process below. Sort it, filter it, tree it, kill it.
 ### `3` — Aesthetic
 
 For when the build is running and you want something to look at. Includes support for displaying a custom pinned image.
+
+**Includes 7 immersive ambient scenes:**
+- Audio Visualizer
+- Matrix Rain
+- Flip Clock
+- Topographic Map
+- True 3D Starfield (reacts to CPU spikes and music bass)
+- Conway's Game of Life (auto-seeding)
+- Terminal Snowfall (piles up and melts dynamically)
 
 <img src="docs/aesthetic.png" alt="vanta aesthetic page" width="900" />
 
