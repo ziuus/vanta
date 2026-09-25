@@ -235,6 +235,15 @@ and never blocks on I/O.
 | Media | MPRIS over D-Bus (`dbus` crate) |
 | Audio viz | `cava` raw output, idle wave fallback |
 
+## 🧩 Creating Plugins & Extensions
+
+Want to build your own custom widgets (like a Crypto tracker or a File Space viewer)? Vanta supports a powerful, secure WebAssembly (WASM) plugin system via Extism.
+
+Check out the **[Vanta Extension Developer Guide (EXTENSIONS.md)](EXTENSIONS.md)** to learn how to:
+- Structure a new Rust WASM plugin out of the box.
+- Compile and test your plugin locally (`vanta link`).
+- Publish your plugin to the community registry (`vanta-integrations`).
+
 ## 🤖 AI Agent Integration
 
 Vanta is explicitly designed to be modified and configured by AI agents (like Cursor, Claude, or Copilot). We provide dedicated skill/prompt files that you can feed directly into your AI:
