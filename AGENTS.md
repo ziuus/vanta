@@ -20,6 +20,9 @@ Vanta is driven by `config.toml`.
 
 ## 4. Extension Architecture (V2 WASM Micro-Extensions)
 Vanta uses Extism for sandboxed `wasm32-unknown-unknown` plugins. The core API is in `src/extension/host_api.rs`.
+
+* **Local Plugin Testing:** You can test a WASM plugin or custom theme instantly without publishing by using `vanta link /path/to/my_widget.wasm`. This symlinks it to `~/.config/vanta/extensions/` and enables it locally.
+* **Network Access:** Sandboxes are no longer artificially restricted by domain (`with_allowed_hosts(vec!["*"])`). WASM components can freely use `extism:host/env::http_request` to fetch their own API data, capped at 250ms to prevent freezing the UI.
 * **Micro-Extension Pattern**: We enforce a 1-to-1 mapping where possible. Every individual widget (e.g., `filespace_browser`, `filespace_preview`) is compiled as its own independent `.wasm` plugin.
 * **State Isolation & Communication**: Extism sandboxes cannot share memory. To allow micro-extensions to communicate (e.g., a browser telling a preview pane what file is selected), Vanta provides a host-side Key-Value mailbox.
   * Extensions call `vanta_query` with `{"topic": "state_set", "key": "...", "value": ...}` to broadcast state.
