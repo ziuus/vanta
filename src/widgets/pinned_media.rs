@@ -27,7 +27,11 @@ struct CachedMedia {
 
 pub fn render(f: &mut Frame, area: Rect, theme: &Theme, path: &str, tick: u64) {
     // If path is empty, we will use the built-in default image
-    let actual_path = if path.is_empty() { "default_fallback" } else { path };
+    let actual_path = if path.is_empty() {
+        "default_fallback"
+    } else {
+        path
+    };
 
     if area.width < 10 || area.height < 5 {
         return;
@@ -39,7 +43,9 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, path: &str, tick: u64) {
             return true;
         }
         let cache = cache.as_ref().unwrap();
-        if cache.path != actual_path || cache.area_width != area.width || cache.area_height != area.height
+        if cache.path != actual_path
+            || cache.area_width != area.width
+            || cache.area_height != area.height
         {
             return true;
         }

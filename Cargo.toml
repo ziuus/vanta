@@ -1,7 +1,7 @@
 [package]
 default-run = "vanta"
 name = "vanta"
-version = "0.10.41"
+version = "0.10.42"
 edition = "2021"
 description = "Aesthetic Rust TUI system dashboard — monitoring meets flex widgets"
 authors = ["zius"]
