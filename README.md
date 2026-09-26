@@ -10,6 +10,7 @@ A fast, aesthetic terminal system dashboard in Rust. The most complete keyboard-
 [![CI](https://img.shields.io/github/actions/workflow/status/ziuus/vanta/ci.yml?style=for-the-badge&label=CI)](https://github.com/ziuus/vanta/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/ziuus/vanta?style=for-the-badge&color=4A9E8E)](https://github.com/ziuus/vanta/releases)
 [![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE)
+[![Integrations](https://img.shields.io/badge/Community-Integrations-052e16?style=for-the-badge&logo=github&logoColor=white)](https://github.com/ziuus/vanta-integrations)
 [![Landing page](https://img.shields.io/badge/Landing_Page-030712?style=for-the-badge&logo=vercel&logoColor=white)](https://vanta-website-omega.vercel.app)
 
 <br />
