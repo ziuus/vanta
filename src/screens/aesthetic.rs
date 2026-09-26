@@ -5,9 +5,9 @@
 use std::time::Instant;
 
 use ratatui::layout::{Alignment, Constraint, Layout, Rect};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
+use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap};
 use ratatui::Frame;
 
 use crate::app::App;
@@ -438,30 +438,351 @@ fn studio(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     music_viz::render(f, viz, theme, app.frame);
 }
 
-fn gallery(f: &mut Frame, area: Rect, app: &App, theme: &Theme, t: u64) {
-    pinned_media::render(f, area, theme, &app.config.ui.pinned_media_path, app.frame);
-    let time = if app.config.ui.clock_24h {
-        chrono::Local::now().format(" %H:%M ").to_string()
+fn make_mini_bar(pct: f32) -> String {
+    let total = 8;
+    let filled = ((pct / 100.0) * total as f32)
+        .round()
+        .clamp(0.0, total as f32) as usize;
+    let mut s = String::new();
+    s.push('[');
+    for i in 0..total {
+        if i < filled {
+            s.push('■');
+        } else {
+            s.push('·');
+        }
+    }
+    s.push(']');
+    s
+}
+
+fn gallery(f: &mut Frame, area: Rect, app: &App, theme: &Theme, _t: u64) {
+    crate::anim::request(6);
+
+    let gallery_area = Rect::new(area.x, area.y, area.width, area.height.saturating_sub(1));
+    if gallery_area.width < 50 || gallery_area.height < 12 {
+        let [img_box, time_box] =
+            Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).areas(gallery_area);
+        pinned_media::render(
+            f,
+            img_box,
+            theme,
+            &app.config.ui.pinned_media_path,
+            app.frame,
+        );
+        let time = if app.config.ui.clock_24h {
+            chrono::Local::now().format(" %H:%M ").to_string()
+        } else {
+            chrono::Local::now().format(" %-I:%M %P ").to_string()
+        };
+        f.render_widget(
+            Paragraph::new(Span::styled(
+                time,
+                Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+            ))
+            .alignment(Alignment::Center),
+            time_box,
+        );
+        return;
+    }
+
+    // Header bar (2 lines)
+    let [header_area, stage_area] =
+        Layout::vertical([Constraint::Length(2), Constraint::Fill(1)]).areas(gallery_area);
+
+    let [h_top, h_div] =
+        Layout::vertical([Constraint::Length(1), Constraint::Length(1)]).areas(header_area);
+
+    let time_str = if app.config.ui.clock_24h {
+        chrono::Local::now().format("%H:%M:%S").to_string()
     } else {
-        chrono::Local::now().format(" %-I:%M %P ").to_string()
+        chrono::Local::now().format("%-I:%M:%S %P").to_string()
     };
-    let w = time.chars().count() as u16;
-    f.render_widget(
-        Paragraph::new(Span::styled(
-            time,
+    let date_str = chrono::Local::now().format("%A, %d %b %Y").to_string();
+
+    let header_line = Line::from(vec![
+        Span::styled(
+            " ◈ VANTA ATELIER ",
             Style::default()
-                .fg(theme.text)
-                .bg(theme.bg)
+                .fg(theme.accent)
                 .add_modifier(Modifier::BOLD),
-        )),
-        // Wanders along the top-right corner like the other scenes' clocks.
-        Rect::new(
-            area.x + area.width.saturating_sub(w + 1 + tri(t, 6)),
-            area.y + tri(t / 5, 2).min(area.height.saturating_sub(1)),
-            w.min(area.width),
-            1,
         ),
+        Span::styled("· ", Style::default().fg(theme.dim)),
+        Span::styled("EXHIBITION LOUNGE ", Style::default().fg(theme.text)),
+        Span::styled("[35MM LEICA PERSPECTIVE]", Style::default().fg(theme.dim)),
+    ]);
+    f.render_widget(Paragraph::new(header_line), h_top);
+
+    let right_info = Line::from(vec![
+        Span::styled(date_str, Style::default().fg(theme.dim)),
+        Span::styled(" · ", Style::default().fg(theme.dim)),
+        Span::styled(
+            time_str,
+            Style::default()
+                .fg(theme.accent)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled("  ● EXHIBIT ", Style::default().fg(theme.green)),
+    ]);
+    f.render_widget(
+        Paragraph::new(right_info).alignment(Alignment::Right),
+        h_top,
     );
+
+    let div_str: String = "─".repeat(h_div.width as usize);
+    f.render_widget(
+        Paragraph::new(Span::styled(div_str, Style::default().fg(theme.dim))),
+        h_div,
+    );
+
+    // Main Stage: Left is Art Card, Right is Curated Exhibition Deck
+    let (art_pct, deck_pct) = if stage_area.width >= 110 {
+        (56, 44)
+    } else {
+        (52, 48)
+    };
+
+    let [left_col, right_col] = Layout::horizontal([
+        Constraint::Percentage(art_pct),
+        Constraint::Percentage(deck_pct),
+    ])
+    .areas(stage_area);
+
+    let has_custom = !app.config.ui.pinned_media_path.trim().is_empty();
+    let (frame_title, frame_bottom, curator_title, curator_sub, curator_quote) = if !has_custom {
+        (
+            "CLASSIC 911 // DUSK NOCTURNE",
+            " 35mm · ƒ/1.4 · 1/250s · ISO 100 · Leica M11 ",
+            "Porsche 911 Carrera · London Dusk",
+            "Silver metallic finish under wet neon reflection.",
+            "“The street is a mirror of city lights, rain tracing the contours of timeless metal.”",
+        )
+    } else {
+        (
+            "PINNED EXHIBITION // CUSTOM ARCHIVE",
+            " User Gallery Archive · Ambient Projection ",
+            "Curated Personal Collection",
+            "High fidelity media rendered via Vanta Host.",
+            "“Art enables us to find ourselves and lose ourselves at the same time.”",
+        )
+    };
+
+    // Render Left Artwork Frame
+    let art_block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(theme.accent))
+        .title(Line::from(vec![
+            Span::styled(" ◈ ", Style::default().fg(theme.accent)),
+            Span::styled(
+                frame_title,
+                Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" ", Style::default()),
+        ]))
+        .title_bottom(Line::from(vec![Span::styled(
+            frame_bottom,
+            Style::default().fg(theme.dim),
+        )]));
+    let inner_art = art_block.inner(left_col);
+    f.render_widget(art_block, left_col);
+
+    pinned_media::render(
+        f,
+        inner_art,
+        theme,
+        &app.config.ui.pinned_media_path,
+        app.frame,
+    );
+
+    // Render Right Column (3 stacked cards)
+    let [card1_rect, card2_rect, card3_rect] = Layout::vertical([
+        Constraint::Fill(1),
+        Constraint::Fill(1),
+        Constraint::Fill(1),
+    ])
+    .areas(right_col);
+
+    // Card 1: Curator's Archive
+    let c1_block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(theme.surface))
+        .title(Line::from(vec![
+            Span::styled(" ◉ ", Style::default().fg(theme.secondary)),
+            Span::styled(
+                "CURATOR'S ARCHIVE",
+                Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" ", Style::default()),
+        ]));
+    let c1_inner = c1_block.inner(card1_rect);
+    f.render_widget(c1_block, card1_rect);
+
+    let c1_lines = vec![
+        Line::from(vec![Span::styled(
+            curator_title,
+            Style::default()
+                .fg(theme.accent)
+                .add_modifier(Modifier::BOLD),
+        )]),
+        Line::from(vec![Span::styled(
+            curator_sub,
+            Style::default().fg(theme.text),
+        )]),
+        Line::default(),
+        Line::from(vec![Span::styled(
+            curator_quote,
+            Style::default()
+                .fg(theme.dim)
+                .add_modifier(Modifier::ITALIC),
+        )]),
+        Line::default(),
+        Line::from(vec![
+            Span::styled("Palette: ", Style::default().fg(theme.dim)),
+            Span::styled("■ ", Style::default().fg(Color::Rgb(40, 52, 66))),
+            Span::styled("■ ", Style::default().fg(Color::Rgb(217, 119, 54))),
+            Span::styled("■ ", Style::default().fg(Color::Rgb(126, 155, 181))),
+            Span::styled("■ ", Style::default().fg(Color::Rgb(243, 237, 226))),
+            Span::styled("■ ", Style::default().fg(Color::Rgb(18, 22, 28))),
+        ]),
+    ];
+    f.render_widget(Paragraph::new(c1_lines).wrap(Wrap { trim: true }), c1_inner);
+
+    // Card 2: Atmosphere & Soundscape
+    let c2_block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(theme.surface))
+        .title(Line::from(vec![
+            Span::styled(" ♫ ", Style::default().fg(theme.green)),
+            Span::styled(
+                "ATMOSPHERE & AUDIO",
+                Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" ", Style::default()),
+        ]));
+    let c2_inner = c2_block.inner(card2_rect);
+    f.render_widget(c2_block, card2_rect);
+
+    let mut c2_lines = Vec::new();
+    c2_lines.push(Line::from(vec![
+        Span::styled(
+            "♫ Soundscape: ",
+            Style::default()
+                .fg(theme.green)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            "Rain Nocturne · City Reverie",
+            Style::default().fg(theme.text),
+        ),
+    ]));
+    let wx_snap = crate::monitors::weather::snapshot();
+    if wx_snap.ready {
+        c2_lines.push(Line::from(vec![
+            Span::styled("  Weather: ", Style::default().fg(theme.dim)),
+            Span::styled(
+                format!(
+                    "{:.0}°C · {}",
+                    wx_snap.temp_c,
+                    crate::monitors::weather::describe(wx_snap.condition_code)
+                ),
+                Style::default().fg(theme.accent),
+            ),
+        ]));
+    } else {
+        c2_lines.push(Line::from(vec![
+            Span::styled("  Atmosphere: ", Style::default().fg(theme.dim)),
+            Span::styled(
+                "Drizzle & Mist · Asphalt Reflections",
+                Style::default().fg(theme.text),
+            ),
+        ]));
+    }
+
+    // Animated ambient soundscape waveform (sine waves)
+    let wave_chars = [' ', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+    let wave_len = c2_inner.width.saturating_sub(8).clamp(8, 28) as usize;
+    let wave: String = (0..wave_len)
+        .map(|i| {
+            let phase = ((app.frame as f64 * 0.12) + (i as f64 * 0.45)).sin();
+            let idx = ((phase + 1.0) * 3.5).clamp(0.0, 7.0) as usize;
+            wave_chars[idx]
+        })
+        .collect();
+
+    c2_lines.push(Line::default());
+    c2_lines.push(Line::from(vec![
+        Span::styled("Harmonics: ", Style::default().fg(theme.dim)),
+        Span::styled(wave, Style::default().fg(theme.accent)),
+    ]));
+    f.render_widget(Paragraph::new(c2_lines), c2_inner);
+
+    // Card 3: Zen Telemetry & Harmony
+    let c3_block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(theme.surface))
+        .title(Line::from(vec![
+            Span::styled(" ⬡ ", Style::default().fg(theme.yellow)),
+            Span::styled(
+                "ZEN TELEMETRY",
+                Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" ", Style::default()),
+        ]));
+    let c3_inner = c3_block.inner(card3_rect);
+    f.render_widget(c3_block, card3_rect);
+
+    let cpu_val = app.summary.cpu_pct.clamp(0.0, 100.0);
+    let mem_val = (app.summary.mem_pct as f32).clamp(0.0, 100.0);
+
+    let cpu_bars = make_mini_bar(cpu_val);
+    let mem_bars = make_mini_bar(mem_val);
+
+    let temp_str = if let Some(t) = app.summary.temp_c {
+        format!("{:.0}°C", t)
+    } else {
+        "--°C".to_string()
+    };
+
+    let c3_lines = vec![
+        Line::from(vec![
+            Span::styled("CPU ", Style::default().fg(theme.dim)),
+            Span::styled(cpu_bars, Style::default().fg(theme.accent)),
+            Span::styled(
+                format!(" {:>3.0}% · {}", cpu_val, temp_str),
+                Style::default().fg(theme.text),
+            ),
+        ]),
+        Line::from(vec![
+            Span::styled("RAM ", Style::default().fg(theme.dim)),
+            Span::styled(mem_bars, Style::default().fg(theme.secondary)),
+            Span::styled(
+                format!(" {:>3.0}%", mem_val),
+                Style::default().fg(theme.text),
+            ),
+        ]),
+        Line::from(vec![
+            Span::styled("I/O ", Style::default().fg(theme.dim)),
+            Span::styled(
+                format!(
+                    "↓ {:.0} KB/s  ↑ {:.0} KB/s · Up: {}",
+                    app.summary.rx_kbps, app.summary.tx_kbps, app.summary.uptime
+                ),
+                Style::default().fg(theme.text),
+            ),
+        ]),
+        Line::from(vec![
+            Span::styled("● ", Style::default().fg(theme.green)),
+            Span::styled(
+                "Harmonic Balance · All Systems Nominal",
+                Style::default().fg(theme.dim),
+            ),
+        ]),
+    ];
+    f.render_widget(Paragraph::new(c3_lines), c3_inner);
 }
 
 /// Scene dots, e.g. "○ ● ○ ○  rain · ←/→ · r pause".
