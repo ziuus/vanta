@@ -132,7 +132,8 @@ pub fn render_path(path: &str, w: u16, h: u16) -> Option<Vec<Line<'static>>> {
         std::io::Read::read_to_end(&mut req.into_body().into_reader(), &mut buf).ok()?;
         image::load_from_memory(&buf).ok()?
     } else {
-        image::open(path).ok()?
+        let buf = std::fs::read(path).ok()?;
+        image::load_from_memory(&buf).ok()?
     };
     let out = render_image(&img, w, h);
     if out.is_empty() {
