@@ -16,7 +16,7 @@ A fast, aesthetic terminal system dashboard in Rust. The most complete keyboard-
 <br />
 
 <a href="https://vanta-website-omega.vercel.app">
-  <img src="docs/vanta-demo.gif" alt="vanta interactive terminal dashboard demo" width="900" />
+  <video src="https://raw.githubusercontent.com/ziuus/vanta/main/docs/vanta-demo.mp4" autoplay loop muted playsinline width="900"></video>
 </a>
 
 <p align="center">
