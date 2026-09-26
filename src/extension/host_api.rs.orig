@@ -464,7 +464,6 @@ fn dispatch(topic: &str, args: &Value) -> Option<Value> {
             })
         }
 
-        "time" => serde_json::json!({"weekday": chrono::Local::now().format("%A").to_string(), "timestamp": chrono::Local::now().timestamp()}),
         "services" => {
             let srvs = monitors::services::snapshot();
             json!({

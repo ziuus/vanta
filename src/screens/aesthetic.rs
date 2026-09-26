@@ -38,6 +38,7 @@ pub enum Scene {
     Starfield,
     Life,
     Snow,
+    Creative,
 }
 
 impl Scene {
@@ -54,6 +55,7 @@ impl Scene {
             Scene::Starfield => "starfield",
             Scene::Life => "life",
             Scene::Snow => "snow",
+            Scene::Creative => "creative",
         }
     }
 }
@@ -167,6 +169,28 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
                 }
                 if matched {
                     break;
+                }
+            }
+        }
+
+        Scene::Creative => {
+            let [left, right] = ratatui::layout::Layout::horizontal([ratatui::layout::Constraint::Percentage(65), ratatui::layout::Constraint::Percentage(35)]).areas(stage);
+            let [video_area, weather_area] = ratatui::layout::Layout::vertical([ratatui::layout::Constraint::Fill(1), ratatui::layout::Constraint::Length(3)]).areas(left);
+            let [clock_area, viz_area] = ratatui::layout::Layout::vertical([ratatui::layout::Constraint::Length(12), ratatui::layout::Constraint::Fill(1)]).areas(right);
+            
+            // Render native components
+            crate::widgets::weather::render(f, weather_area, theme);
+            big_clock(f, clock_area, app, theme);
+            if app.config.widgets.music_viz {
+                crate::widgets::music_viz::render(f, viz_area, theme, app.frame);
+            }
+            
+            // Lookup and render the video_widget
+            for ext in &app.ext_manager.extensions {
+                for mut comp in ext.components() {
+                    if comp.id() == "video_widget" {
+                        comp.render(f, video_area, theme);
+                    }
                 }
             }
         }

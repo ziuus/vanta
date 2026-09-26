@@ -1,0 +1,13 @@
+--- host_api.rs
++++ host_api.rs
+@@ -107,6 +107,10 @@
+                 "active_state": s.active_state,
+             })).collect::<Vec<_>>(),
+         }),
++        "time" => json!({
++            "weekday": chrono::Local::now().format("%A").to_string(),
++            "timestamp": chrono::Local::now().timestamp(),
++        }),
+         _ => return None,
+     })
+ }

@@ -26,7 +26,7 @@ impl WasmExtension {
         // Set a reasonable 250ms timeout on execution so WASM plugins can perform I/O without stutter
         let manifest = Manifest::new([wasm])
             .with_allowed_hosts(vec!["*".to_string()].into_iter())
-            .with_timeout(std::time::Duration::from_millis(250));
+            .with_timeout(std::time::Duration::from_millis(5000));
         // Host functions give the sandbox read-only access to telemetry the
         // sampler thread already collects; see extension::host_api.
         let mut plugin = Plugin::new(&manifest, crate::extension::host_api::functions(), true)?;

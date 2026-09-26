@@ -75,6 +75,8 @@ fn main() -> io::Result<()> {
         ext_dir.push("extensions");
         if let Ok(entries) = std::fs::read_dir(&ext_dir) {
             let mut needed: std::collections::HashSet<String> = std::collections::HashSet::new();
+            log::info!(target: "extension", "Config extensions: {:?}", app.config.extensions);
+            log::info!(target: "extension", "Config pages: {:?}", app.config.pages);
             if let Some(cfg) = app.config.extensions.as_ref() {
                 if let Some(arr) = cfg.get("enabled").and_then(|v| v.as_array()) {
                     for item in arr {
@@ -91,6 +93,7 @@ fn main() -> io::Result<()> {
                     }
                 }
             }
+            log::info!(target: "extension", "Needed extensions: {:?}", needed);
 
             let mut paths_to_load = Vec::new();
             for entry in entries.flatten() {
