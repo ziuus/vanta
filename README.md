@@ -14,11 +14,13 @@ A fast, aesthetic terminal system dashboard in Rust. The most complete keyboard-
 
 <br />
 
-<video src="https://github.com/ziuus/vanta/raw/main/docs/vanta-demo.mp4" controls="controls" muted="muted" width="900" poster="docs/dashboard.png">
-  <a href="https://vanta-website-omega.vercel.app">
-    <img src="docs/dashboard.png" alt="vanta dashboard page" width="900" />
-  </a>
-</video>
+<a href="https://vanta-website-omega.vercel.app">
+  <img src="docs/vanta-demo.gif" alt="vanta interactive terminal dashboard demo" width="900" />
+</a>
+
+<p align="center">
+  <em>Live terminal dashboard in action. <a href="https://github.com/ziuus/vanta/releases/download/v0.10.38/vanta-demo.mp4">Watch 1080p 60FPS video</a> • <a href="https://vanta-website-omega.vercel.app">Visit Website</a></em>
+</p>
 
 </div>
 
