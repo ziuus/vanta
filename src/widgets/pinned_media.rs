@@ -26,24 +26,8 @@ struct CachedMedia {
 }
 
 pub fn render(f: &mut Frame, area: Rect, theme: &Theme, path: &str, tick: u64) {
-    if path.is_empty() {
-        let msg = Paragraph::new(vec![
-            Line::from(vec![Span::styled(
-                "no media pinned",
-                ratatui::style::Style::default().fg(theme.dim),
-            )]),
-            Line::from(vec![Span::styled(
-                crate::widgets::meter::ellipsize(
-                    "set pinned_media_path in config.toml",
-                    area.width as usize,
-                ),
-                ratatui::style::Style::default().fg(theme.dim),
-            )]),
-        ])
-        .alignment(Alignment::Center);
-        f.render_widget(msg, area);
-        return;
-    }
+    // If path is empty, we will use the built-in default image
+    let actual_path = if path.is_empty() { "default_fallback" } else { path };
 
     if area.width < 10 || area.height < 5 {
         return;
@@ -55,7 +39,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, path: &str, tick: u64) {
             return true;
         }
         let cache = cache.as_ref().unwrap();
-        if cache.path != path || cache.area_width != area.width || cache.area_height != area.height
+        if cache.path != actual_path || cache.area_width != area.width || cache.area_height != area.height
         {
             return true;
         }
@@ -86,7 +70,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, path: &str, tick: u64) {
 
         CACHED_IMAGE.with(|c| {
             if let Some(cache) = c.borrow().as_ref() {
-                if cache.path == path
+                if cache.path == actual_path
                     && cache.area_width == area.width
                     && cache.area_height == area.height
                 {
@@ -127,7 +111,13 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme, path: &str, tick: u64) {
         }
 
         let mut lines = Vec::new();
-        match image::open(&file_to_load) {
+        let load_result = if actual_path == "default_fallback" {
+            image::load_from_memory(include_bytes!("../assets/default_media.jpg"))
+        } else {
+            image::open(&file_to_load)
+        };
+
+        match load_result {
             Ok(img) => {
                 let img = img.to_rgb8();
                 let target_w = area.width as u32;

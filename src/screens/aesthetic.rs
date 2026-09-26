@@ -121,7 +121,7 @@ pub fn scenes(app: &App) -> Vec<Scene> {
     if media::current_player().is_some() {
         v.push(Scene::Studio);
     }
-    if cfg.widgets.pinned_media && !cfg.ui.pinned_media_path.is_empty() {
+    if cfg.widgets.pinned_media {
         v.push(Scene::Gallery);
     }
     v
