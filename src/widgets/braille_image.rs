@@ -126,7 +126,14 @@ pub fn render_image(img: &image::DynamicImage, w: u16, h: u16) -> Vec<Line<'stat
 
 /// Load an image from disk and render it as braille. `None` if it can't be read.
 pub fn render_path(path: &str, w: u16, h: u16) -> Option<Vec<Line<'static>>> {
-    let img = image::open(path).ok()?;
+    let img = if path.starts_with("http://") || path.starts_with("https://") {
+        let req = ureq::get(path).call().ok()?;
+        let mut buf = Vec::new();
+        std::io::Read::read_to_end(&mut req.into_body().into_reader(), &mut buf).ok()?;
+        image::load_from_memory(&buf).ok()?
+    } else {
+        image::open(path).ok()?
+    };
     let out = render_image(&img, w, h);
     if out.is_empty() {
         None
