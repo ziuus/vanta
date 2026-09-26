@@ -182,6 +182,17 @@ fn dispatch(topic: &str, args: &Value) -> Option<Value> {
                 "items": items
             })
         }
+        "fs_read" => {
+            let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
+            match std::fs::read(path) {
+                Ok(bytes) => {
+                    use base64::{Engine as _, engine::general_purpose::STANDARD};
+                    let b64 = STANDARD.encode(&bytes);
+                    serde_json::json!({ "status": "ok", "bytes_b64": b64 })
+                }
+                Err(e) => serde_json::json!({ "status": "error", "message": e.to_string() }),
+            }
+        }
         "fs_action" => {
             let action = args.get("action").and_then(|v| v.as_str()).unwrap_or("");
             let id = format!(

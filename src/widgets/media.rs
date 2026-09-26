@@ -311,7 +311,7 @@ pub fn render(f: &mut Frame, area: Rect, theme: &Theme) {
     };
 
     // Album art on the left when there is room for it.
-    let art_w: u16 = if area.height >= 4 && area.width >= 48 {
+    let art_w: u16 = if area.height >= 4 && area.width >= 32 {
         (area.height * 2).min(16)
     } else {
         0
