@@ -186,7 +186,7 @@ fn dispatch(topic: &str, args: &Value) -> Option<Value> {
             let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
             match std::fs::read(path) {
                 Ok(bytes) => {
-                    use base64::{Engine as _, engine::general_purpose::STANDARD};
+                    use base64::{engine::general_purpose::STANDARD, Engine as _};
                     let b64 = STANDARD.encode(&bytes);
                     serde_json::json!({ "status": "ok", "bytes_b64": b64 })
                 }
@@ -464,7 +464,9 @@ fn dispatch(topic: &str, args: &Value) -> Option<Value> {
             })
         }
 
-        "time" => serde_json::json!({"weekday": chrono::Local::now().format("%A").to_string(), "timestamp": chrono::Local::now().timestamp()}),
+        "time" => {
+            serde_json::json!({"weekday": chrono::Local::now().format("%A").to_string(), "timestamp": chrono::Local::now().timestamp()})
+        }
         "services" => {
             let srvs = monitors::services::snapshot();
             json!({

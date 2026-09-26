@@ -174,17 +174,29 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
         }
 
         Scene::Creative => {
-            let [left, right] = ratatui::layout::Layout::horizontal([ratatui::layout::Constraint::Percentage(65), ratatui::layout::Constraint::Percentage(35)]).areas(stage);
-            let [video_area, weather_area] = ratatui::layout::Layout::vertical([ratatui::layout::Constraint::Fill(1), ratatui::layout::Constraint::Length(3)]).areas(left);
-            let [clock_area, viz_area] = ratatui::layout::Layout::vertical([ratatui::layout::Constraint::Length(12), ratatui::layout::Constraint::Fill(1)]).areas(right);
-            
+            let [left, right] = ratatui::layout::Layout::horizontal([
+                ratatui::layout::Constraint::Percentage(65),
+                ratatui::layout::Constraint::Percentage(35),
+            ])
+            .areas(stage);
+            let [video_area, weather_area] = ratatui::layout::Layout::vertical([
+                ratatui::layout::Constraint::Fill(1),
+                ratatui::layout::Constraint::Length(3),
+            ])
+            .areas(left);
+            let [clock_area, viz_area] = ratatui::layout::Layout::vertical([
+                ratatui::layout::Constraint::Length(12),
+                ratatui::layout::Constraint::Fill(1),
+            ])
+            .areas(right);
+
             // Render native components
             crate::widgets::weather::render(f, weather_area, theme);
             big_clock(f, clock_area, app, theme);
             if app.config.widgets.music_viz {
                 crate::widgets::music_viz::render(f, viz_area, theme, app.frame);
             }
-            
+
             // Lookup and render the video_widget
             for ext in &app.ext_manager.extensions {
                 for mut comp in ext.components() {
