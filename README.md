@@ -10,11 +10,15 @@ A fast, aesthetic terminal system dashboard in Rust. The most complete keyboard-
 [![CI](https://img.shields.io/github/actions/workflow/status/ziuus/vanta/ci.yml?style=for-the-badge&label=CI)](https://github.com/ziuus/vanta/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/ziuus/vanta?style=for-the-badge&color=4A9E8E)](https://github.com/ziuus/vanta/releases)
 [![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE)
-[![Landing page](https://img.shields.io/badge/Landing_Page-030712?style=for-the-badge&logo=vercel&logoColor=white)](https://website-pi-seven-nty4ogjp2f.vercel.app)
+[![Landing page](https://img.shields.io/badge/Landing_Page-030712?style=for-the-badge&logo=vercel&logoColor=white)](https://vanta-website-omega.vercel.app)
 
 <br />
 
-<img src="docs/dashboard.png" alt="vanta dashboard page" width="900" />
+<video src="https://github.com/ziuus/vanta/raw/main/docs/vanta-demo.mp4" controls="controls" muted="muted" width="900" poster="docs/dashboard.png">
+  <a href="https://vanta-website-omega.vercel.app">
+    <img src="docs/dashboard.png" alt="vanta dashboard page" width="900" />
+  </a>
+</video>
 
 </div>
 
