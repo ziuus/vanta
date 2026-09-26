@@ -480,6 +480,8 @@ fn update(id: Option<String>, self_update: bool) {
         return;
     }
 
+    let update_everything = id.is_none();
+
     println!("Fetching registry...");
     let registry = match fetch_registry() {
         Ok(r) => r,
@@ -513,7 +515,10 @@ fn update(id: Option<String>, self_update: bool) {
             }
             if installed.is_empty() {
                 println!("No installed extensions found to update.");
-                println!("\nTip: Run `vanta update --self` to update the Vanta binary itself.");
+                if update_everything {
+                    println!("\n");
+                    update_self();
+                }
                 return;
             }
             installed
@@ -538,7 +543,10 @@ fn update(id: Option<String>, self_update: bool) {
     }
 
     println!("Completed: {} extension(s) updated.", updated);
-    println!("Tip: Run `vanta update --self` to update the Vanta binary itself.");
+    if update_everything {
+        println!("\n");
+        update_self();
+    }
 }
 
 fn list() {
